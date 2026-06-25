@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataMotion Glassline Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app" v-cloak>
+      <main class="motion-shell">
+        <header class="topbar">
+          <section class="brand-block">
+            <div class="brand-mark">DM</div>
+            <div>
+              <p class="eyebrow">Screen Motion Editor</p>
+              <h1>DataMotion</h1>
+            </div>
+          </section>
+
+          <section class="current-motion">
+            <span class="status-dot"></span>
+            <div>
+              <p class="eyebrow">当前动效</p>
+              <strong>{{ activeMotion.name }}</strong>
+            </div>
+          </section>
+
+          <section class="toolbar-actions">
+            <label class="select-field compact">
+              <span>画布</span>
+              <select v-model="canvasSize">
+                <option v-for="size in canvasSizes" :key="size" :value="size">{{ size }}</option>
+              </select>
+            </label>
+            <button class="icon-button" type="button" aria-label="撤销" title="撤销">
+              <i data-lucide="undo-2"></i>
+            </button>
+            <button class="icon-button" type="button" aria-label="重做" title="重做">
+              <i data-lucide="redo-2"></i>
+            </button>
+            <button class="ghost-button" type="button" @click="resetParams">重置</button>
+            <button class="primary-button" type="button" @click="openSaveModal">
+              <i data-lucide="save"></i>
+              保存动效
+            </button>
+          </section>
+        </header>
+
+        <section class="workspace">
+          <aside class="library-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">动效库</p>
+                <h2>基础模板</h2>
+              </div>
+              <button class="icon-button" type="button" aria-label="收藏筛选" title="收藏筛选">
+                <i data-lucide="star"></i>
+              </button>
+            </div>
+
+            <label class="search-field">
+              <i data-lucide="search"></i>
+              <input v-model="search" type="search" placeholder="搜索动效名称" />
+            </label>
+
+            <div class="category-list">
+              <button
+                v-for="category in categories"
+                :key="category"
+                type="button"
+                :class="{ active: activeCategory === category }"
+                @click="activeCategory = category"
+              >
+                {{ category }}
+              </button>
+            </div>
+
+            <div class="motion-list">
+              <article
+                v-for="motion in filteredMotions"
+                :key="motion.id"
+                class="motion-card"
+                :class="{ selected: activeMotion.id === motion.id }"
+                @click="selectMotion(motion)"
+              >
+                <div class="mini-preview" :class="'mini-' + motion.previewType">
+                  <span></span>
+                </div>
+                <div class="motion-card-body">
+                  <div class="motion-card-title">
+                    <h3>{{ motion.name }}</h3>
+                    <button class="mini-action" type="button" title="收藏" @click.stop="toggleFavorite(motion)">
+                      <i :data-lucide="motion.favorite ? 'star' : 'star-off'"></i>
+                    </button>
+                  </div>
+                  <p>{{ motion.scene }}</p>
+                  <div class="tag-row">
+                    <span>{{ motion.category }}</span>
+                    <span>{{ motion.params.length }} 参数</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </aside>
+
+          <section class="preview-panel">
+            <div class="preview-tools">
+              <div class="segmented">
+                <button v-for="mode in playModes" :key="mode.key" type="button" :class="{ active: playState === mode.key }" @click="setPlayState(mode.key)">
+                  <i :data-lucide="mode.icon"></i>
+                  {{ mode.label }}
+                </button>
+              </div>
+              <div class="preview-selects">
+                <label class="select-field">
+                  <span>预览对象</span>
+                  <select v-model="previewObject">
+                    <option v-for="item in previewObjects" :key="item" :value="item">{{ item }}</option>
+                  </select>
+                </label>
+                <label class="select-field">
+                  <span>背景</span>
+                  <select v-model="backgroundMode">
+                    <option v-for="item in backgrounds" :key="item" :value="item">{{ item }}</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="canvas-wrap" :class="backgroundClass">
+              <div class="canvas-meta">
+                <span>{{ canvasSize }}</span>
+                <span>{{ previewObject }}</span>
+              </div>
+
+              <div class="preview-stage" :key="previewKey">
+                <div class="screen-frame">
+                  <div class="screen-header">
+                    <span>城市运行体征</span>
+                    <strong>Motion Preview</strong>
+                  </div>
+                  <div class="screen-grid">
+                    <div class="metric-card" :class="previewClass" :style="previewStyle">
+                      <p>综合态势指数</p>
+                      <strong>87.62</strong>
+                      <span>同比 +12.8%</span>
+                    </div>
+                    <div class="chart-card">
+                      <div class="chart-bars">
+                        <span v-for="height in [42, 68, 54, 80, 48, 72]" :key="height" :style="{ height: height + '%' }"></span>
+                      </div>
+                    </div>
+                    <div class="alert-chip" :class="{ muted: previewObject !== '告警标签' }">
+                      设备异常 14
+                    </div>
+                    <div class="map-point" :class="{ muted: previewObject !== '地图点位' }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="params-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">参数面板</p>
+                <h2>{{ activeMotion.name }}</h2>
+              </div>
+              <button class="icon-button" type="button" aria-label="重播" title="重播" @click="replay">
+                <i data-lucide="rotate-ccw"></i>
+              </button>
+            </div>
+
+            <p class="motion-description">{{ activeMotion.description }}</p>
+
+            <div class="param-group">
+              <article v-for="param in activeMotion.params" :key="param.key" class="param-control">
+                <div class="param-label">
+                  <label :for="param.key">{{ param.label }}</label>
+                  <button type="button" @click="resetParam(param)">重置</button>
+                </div>
+
+                <template v-if="param.type === 'range'">
+                  <div class="range-row">
+                    <input :id="param.key" v-model.number="params[param.key]" type="range" :min="param.min" :max="param.max" :step="param.step" />
+                    <input v-model.number="params[param.key]" class="number-input" type="number" :min="param.min" :max="param.max" :step="param.step" />
+                    <span>{{ param.unit }}</span>
+                  </div>
+                </template>
+
+                <template v-else-if="param.type === 'color'">
+                  <div class="color-row">
+                    <input :id="param.key" v-model="params[param.key]" type="color" />
+                    <input v-model="params[param.key]" type="text" />
+                  </div>
+                </template>
+
+                <template v-else>
+                  <select :id="param.key" v-model="params[param.key]">
+                    <option v-for="option in param.options" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  </select>
+                </template>
+              </article>
+            </div>
+
+            <div class="warning-box" v-if="hasConflict">
+              当前动效组合可能存在 transform 冲突，建议减少缩放或旋转类动效叠加。
+            </div>
+          </aside>
+        </section>
+
+        <section class="bottom-dock">
+          <aside class="layers-panel">
+            <div class="dock-title">
+              <div>
+                <p class="eyebrow">动效层</p>
+                <h2>当前元素</h2>
+              </div>
+              <button class="ghost-button small" type="button" @click="addLayer">添加动效</button>
+            </div>
+            <div class="layer-list">
+              <article v-for="(layer, index) in layers" :key="layer.uid" class="layer-item" :class="{ disabled: !layer.enabled }">
+                <button type="button" class="layer-toggle" @click="layer.enabled = !layer.enabled">
+                  <i :data-lucide="layer.enabled ? 'eye' : 'eye-off'"></i>
+                </button>
+                <span class="layer-index">0{{ index + 1 }}</span>
+                <div>
+                  <strong>{{ layer.name }}</strong>
+                  <p>{{ layer.delay }}ms 延迟 · {{ layer.loop ? '循环' : '单次' }}</p>
+                </div>
+                <button type="button" class="mini-action" @click="duplicateLayer(layer)" title="复制">
+                  <i data-lucide="copy"></i>
+                </button>
+                <button type="button" class="mini-action" @click="removeLayer(layer)" title="删除">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </article>
+            </div>
+          </aside>
+
+          <section class="code-panel">
+            <div class="dock-title">
+              <div>
+                <p class="eyebrow">导出代码</p>
+                <h2>CSS / JSON</h2>
+              </div>
+              <div class="code-actions">
+                <div class="segmented compact-segmented">
+                  <button type="button" :class="{ active: codeTab === 'css' }" @click="codeTab = 'css'">CSS</button>
+                  <button type="button" :class="{ active: codeTab === 'json' }" @click="codeTab = 'json'">JSON</button>
+                </div>
+                <button class="ghost-button code-copy-button" type="button" @click="copyCode">
+                  <i data-lucide="clipboard"></i>
+                  {{ copyLabel }}
+                </button>
+              </div>
+            </div>
+            <pre><code>{{ codeTab === 'css' ? generatedCss : generatedJson }}</code></pre>
+          </section>
+        </section>
+      </main>
+
+      <div class="modal-backdrop" v-if="showSaveModal" @click.self="showSaveModal = false">
+        <section class="save-modal">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">保存模板</p>
+              <h2>保存为我的动效</h2>
+            </div>
+            <button class="icon-button" type="button" aria-label="关闭" @click="showSaveModal = false">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+          <label>
+            <span>动效名称</span>
+            <input v-model="saveForm.name" type="text" />
+          </label>
+          <label>
+            <span>保存位置</span>
+            <select v-model="saveForm.category">
+              <option>我的动效</option>
+              <option>项目动效库</option>
+            </select>
+          </label>
+          <label>
+            <span>使用说明</span>
+            <textarea v-model="saveForm.description" rows="4"></textarea>
+          </label>
+          <button class="primary-button full" type="button" @click="saveMotion">确认保存</button>
+        </section>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
