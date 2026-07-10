@@ -1,7 +1,11 @@
-import { mkdir, copyFile, writeFile } from "node:fs/promises";
+import { mkdir, copyFile, rename, writeFile } from "node:fs/promises";
 
 await mkdir("dist/server", { recursive: true });
 await mkdir("dist/.openai", { recursive: true });
+await mkdir("dist/client", { recursive: true });
+
+await rename("dist/index.html", "dist/client/index.html");
+await rename("dist/assets", "dist/client/assets");
 
 await copyFile(".openai/hosting.json", "dist/.openai/hosting.json");
 await writeFile(
