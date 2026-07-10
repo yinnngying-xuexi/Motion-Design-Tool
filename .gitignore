@@ -37,3 +37,6 @@ Thumbs.db
 
 # Local tool state
 .agents/
+
+# Local Netlify folder
+.netlify
