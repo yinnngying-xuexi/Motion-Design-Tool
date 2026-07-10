@@ -1,25 +1,25 @@
 ---
 version: alpha
-name: Glassline
-description: Fog-grey neutrals with a cobalt pinprick.
+name: Vercel Ink
+description: Surgical black, surgical white, sharp geometry.
 colors:
-  primary: "#0F1419"
-  secondary: "#4A5568"
-  tertiary: "#2C5EF5"
-  neutral: "#F1F3F5"
-  surface: "#FFFFFF"
+  primary: "#EDEDED"
+  secondary: "#8F8F8F"
+  tertiary: "#0070F3"
+  neutral: "#000000"
+  surface: "#0A0A0A"
   on-primary: "#FFFFFF"
 typography:
   display:
     fontFamily: Geist
-    fontSize: 3.75rem
+    fontSize: 4rem
     fontWeight: 600
-    letterSpacing: "-0.03em"
+    letterSpacing: "-0.04em"
   h1:
     fontFamily: Geist
     fontSize: 2.25rem
     fontWeight: 600
-    letterSpacing: "-0.02em"
+    letterSpacing: "-0.025em"
   body:
     fontFamily: Geist
     fontSize: 0.95rem
@@ -30,8 +30,8 @@ typography:
     letterSpacing: "0"
 rounded:
   sm: 6px
-  md: 10px
-  lg: 16px
+  md: 8px
+  lg: 12px
 spacing:
   sm: 8px
   md: 16px
@@ -50,20 +50,20 @@ components:
 ---
 ## Overview
 
-A cool, quiet palette built around 8-step neutrals. A single cobalt for action keeps the interface calm but directable.
+Product-grade minimalism. Edge-to-edge black surfaces, thin hairlines, a single electric gradient accent reserved for primary action.
 
 ## Colors
 
 The palette is built around high-contrast neutrals and a single accent that drives interaction.
 
-- **Primary (`#0F1419`):** Headlines and core text.
-- **Secondary (`#4A5568`):** Borders, captions, and metadata.
-- **Tertiary (`#2C5EF5`):** The sole driver for interaction. Reserve it.
-- **Neutral (`#F1F3F5`):** The page foundation.
+- **Primary (`#EDEDED`):** Headlines and core text.
+- **Secondary (`#8F8F8F`):** Borders, captions, and metadata.
+- **Tertiary (`#0070F3`):** The sole driver for interaction. Reserve it.
+- **Neutral (`#000000`):** The page foundation.
 
 ## Typography
 
-- **display:** Geist 3.75rem
+- **display:** Geist 4rem
 - **h1:** Geist 2.25rem
 - **body:** Geist 0.95rem
 - **label:** Geist Mono 0.75rem
