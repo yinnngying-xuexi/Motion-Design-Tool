@@ -118,7 +118,8 @@ function replay(): void {
 .section-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 20px;
+  font-size: 18px;
+  line-height: 1.3;
 }
 
 .preview-actions {

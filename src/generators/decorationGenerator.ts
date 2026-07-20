@@ -1,6 +1,43 @@
 import type { DecorationEffectTemplate } from "@/types/decoration";
+import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset } from "@/types/svgFlow";
 
 export type DecorationParams = Record<string, string | number>;
+
+function svgFlowConfig(params: DecorationParams): SvgFlowConfig {
+  return {
+    direction: (param(params, "direction", "ltr") as SvgFlowConfig["direction"]),
+    duration: Number(param(params, "duration", 7.5)),
+    pause: Number(param(params, "pause", 2)),
+    tail: Number(param(params, "tail", 820)),
+    borderWidth: Number(param(params, "borderWidth", 3)),
+    glow: Number(param(params, "glow", 12)),
+    headColor: String(param(params, "headColor", "#FFFFFF")),
+    tailColor: String(param(params, "tailColor", "#0070F3")),
+    endColor: String(param(params, "endColor", "#8F8F8F"))
+  };
+}
+
+function svgFlowMetrics(viewBox: string, config: SvgFlowConfig): { x: number; y: number; width: number; height: number; axis: "x" | "y"; start: number; finish: number; gradient: string } {
+  const [x = 0, y = 0, width = 1000, height = 180] = viewBox.split(/[\s,]+/).map(Number);
+  const horizontal = config.direction === "ltr" || config.direction === "rtl";
+  const axisLength = horizontal ? width : height;
+  const forward = config.direction === "ltr" || config.direction === "ttb";
+  const start = forward ? (horizontal ? x : y) - config.tail : (horizontal ? x + width : y + height);
+  const finish = forward ? (horizontal ? x + width : y + height) : (horizontal ? x : y) - config.tail;
+  const gradient = horizontal
+    ? config.direction === "ltr" ? "x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"" : "x1=\"1\" y1=\"0\" x2=\"0\" y2=\"0\""
+    : config.direction === "ttb" ? "x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"" : "x1=\"0\" y1=\"1\" x2=\"0\" y2=\"0\"";
+
+  return { x, y, width: Number.isFinite(width) ? width : axisLength, height: Number.isFinite(height) ? height : axisLength, axis: horizontal ? "x" : "y", start, finish, gradient };
+}
+
+function defaultSvgFlowSource(): SvgFlowSource {
+  return {
+    fileName: "默认弧线路径.svg",
+    viewBox: "0 0 1000 180",
+    shape: '<path d="M0 90 H250 C330 90 360 20 440 20 H720 C800 20 840 150 1000 150"></path>'
+  };
+}
 
 export function decorationClassName(template: DecorationEffectTemplate): string {
   return `decoration-effect-${template.id}`;
@@ -56,6 +93,46 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   const opacity = param(params, "opacity", 1);
   const glow = param(params, "glow", 18);
   const borderWidth = param(params, "borderWidth", 1);
+
+  if (template.generator === "svg-flow") {
+    const config = svgFlowConfig(params);
+    const total = Math.max(0.1, config.duration + config.pause);
+
+    return `.${cls} {
+  width: min(100%, 640px);
+  opacity: 1;
+}
+
+.${cls}__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.${cls}__path {
+  fill: none;
+  stroke: url(#${cls}-gradient);
+  stroke-width: ${config.borderWidth};
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  mask: url(#${cls}-mask);
+  filter:
+    drop-shadow(0 0 2px ${config.headColor})
+    drop-shadow(0 0 ${config.glow}px ${config.tailColor});
+}
+
+.${cls}__track {
+  fill: none;
+  stroke: ${config.tailColor};
+  stroke-width: ${Math.max(1, config.borderWidth * 0.5)};
+  opacity: 0.16;
+}
+
+.${cls}__meta { display: none; }
+
+/* 动画总时长 ${total}s，前 ${config.duration}s 流动，剩余时间留白。 */`;
+  }
 
   if (template.generator === "comet-flow") {
     const cometGlow = Number(glow);
@@ -441,18 +518,77 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
 }`;
 }
 
-export function generateDecorationHtmlCss(template: DecorationEffectTemplate, params: DecorationParams): string {
-  return `${generateDecorationMarkup(template)}
+export function generateDecorationCompositionCss(asset?: SvgPreviewAsset): string {
+  if (!asset) return "";
+  return `.decoration-composition { position: relative; display: grid; place-items: center; isolation: isolate; }
+.decoration-composition__effect { position: relative; z-index: 1; }
+.decoration-composition__svg { position: absolute; z-index: 2; width: 88px; height: 88px; display: grid; place-items: center; pointer-events: none; }
+.decoration-composition__svg svg { width: 100%; height: 100%; display: block; overflow: visible; }`;
+}
+
+function composeDecoration(markup: string, asset?: SvgPreviewAsset): string {
+  if (!asset) return markup;
+  return `<div class="decoration-composition">
+  <div class="decoration-composition__effect">${markup}</div>
+  <div class="decoration-composition__svg">${asset.markup}</div>
+</div>`;
+}
+
+export function generateDecorationHtmlCss(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
+  return `${generateDecorationMarkup(template, params, source, asset)}
 
 <style>
 ${generateDecorationCss(template, params)}
+${generateDecorationCompositionCss(asset)}
 </style>`;
 }
 
-export function generateDecorationMarkup(template: DecorationEffectTemplate): string {
+export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
+  if (template.generator === "svg-flow") {
+    const cls = decorationClassName(template);
+    const config = svgFlowConfig(params);
+    const currentSource = source ?? defaultSvgFlowSource();
+    const metrics = svgFlowMetrics(currentSource.viewBox, config);
+    const total = Math.max(0.1, config.duration + config.pause);
+    const moveEnd = Math.min(99.5, (config.duration / total) * 100).toFixed(3);
+    const pad = Math.max(config.tail, config.glow * 2, 24);
+    const maskX = metrics.x - pad;
+    const maskY = metrics.y - pad;
+    const maskWidth = metrics.width + pad * 2;
+    const maskHeight = metrics.height + pad * 2;
+    const rect = metrics.axis === "x"
+      ? `x="${metrics.start}" y="${maskY}" width="${config.tail}" height="${maskHeight}"`
+      : `x="${maskX}" y="${metrics.start}" width="${maskWidth}" height="${config.tail}"`;
+
+    return `<div class="${cls}" aria-label="${currentSource.fileName}">
+  <svg class="${cls}__svg" viewBox="${currentSource.viewBox}" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <path id="${cls}-path" ${currentSource.shape.replace(/^<[^\s>]+|\/?>(?=$)/g, "").trim()}></path>
+      <linearGradient id="${cls}-gradient" ${metrics.gradient}>
+        <stop offset="0" stop-color="${config.endColor}" stop-opacity="0"></stop>
+        <stop offset="0.42" stop-color="${config.tailColor}" stop-opacity="0.72"></stop>
+        <stop offset="1" stop-color="${config.headColor}"></stop>
+      </linearGradient>
+      <linearGradient id="${cls}-mask-gradient" ${metrics.gradient}>
+        <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"></stop>
+        <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.58"></stop>
+        <stop offset="1" stop-color="#FFFFFF"></stop>
+      </linearGradient>
+      <mask id="${cls}-mask" maskUnits="userSpaceOnUse" x="${maskX}" y="${maskY}" width="${maskWidth}" height="${maskHeight}">
+        <rect ${rect} fill="url(#${cls}-mask-gradient)">
+          <animate attributeName="${metrics.axis}" values="${metrics.start};${metrics.finish};${metrics.finish}" keyTimes="0;${(config.duration / total).toFixed(3)};1" dur="${total}s" repeatCount="indefinite"></animate>
+        </rect>
+      </mask>
+    </defs>
+    <use href="#${cls}-path" class="${cls}__track"></use>
+    <use href="#${cls}-path" class="${cls}__path"></use>
+  </svg>
+</div>`;
+  }
+
   if (template.generator === "comet-flow") {
     const cls = decorationClassName(template);
-    return `<div class="${cls}" aria-hidden="true">
+    return composeDecoration(`<div class="${cls}" aria-hidden="true">
   <svg class="${cls}__svg" viewBox="0 0 3840 130" preserveAspectRatio="none" fill="none">
     <defs>
       <path id="${cls}-path" d="M3840 2H2722.2C2670.59 2 2622.3 27.4476 2593.12 70.0193C2567.97 106.709 2530.28 128 2490.49 128H1349.51C1309.72 128 1272.03 106.709 1246.88 70.0193C1217.7 27.4476 1169.41 2 1117.8 2H0"></path>
@@ -474,14 +610,14 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate): st
     </defs>
     <use href="#${cls}-path" class="${cls}__comet"></use>
   </svg>
-</div>`;
+</div>`, asset);
   }
 
   if (template.generator === "particle-base") {
     const cls = decorationClassName(template);
     const segments = particleRingSegments(cls);
     const particles = Array.from({ length: 8 }, () => "<b></b>").join("");
-    return `<div class="${cls}" aria-hidden="true">
+    return composeDecoration(`<div class="${cls}" aria-hidden="true">
   <div class="${cls}__halo"></div>
   <svg class="${cls}__ring" viewBox="0 0 200 200" focusable="false">
     <circle class="${cls}__ring-outline" cx="100" cy="100" r="91"></circle>
@@ -489,23 +625,24 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate): st
   </svg>
   <div class="${cls}__core"></div>
   <div class="${cls}__particles">${particles}</div>
-</div>`;
+</div>`, asset);
   }
 
-  return `<div class="${decorationClassName(template)}"></div>`;
+  return composeDecoration(`<div class="${decorationClassName(template)}"></div>`, asset);
 }
 
-export function generateDecorationVue(template: DecorationEffectTemplate, params: DecorationParams): string {
+export function generateDecorationVue(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
   return `<template>
-  ${generateDecorationMarkup(template)}
+  ${generateDecorationMarkup(template, params, source, asset)}
 </template>
 
 <style scoped>
 ${generateDecorationCss(template, params)}
+${generateDecorationCompositionCss(asset)}
 </style>`;
 }
 
-export function generateDecorationJson(template: DecorationEffectTemplate, params: DecorationParams): string {
+export function generateDecorationJson(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
   return JSON.stringify(
     {
       id: template.id,
@@ -513,7 +650,9 @@ export function generateDecorationJson(template: DecorationEffectTemplate, param
       section: template.section,
       description: template.description,
       scene: template.scene,
-      params
+      params,
+      svgSource: template.generator === "svg-flow" && source ? source : undefined,
+      importedSvg: template.generator !== "svg-flow" && asset ? asset : undefined
     },
     null,
     2
