@@ -31,13 +31,9 @@
             :class="{ active: selectedMotion.id === motion.id }"
             @click="selectedMotionId = motion.id"
           >
-            <div class="motion-mini" :class="[`preview-${motion.previewType}`, `motion-${motion.id}`]">
-              <span></span>
-            </div>
-            <div>
+            <div class="motion-card-copy">
               <strong>{{ motion.name }}</strong>
               <p>{{ motion.scene }}</p>
-              <small>{{ motion.category }} · 系统内置</small>
             </div>
           </article>
         </div>
@@ -49,10 +45,10 @@
         <div>
           <h2>{{ selectedMotion.name }}</h2>
         </div>
-        <el-button type="primary" @click="saveSelected">保存到我的动效</el-button>
+        <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
       </header>
 
-      <section class="motion-stage" :key="`${selectedMotion.id}-${previewKey}`">
+      <section ref="previewCapture" class="motion-stage" :key="`${selectedMotion.id}-${previewKey}`">
         <div
           class="screen-card"
           :class="[`preview-${selectedMotion.previewType}`, `motion-${selectedMotion.id}`]"
@@ -60,26 +56,15 @@
         >
           <span v-if="selectedMotion.previewType === 'ripple'" class="ripple" :style="rippleStyle"></span>
           <span v-if="selectedMotion.previewType === 'scan'" class="scan-line" :style="scanStyle"></span>
-          <p>数据态势</p>
-          <strong>87.62</strong>
-          <small>{{ selectedMotion.category }}</small>
+          <div v-if="svgAsset" class="imported-svg" v-html="svgAsset.markup"></div>
+          <template v-else>
+            <p>数据态势</p>
+            <strong>87.62</strong>
+            <small>{{ selectedMotion.category }}</small>
+          </template>
         </div>
       </section>
 
-      <section class="motion-detail">
-        <div>
-          <span>推荐场景</span>
-          <p>{{ selectedMotion.scene }}</p>
-        </div>
-        <div>
-          <span>说明</span>
-          <p>{{ selectedMotion.description }}</p>
-        </div>
-        <div>
-          <span>当前参数</span>
-          <p>{{ motionConfig.duration }}s · {{ motionConfig.timingFunction }} · {{ motionConfig.iteration }}</p>
-        </div>
-      </section>
     </main>
 
     <aside class="motion-info panel">
@@ -147,44 +132,52 @@
         </div>
       </el-scrollbar>
     </aside>
+
+    <section class="motion-export panel">
+      <header class="library-head">
+        <div><h2>导出代码</h2></div>
+        <div class="export-actions">
+          <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
+          <el-button type="primary" size="small" @click="copyCode">复制代码</el-button>
+        </div>
+      </header>
+      <el-tabs v-model="activeExport">
+        <el-tab-pane label="HTML + CSS" name="html"><CodeMirrorViewer :code="htmlCssCode" language="html" /></el-tab-pane>
+        <el-tab-pane label="Vue Component" name="vue"><CodeMirrorViewer :code="vueCode" language="vue" /></el-tab-pane>
+        <el-tab-pane label="JSON Config" name="json"><CodeMirrorViewer :code="jsonCode" language="json" /></el-tab-pane>
+      </el-tabs>
+    </section>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
-import { computed, defineComponent, h, onMounted, reactive, ref, resolveComponent, watch } from "vue";
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, resolveComponent, watch } from "vue";
 import { basicMotions } from "@/data/basicMotions";
+import {
+  generateBasicMotionHtmlCss,
+  generateBasicMotionJson,
+  generateBasicMotionVue,
+  type BasicMotionConfig
+} from "@/generators/basicMotionGenerator";
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import type { MotionCategory } from "@/types/motion";
+import type { SvgPreviewAsset } from "@/types/svgFlow";
+import { readSvgPreviewFile } from "@/utils/svgFlow";
+import { createMotionArtifact } from "@/utils/motionArtifact";
+import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 
-interface MotionEditorConfig {
-  duration: number;
-  delay: number;
-  iteration: "1" | "2" | "3" | "infinite";
-  direction: "normal" | "reverse" | "alternate" | "alternate-reverse";
-  timingFunction: "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out";
-  opacity: number;
-  translateX: number;
-  translateY: number;
-  scale: number;
-  rotate: number;
-  blur: number;
-  shadow: number;
-  glow: number;
-  blinkFrequency: number;
-  loopSpeed: number;
-  amplitude: number;
-  color: string;
-  borderWidth: number;
-  scanSpeed: number;
-  rippleRadius: number;
-}
+type MotionEditorConfig = BasicMotionConfig;
 
 const store = useMyMotionStore();
 const keyword = ref("");
 const activeCategory = ref<"全部" | MotionCategory>("全部");
 const selectedMotionId = ref(basicMotions[0].id);
 const previewKey = ref(0);
+const previewCapture = ref<HTMLElement>();
+const svgAsset = ref<SvgPreviewAsset>();
+const svgFileInput = ref<HTMLInputElement>();
+const activeExport = ref<"html" | "vue" | "json">("html");
 
 const categories = computed(() => ["全部", ...new Set(basicMotions.map((motion) => motion.category))] as Array<"全部" | MotionCategory>);
 
@@ -199,6 +192,10 @@ const filteredMotions = computed(() =>
 
 const selectedMotion = computed(() => basicMotions.find((motion) => motion.id === selectedMotionId.value) ?? basicMotions[0]);
 const motionConfig = reactive<MotionEditorConfig>(createDefaultConfig());
+const htmlCssCode = computed(() => generateBasicMotionHtmlCss(selectedMotion.value, motionConfig, svgAsset.value));
+const vueCode = computed(() => generateBasicMotionVue(selectedMotion.value, motionConfig, svgAsset.value));
+const jsonCode = computed(() => generateBasicMotionJson(selectedMotion.value, motionConfig, svgAsset.value));
+const currentCode = computed(() => activeExport.value === "vue" ? vueCode.value : activeExport.value === "json" ? jsonCode.value : htmlCssCode.value);
 
 const previewStyle = computed(() => ({
   opacity: motionConfig.opacity,
@@ -239,6 +236,15 @@ const scanStyle = computed(() => ({
 
 onMounted(() => {
   store.loadFromLocal();
+  window.addEventListener("datamotion:import-svg", triggerSvgImport);
+  window.addEventListener("datamotion:save", saveSelected);
+  window.addEventListener("datamotion:export", downloadHtml);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("datamotion:import-svg", triggerSvgImport);
+  window.removeEventListener("datamotion:save", saveSelected);
+  window.removeEventListener("datamotion:export", downloadHtml);
 });
 
 watch(selectedMotionId, () => {
@@ -275,10 +281,54 @@ function resetConfig(): void {
   previewKey.value += 1;
 }
 
-function saveSelected(): void {
-  const before = store.savedMotions.length;
-  store.saveMotion(selectedMotion.value);
-  ElMessage.success(before === store.savedMotions.length ? "该动效已在我的动效中" : "已保存到我的动效");
+async function saveSelected(): Promise<void> {
+  try {
+    const existed = store.savedMotions.some((motion) => motion.id === selectedMotion.value.id);
+    const artifact = await createMotionArtifact({
+      id: selectedMotion.value.id,
+      name: selectedMotion.value.name,
+      htmlCss: htmlCssCode.value,
+      previewNode: previewCapture.value
+    });
+    store.saveMotion(selectedMotion.value, artifact);
+    ElMessage.success(existed ? "已更新我的动效（HTML、预览图和名称）" : "已保存 HTML、预览图和名称");
+  } catch {
+    ElMessage.error("保存失败，无法生成当前动效预览图");
+  }
+}
+
+function triggerSvgImport(): void {
+  svgFileInput.value?.click();
+}
+
+async function handleSvgUpload(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    svgAsset.value = await readSvgPreviewFile(file);
+    ElMessage.success("SVG 已导入并应用当前动效");
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "SVG 导入失败");
+  } finally {
+    input.value = "";
+  }
+}
+
+async function copyCode(): Promise<void> {
+  await navigator.clipboard.writeText(currentCode.value);
+  ElMessage.success("代码已复制");
+}
+
+function downloadHtml(): void {
+  const code = `<!doctype html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${selectedMotion.value.name}</title>\n<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000}</style>\n</head>\n<body>\n${htmlCssCode.value}\n</body>\n</html>`;
+  const url = URL.createObjectURL(new Blob([code], { type: "text/html;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${selectedMotion.value.id}.html`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success("HTML 文件已导出");
 }
 
 const FieldBlock = defineComponent({
@@ -342,8 +392,12 @@ const NumberControl = defineComponent({
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 372px minmax(520px, 1fr) 388px;
-  gap: 14px;
+  grid-template-columns: 340px minmax(440px, 1fr) 340px;
+  grid-template-rows: minmax(0, 1fr) minmax(220px, 32vh);
+  grid-template-areas:
+    "list preview params"
+    "list export export";
+  gap: 10px;
 }
 
 .motion-sidebar,
@@ -351,13 +405,14 @@ const NumberControl = defineComponent({
 .motion-info {
   min-width: 0;
   min-height: 0;
-  padding: 20px;
+  padding: 16px;
 }
 
 .motion-sidebar {
+  grid-area: list;
   display: grid;
   grid-template-rows: auto auto auto 1fr;
-  gap: 16px;
+  gap: 12px;
 }
 
 .library-head {
@@ -378,13 +433,39 @@ const NumberControl = defineComponent({
 .library-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 24px;
+  font-size: 18px;
+  line-height: 1.3;
   font-weight: 600;
 }
 
 .library-head small {
   color: var(--dm-secondary);
 }
+
+.preview-actions,
+.export-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.svg-import-button {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--dm-hairline-strong);
+  border-radius: var(--dm-radius-md);
+  background: var(--dm-control);
+  color: var(--dm-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.svg-import-button:hover { border-color: var(--dm-secondary); }
+.svg-import-button input { display: none; }
 
 .category-tabs {
   display: flex;
@@ -413,19 +494,22 @@ const NumberControl = defineComponent({
 
 .motion-list {
   display: grid;
-  gap: 11px;
+  gap: 8px;
   padding-right: 8px;
 }
 
 .motion-card {
-  display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 12px;
+  min-width: 0;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-md);
   background: var(--dm-surface-raised);
-  padding: 12px;
+  padding: 10px 12px;
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.motion-card:hover:not(.active) {
+  border-color: var(--dm-secondary);
 }
 
 .motion-card.active {
@@ -435,41 +519,39 @@ const NumberControl = defineComponent({
 }
 
 .motion-card strong {
+  display: block;
+  color: var(--dm-primary);
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.motion-card p {
+  margin: 3px 0 0;
+  color: var(--dm-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.motion-card.active strong {
   color: var(--dm-primary);
 }
 
-.motion-card p,
-.motion-card small {
-  margin: 4px 0 0;
+.motion-card.active p {
   color: var(--dm-secondary);
-  font-size: 12px;
-}
-
-.motion-mini {
-  width: 58px;
-  height: 58px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-md);
-  background: #05080c;
-}
-
-.motion-mini span {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  background: var(--dm-tertiary);
-  animation-duration: 1.8s;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
 }
 
 .motion-preview-panel {
+  grid-area: preview;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 16px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
 }
+
+.hidden-file-input { display: none; }
 
 .motion-stage {
   min-height: 0;
@@ -507,6 +589,20 @@ const NumberControl = defineComponent({
   color: var(--dm-secondary);
 }
 
+.imported-svg {
+  width: min(78%, 180px);
+  height: min(78%, 110px);
+  display: grid;
+  place-items: center;
+}
+
+.imported-svg :deep(svg) {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
 .motion-detail {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -526,10 +622,37 @@ const NumberControl = defineComponent({
 }
 
 .motion-info {
+  grid-area: params;
   min-width: 0;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 16px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.motion-export {
+  grid-area: export;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.motion-export :deep(.el-tabs) {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.motion-export :deep(.el-tabs__content),
+.motion-export :deep(.el-tab-pane) {
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 

@@ -15,7 +15,22 @@ export interface BasicMotionTemplate {
   editableParams: string[];
 }
 
+export interface SavedMotionArtifact {
+  html: string;
+  previewImage: string;
+  htmlFileName: string;
+  imageFileName: string;
+  width: number;
+  height: number;
+}
+
 export interface SavedMotion extends BasicMotionTemplate {
   savedAt: string;
-  source: "basic-library";
+  source: "basic-library" | "decoration-library" | "svg-flow";
+  decoration?: {
+    effectId: string;
+    params: Record<string, string | number>;
+  };
+  svgFlow?: import("@/types/svgFlow").SavedSvgFlowMotion;
+  artifact?: SavedMotionArtifact;
 }

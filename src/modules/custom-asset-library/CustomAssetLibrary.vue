@@ -40,7 +40,6 @@
         <div>
           <h2>{{ currentAsset?.name ?? "等待上传 CSS" }}</h2>
         </div>
-        <el-tag effect="dark">用户上传</el-tag>
       </header>
 
       <div class="preview-stage">
@@ -105,7 +104,10 @@
         <div>
           <h2>导出代码</h2>
         </div>
-        <el-button type="primary" :disabled="!currentAsset" @click="copyCode">复制</el-button>
+        <div class="export-actions">
+          <el-button size="small" :disabled="!currentAsset" @click="downloadHtml">导出 HTML</el-button>
+          <el-button type="primary" size="small" :disabled="!currentAsset" @click="copyCode">复制代码</el-button>
+        </div>
       </header>
 
       <el-tabs v-model="activeExport">
@@ -126,7 +128,7 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
 import type { UploadRawFile } from "element-plus";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import type { CssVariableParam } from "@/types/decoration";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 
@@ -197,7 +199,14 @@ const jsonCode = computed(() => {
 });
 const currentCode = computed(() => (activeExport.value === "json" ? jsonCode.value : activeExport.value === "css" ? currentCss.value : htmlCssCode.value));
 
-onMounted(loadAssets);
+onMounted(() => {
+  loadAssets();
+  window.addEventListener("datamotion:export", downloadHtml);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("datamotion:export", downloadHtml);
+});
 
 watch(currentAsset, () => {
   resetVariables();
@@ -339,6 +348,41 @@ async function copyCode(): Promise<void> {
   await navigator.clipboard.writeText(currentCode.value);
   ElMessage.success("代码已复制");
 }
+
+function downloadHtml(): void {
+  if (!currentAsset.value) {
+    ElMessage.info("请先选择一个自定义素材");
+    return;
+  }
+
+  const documentCode = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${currentAsset.value.name}</title>
+<style>
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: #000000;
+  }
+</style>
+</head>
+<body>
+${htmlCssCode.value}
+</body>
+</html>`;
+  const url = URL.createObjectURL(new Blob([documentCode], { type: "text/html;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${currentAsset.value.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, "-") || "custom-motion"}.html`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success("HTML 文件已导出");
+}
 </script>
 
 <style scoped>
@@ -346,12 +390,12 @@ async function copyCode(): Promise<void> {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 340px minmax(520px, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) minmax(190px, 27vh);
+  grid-template-columns: 340px minmax(440px, 1fr) 340px;
+  grid-template-rows: minmax(0, 1fr) minmax(220px, 32vh);
   grid-template-areas:
     "list preview params"
     "list export export";
-  gap: 14px;
+  gap: 10px;
 }
 
 .panel {
@@ -361,7 +405,7 @@ async function copyCode(): Promise<void> {
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
   background: var(--dm-surface-soft);
-  padding: 20px;
+  padding: 16px;
   box-shadow: inset 0 0 0 1px rgba(0, 112, 243, 0.02);
 }
 
@@ -410,7 +454,15 @@ async function copyCode(): Promise<void> {
 .section-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 24px;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .paste-box {
@@ -443,10 +495,15 @@ async function copyCode(): Promise<void> {
   justify-content: space-between;
   gap: 12px;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-lg);
-  padding: 12px;
+  border-radius: var(--dm-radius-md);
+  padding: 10px 12px;
   background: var(--dm-surface-raised);
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.asset-card:hover:not(.active) {
+  border-color: var(--dm-secondary);
 }
 
 .asset-card.active {
@@ -456,13 +513,30 @@ async function copyCode(): Promise<void> {
 }
 
 .asset-card strong {
+  display: block;
   color: var(--dm-primary);
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
 }
 
 .asset-card p {
-  margin: 4px 0 0;
+  margin: 3px 0 0;
   color: var(--dm-secondary);
   font-size: 12px;
+  line-height: 1.4;
+}
+
+.asset-card.active strong {
+  color: var(--dm-primary);
+}
+
+.asset-card.active p {
+  color: var(--dm-secondary);
+}
+
+.asset-card.active :deep(.el-button) {
+  color: var(--dm-secondary);
 }
 
 .preview-stage {

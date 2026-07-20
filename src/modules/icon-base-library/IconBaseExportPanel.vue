@@ -82,7 +82,8 @@ async function copyCurrent(): Promise<void> {
 .export-head h2 {
   margin: 0;
   color: #f1fbff;
-  font-size: 20px;
+  font-size: 18px;
+  line-height: 1.3;
 }
 
 .export-tabs {

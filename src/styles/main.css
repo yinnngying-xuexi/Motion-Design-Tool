@@ -86,48 +86,73 @@ textarea {
   height: 100dvh;
   min-height: 0;
   display: grid;
-  grid-template-columns: 284px minmax(0, 1fr);
-  gap: 14px;
-  padding: 14px;
+  grid-template-columns: 196px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-areas:
+    "toolbar toolbar"
+    "nav content";
+  gap: 10px;
+  padding: 10px;
   overflow: hidden;
   background: var(--dm-neutral);
 }
 
+.app-toolbar {
+  grid-area: toolbar;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 2px 0 8px;
+}
+
+.toolbar-brand,
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+}
+
+.toolbar-brand { gap: 12px; }
+.toolbar-actions { gap: 10px; }
+
+.toolbar-brand strong {
+  color: var(--dm-tertiary);
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.toolbar-brand span {
+  color: var(--dm-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.toolbar-brand small {
+  padding: 2px 7px;
+  border: 1px solid var(--dm-hairline);
+  border-radius: var(--dm-radius-sm);
+  background: var(--dm-surface-raised);
+  color: var(--dm-secondary);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+}
+
+.toolbar-actions .el-button {
+  min-width: 104px;
+}
+
 .app-nav {
+  grid-area: nav;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 34px;
-  padding: 16px;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 10px;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
   background: var(--dm-surface-soft);
   box-shadow: inset 0 0 0 1px rgba(0, 112, 243, 0.025);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.brand-mark {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--dm-hairline-strong);
-  border-radius: var(--dm-radius-md);
-  background: #070b10;
-  color: var(--dm-primary);
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-weight: 600;
-}
-
-.brand strong {
-  display: block;
-  color: var(--dm-primary);
-  font-weight: 600;
 }
 
 .nav-scroll {
@@ -137,8 +162,8 @@ textarea {
 .nav-stack {
   display: grid;
   align-content: start;
-  gap: 10px;
-  padding-right: 8px;
+  gap: 8px;
+  padding-right: 6px;
 }
 
 .nav-stack button {
@@ -146,8 +171,8 @@ textarea {
   border-radius: var(--dm-radius-md);
   background: transparent;
   color: var(--dm-secondary);
-  min-height: 80px;
-  padding: 14px 16px;
+  min-height: 72px;
+  padding: 13px 14px;
   text-align: left;
   cursor: pointer;
 }
@@ -169,7 +194,7 @@ textarea {
 }
 
 .nav-stack button small {
-  margin-top: 4px;
+  display: none;
   color: var(--dm-secondary);
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 0.75rem;
@@ -182,6 +207,7 @@ textarea {
 }
 
 .app-content {
+  grid-area: content;
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -258,6 +284,27 @@ textarea {
   --el-button-active-border-color: #0058c2;
 }
 
+.el-button.is-disabled,
+.el-button.is-disabled:hover,
+.el-button.is-disabled:focus {
+  --el-button-disabled-bg-color: #10151b;
+  --el-button-disabled-border-color: rgba(143, 143, 143, 0.2);
+  --el-button-disabled-text-color: #626b75;
+  background: var(--el-button-disabled-bg-color);
+  border-color: var(--el-button-disabled-border-color);
+  color: var(--el-button-disabled-text-color);
+  box-shadow: none;
+  opacity: 1;
+}
+
+.el-button.el-button--primary.is-disabled,
+.el-button.el-button--primary.is-disabled:hover,
+.el-button.el-button--primary.is-disabled:focus {
+  --el-button-disabled-bg-color: rgba(0, 112, 243, 0.14);
+  --el-button-disabled-border-color: rgba(0, 112, 243, 0.24);
+  --el-button-disabled-text-color: #687b92;
+}
+
 .el-input,
 .el-select,
 .el-input-number,
@@ -281,6 +328,25 @@ textarea {
 .el-textarea__inner {
   background: var(--dm-control);
   box-shadow: 0 0 0 1px var(--dm-hairline-strong) inset;
+}
+
+.el-input-number__increase,
+.el-input-number__decrease {
+  border-color: var(--dm-hairline);
+  background: #1a2028;
+  color: var(--dm-secondary);
+}
+
+.el-input-number__increase:hover,
+.el-input-number__decrease:hover {
+  background: #202832;
+  color: var(--dm-primary);
+}
+
+.el-input-number__increase.is-disabled,
+.el-input-number__decrease.is-disabled {
+  background: #12171d;
+  color: #59616a;
 }
 
 .el-tag {

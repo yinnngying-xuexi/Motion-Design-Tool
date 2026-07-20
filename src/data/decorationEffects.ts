@@ -19,6 +19,25 @@ const cometParams = {
   duration: { key: "duration", label: "巡航时长", type: "number" as const, min: 2, max: 24, step: 0.5, unit: "s" }
 };
 
+const svgFlowParams = {
+  direction: {
+    key: "direction",
+    label: "流动方向",
+    type: "select" as const,
+    options: [
+      { label: "从左到右", value: "ltr" },
+      { label: "从右到左", value: "rtl" },
+      { label: "从上到下", value: "ttb" },
+      { label: "从下到上", value: "btt" }
+    ]
+  },
+  pause: { key: "pause", label: "间隔时间", type: "number" as const, min: 0, max: 8, step: 0.1, unit: "s" },
+  tail: { key: "tail", label: "拖尾长度", type: "number" as const, min: 40, max: 2000, step: 10, unit: "px" },
+  headColor: { key: "headColor", label: "头部颜色", type: "color" as const },
+  tailColor: { key: "tailColor", label: "拖尾颜色", type: "color" as const },
+  endColor: { key: "endColor", label: "尾端颜色", type: "color" as const }
+};
+
 export const decorationSections: DecorationSection[] = ["图标底座", "线性流光", "扫描装饰", "边框光效"];
 
 export const decorationEffects: DecorationEffectTemplate[] = [
@@ -129,6 +148,37 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     editableParams: [cometParams.size, commonParams.color, cometParams.duration, commonParams.opacity, commonParams.glow, linearParams.borderWidth],
     previewType: "comet-flow",
     generator: "comet-flow"
+  },
+  {
+    id: "svg-flow-tool",
+    name: "SVG流光工具",
+    section: "线性流光",
+    description: "上传 SVG 线条后，沿图形路径生成可调节的流光效果。",
+    scene: "标题装饰、路径引导、地图连线、面板边线",
+    defaultParams: {
+      direction: "ltr",
+      duration: 7.5,
+      pause: 2,
+      tail: 820,
+      borderWidth: 3,
+      glow: 12,
+      headColor: "#FFFFFF",
+      tailColor: "#0070F3",
+      endColor: "#8F8F8F"
+    },
+    editableParams: [
+      svgFlowParams.direction,
+      cometParams.duration,
+      svgFlowParams.pause,
+      svgFlowParams.tail,
+      linearParams.borderWidth,
+      commonParams.glow,
+      svgFlowParams.headColor,
+      svgFlowParams.tailColor,
+      svgFlowParams.endColor
+    ],
+    previewType: "svg-flow",
+    generator: "svg-flow"
   },
   {
     id: "panel-scan-line",
