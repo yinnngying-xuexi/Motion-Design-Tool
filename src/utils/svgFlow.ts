@@ -14,9 +14,9 @@ export function createDefaultSvgFlowConfig(): SvgFlowConfig {
     tail: 820,
     borderWidth: 3,
     glow: 12,
-    headColor: "#FFFFFF",
+    headColor: "#7AB8FF",
     tailColor: "#0070F3",
-    endColor: "#8F8F8F"
+    endColor: "#003B82"
   };
 }
 

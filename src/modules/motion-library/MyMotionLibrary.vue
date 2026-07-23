@@ -12,7 +12,7 @@
     <el-scrollbar v-else class="saved-scroll">
       <div class="saved-grid">
         <article v-for="motion in store.savedMotions" :key="motion.id" class="saved-card">
-          <button class="motion-image" type="button" :disabled="!motion.artifact" @click="openPreview(motion)">
+          <button class="motion-image dm-motion-canvas" type="button" :disabled="!motion.artifact" @click="openPreview(motion)">
             <img v-if="motion.artifact" :src="motion.artifact.previewImage" :alt="`${motion.name}预览图`" />
             <span v-else>旧记录未包含预览图，请重新保存</span>
           </button>
@@ -114,7 +114,7 @@ function downloadBlob(blob: Blob, fileName: string): void {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
-  padding: 22px;
+  padding: 20px 22px;
   overflow: hidden;
 }
 
@@ -133,7 +133,7 @@ function downloadBlob(blob: Blob, fileName: string): void {
 }
 
 .card-kicker span {
-  color: var(--dm-secondary);
+  color: var(--dm-tertiary);
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -152,8 +152,8 @@ function downloadBlob(blob: Blob, fileName: string): void {
 
 .saved-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
   padding-right: 8px;
 }
 
@@ -169,7 +169,14 @@ function downloadBlob(blob: Blob, fileName: string): void {
   overflow: hidden;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: var(--dm-surface-raised);
+  background: linear-gradient(145deg, #121313, #0d0e0e);
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.saved-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
 }
 
 .motion-image {
@@ -181,7 +188,7 @@ function downloadBlob(blob: Blob, fileName: string): void {
   padding: 0;
   border: 0;
   border-bottom: 1px solid var(--dm-hairline);
-  background: #000;
+  background-color: var(--dm-motion-canvas-background);
   color: var(--dm-secondary);
   cursor: pointer;
 }
@@ -223,6 +230,8 @@ function downloadBlob(blob: Blob, fileName: string): void {
   margin: 8px 0;
   color: var(--dm-primary);
 }
+
+.saved-card:hover h3 { color: var(--dm-tertiary); }
 
 .saved-card p,
 .saved-card small {
@@ -278,7 +287,7 @@ function downloadBlob(blob: Blob, fileName: string): void {
 }
 
 :global(.motion-preview-dialog) {
-  --el-dialog-bg-color: #0b1016;
+  --el-dialog-bg-color: #0c0d0d;
   --el-text-color-primary: var(--dm-primary);
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);

@@ -29,9 +29,10 @@
             :class="{ active: currentEffect.id === effect.id }"
             @click="selectEffect(effect.id)"
           >
+            <div class="effect-thumb dm-motion-canvas" :class="effect.previewType"><span></span></div>
             <div class="effect-card-copy">
               <strong>{{ effect.name }}</strong>
-              <p>{{ effect.scene }}</p>
+              <p>{{ effect.defaultParams.duration }}s · {{ effect.scene }}</p>
             </div>
           </article>
         </div>
@@ -46,7 +47,7 @@
         <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
       </header>
 
-      <div ref="previewCapture" class="preview-stage">
+      <div ref="previewCapture" class="preview-stage dm-motion-canvas">
         <div class="generated-preview" v-html="previewMarkup"></div>
       </div>
     </main>
@@ -108,7 +109,7 @@
         </div>
         <div class="export-actions">
           <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
-          <el-button type="primary" size="small" @click="copyCode">复制代码</el-button>
+          <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
         </div>
       </header>
       <el-tabs v-model="activeExport">
@@ -145,8 +146,10 @@ import { useMyMotionStore } from "@/stores/myMotionStore";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 
-const activeSection = ref<DecorationSection>("图标底座");
-const activeEffectId = ref(decorationEffects[0].id);
+const props = defineProps<{ initialEffectId?: string }>();
+const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
+const activeSection = ref<DecorationSection>(initialEffect?.section ?? "图标底座");
+const activeEffectId = ref(initialEffect?.id ?? decorationEffects[0].id);
 const activeExport = ref<"html" | "vue" | "json">("html");
 const params = reactive<Record<string, string | number>>({});
 const svgSource = ref<SvgFlowSource>();
@@ -168,6 +171,14 @@ const currentCode = computed(() => (activeExport.value === "vue" ? vueCode.value
 
 watch(activeSection, () => {
   activeEffectId.value = sectionEffects.value[0]?.id ?? decorationEffects[0].id;
+});
+
+watch(() => props.initialEffectId, async (id) => {
+  const effect = decorationEffects.find((item) => item.id === id);
+  if (!effect) return;
+  activeSection.value = effect.section;
+  await nextTick();
+  activeEffectId.value = effect.id;
 });
 
 watch(currentEffect, resetParams, { immediate: true });
@@ -324,15 +335,17 @@ async function restoreSvgFlow(): Promise<void> {
 
 <style scoped>
 .decoration-library {
+  --decoration-blue: #0070f3;
+  --decoration-blue-light: #7ab8ff;
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 340px minmax(440px, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) minmax(220px, 32vh);
+  grid-template-columns: 236px minmax(440px, 1fr) 360px;
+  grid-template-rows: minmax(360px, 1fr) minmax(236px, 34vh);
   grid-template-areas:
     "list preview params"
-    "list export export";
-  gap: 10px;
+    "list export params";
+  gap: 12px;
 }
 
 .panel {
@@ -341,16 +354,16 @@ async function restoreSvgFlow(): Promise<void> {
   overflow: hidden;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: var(--dm-surface-soft);
-  padding: 16px;
-  box-shadow: inset 0 0 0 1px rgba(0, 112, 243, 0.02);
+  background: linear-gradient(145deg, rgba(17, 18, 18, 0.98), rgba(10, 11, 11, 0.98));
+  padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
 }
 
 .decoration-list {
   grid-area: list;
   display: grid;
   grid-template-rows: auto auto 1fr;
-  gap: 14px;
+  gap: 12px;
   align-content: start;
   overflow: hidden;
 }
@@ -405,7 +418,7 @@ async function restoreSvgFlow(): Promise<void> {
 .section-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.3;
 }
 
@@ -455,16 +468,21 @@ async function restoreSvgFlow(): Promise<void> {
 
 .section-tabs button.active {
   border-color: var(--dm-tertiary);
-  color: var(--dm-primary);
-  background: rgba(0, 112, 243, 0.12);
+  color: var(--dm-tertiary);
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .effect-card {
   min-width: 0;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-md);
-  padding: 10px 12px;
-  background: var(--dm-surface-raised);
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  padding: 7px;
+  background: rgba(255, 255, 255, 0.016);
   cursor: pointer;
   transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
 }
@@ -475,26 +493,26 @@ async function restoreSvgFlow(): Promise<void> {
 
 .effect-card.active {
   border-color: var(--dm-tertiary);
-  background: rgba(0, 112, 243, 0.11);
-  box-shadow: inset 0 0 24px rgba(0, 112, 243, 0.045);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: none;
 }
 
 .effect-thumb {
   width: 58px;
-  height: 58px;
+  height: 54px;
   display: grid;
   place-items: center;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-md);
-  background: #05080c;
+  background-color: var(--dm-motion-canvas-background);
 }
 
 .effect-thumb span {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--dm-tertiary);
+  border: 1px solid var(--decoration-blue);
   border-radius: 999px;
-  box-shadow: 0 0 12px var(--dm-tertiary);
+  box-shadow: 0 0 12px var(--decoration-blue);
 }
 
 .effect-thumb.linear-flow span {
@@ -512,10 +530,10 @@ async function restoreSvgFlow(): Promise<void> {
   position: relative;
   width: 36px;
   height: 16px;
-  border: 1px dashed var(--dm-tertiary);
+  border: 1px dashed var(--decoration-blue);
   border-radius: 50%;
   background: transparent;
-  box-shadow: 0 0 10px rgba(0, 112, 243, 0.72);
+  box-shadow: 0 0 8px rgba(0, 112, 243, 0.38);
   animation: particleBaseThumb 2.4s linear infinite;
 }
 
@@ -537,7 +555,7 @@ async function restoreSvgFlow(): Promise<void> {
   top: 1px;
   width: 100%;
   height: 9px;
-  border-bottom: 1px solid var(--dm-tertiary);
+  border-bottom: 1px solid var(--decoration-blue);
   border-radius: 0 0 45% 45%;
   opacity: 0.38;
 }
@@ -550,8 +568,8 @@ async function restoreSvgFlow(): Promise<void> {
   width: 3px;
   height: 3px;
   border-radius: 999px;
-  background: var(--dm-on-primary);
-  box-shadow: -6px 0 7px #55e6ff, 0 0 8px #55e6ff;
+  background: var(--decoration-blue-light);
+  box-shadow: -6px 0 7px var(--decoration-blue), 0 0 8px var(--decoration-blue);
   animation: thumbCometFlow 2.8s linear infinite;
 }
 
@@ -571,7 +589,7 @@ async function restoreSvgFlow(): Promise<void> {
   position: absolute;
   inset: 6px 0 auto;
   height: 7px;
-  border-top: 1px solid var(--dm-secondary);
+  border-top: 1px solid var(--decoration-blue);
   border-radius: 50%;
   opacity: 0.65;
 }
@@ -584,8 +602,8 @@ async function restoreSvgFlow(): Promise<void> {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--dm-on-primary);
-  box-shadow: -8px 0 8px var(--dm-tertiary), 0 0 8px var(--dm-tertiary);
+  background: var(--decoration-blue-light);
+  box-shadow: -8px 0 8px var(--decoration-blue), 0 0 8px var(--decoration-blue);
   animation: thumbLinearFlow 2.2s linear infinite;
 }
 
@@ -604,7 +622,7 @@ async function restoreSvgFlow(): Promise<void> {
 
 .effect-thumb.particle-base span::before {
   inset: 4px 7px;
-  border: 1px solid var(--dm-tertiary);
+  border: 1px solid var(--decoration-blue);
 }
 
 .effect-thumb.particle-base span::after {
@@ -612,11 +630,11 @@ async function restoreSvgFlow(): Promise<void> {
   top: -6px;
   width: 3px;
   height: 3px;
-  background: var(--dm-on-primary);
+  background: var(--decoration-blue-light);
   box-shadow:
-    -12px 4px 5px var(--dm-tertiary),
-    10px 7px 5px var(--dm-tertiary),
-    4px -4px 6px var(--dm-tertiary);
+    -12px 4px 5px var(--decoration-blue),
+    10px 7px 5px var(--decoration-blue),
+    4px -4px 6px var(--decoration-blue);
 }
 
 @keyframes particleBaseThumb {
@@ -631,7 +649,7 @@ async function restoreSvgFlow(): Promise<void> {
   right: 0;
   top: 4px;
   height: 1px;
-  background: var(--dm-tertiary);
+  background: var(--decoration-blue);
   opacity: 0.32;
 }
 
@@ -643,8 +661,8 @@ async function restoreSvgFlow(): Promise<void> {
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: var(--dm-on-primary);
-  box-shadow: 0 0 8px var(--dm-tertiary), -7px 0 6px var(--dm-tertiary);
+  background: var(--decoration-blue-light);
+  box-shadow: 0 0 8px var(--decoration-blue), -7px 0 6px var(--decoration-blue);
   animation: thumbLinearFlow 1.8s linear infinite;
 }
 
@@ -669,7 +687,7 @@ async function restoreSvgFlow(): Promise<void> {
 .effect-card strong {
   display: block;
   color: var(--dm-primary);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.35;
   font-weight: 600;
 }
@@ -677,7 +695,7 @@ async function restoreSvgFlow(): Promise<void> {
 .effect-card p {
   margin: 3px 0 0;
   color: var(--dm-secondary);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
@@ -699,8 +717,9 @@ async function restoreSvgFlow(): Promise<void> {
   min-height: 0;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: #020406;
-  box-shadow: inset 0 0 40px rgba(0, 112, 243, 0.035);
+  overflow: hidden;
+  background-color: var(--dm-motion-canvas-background);
+  box-shadow: inset 0 0 90px rgba(255, 255, 255, 0.015);
 }
 
 .active-svg-name {

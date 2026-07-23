@@ -1,5 +1,9 @@
 import type { DecorationEffectTemplate, DecorationSection } from "@/types/decoration";
 
+const DECORATION_BLUE = "#0070F3";
+const DECORATION_BLUE_LIGHT = "#7AB8FF";
+const DECORATION_BLUE_DARK = "#003B82";
+
 const commonParams = {
   color: { key: "color", label: "主色", type: "color" as const },
   duration: { key: "duration", label: "动效时长", type: "number" as const, min: 0.4, max: 8, step: 0.1, unit: "s" },
@@ -49,7 +53,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "地图点位、设备图标、状态徽章",
     defaultParams: {
       size: 128,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 2.4,
       opacity: 0.92,
       glow: 18,
@@ -67,7 +71,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "重点点位、告警设备、核心指标",
     defaultParams: {
       size: 118,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 1.8,
       opacity: 0.86,
       glow: 24,
@@ -85,7 +89,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "核心设备、重点点位、智能中枢",
     defaultParams: {
       size: 188,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 4.2,
       opacity: 1,
       glow: 22,
@@ -103,7 +107,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "标题装饰、分割线、路径提示",
     defaultParams: {
       size: 420,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 2.8,
       opacity: 1,
       glow: 22,
@@ -121,7 +125,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "路径连接、流程节点、模块指向",
     defaultParams: {
       size: 360,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 3.2,
       opacity: 1,
       glow: 20,
@@ -135,11 +139,11 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     id: "linear-arc-comet",
     name: "弧形彗星流光",
     section: "线性流光",
-    description: "彗星光点沿对称下凹弧线巡航，带白色高光与青蓝渐隐光尾。",
+    description: "彗星光点沿对称下凹弧线巡航，带亮蓝高光与深蓝渐隐光尾。",
     scene: "大屏顶栏、模块衔接、全宽装饰线",
     defaultParams: {
       size: 520,
-      color: "#55E6FF",
+      color: DECORATION_BLUE,
       duration: 12,
       opacity: 1,
       glow: 18,
@@ -162,9 +166,9 @@ export const decorationEffects: DecorationEffectTemplate[] = [
       tail: 820,
       borderWidth: 3,
       glow: 12,
-      headColor: "#FFFFFF",
-      tailColor: "#0070F3",
-      endColor: "#8F8F8F"
+      headColor: DECORATION_BLUE_LIGHT,
+      tailColor: DECORATION_BLUE,
+      endColor: DECORATION_BLUE_DARK
     },
     editableParams: [
       svgFlowParams.direction,
@@ -188,7 +192,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "图表容器、监控面板、巡检区域",
     defaultParams: {
       size: 180,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 2,
       opacity: 0.8,
       glow: 14,
@@ -206,7 +210,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "地图区域、雷达态势、监测半径",
     defaultParams: {
       size: 160,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 3.2,
       opacity: 0.75,
       glow: 18,
@@ -224,7 +228,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "数据卡片、重点模块、图表容器",
     defaultParams: {
       size: 210,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 2.4,
       opacity: 1,
       glow: 22,
@@ -242,7 +246,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     scene: "面板外框、标题模块、重点容器",
     defaultParams: {
       size: 190,
-      color: "#0070F3",
+      color: DECORATION_BLUE,
       duration: 2.6,
       opacity: 1,
       glow: 20,

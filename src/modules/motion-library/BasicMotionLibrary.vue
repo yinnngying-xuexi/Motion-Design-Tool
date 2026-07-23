@@ -3,12 +3,10 @@
     <aside class="motion-sidebar panel">
       <header class="library-head">
         <div>
-          <h2>基础动效库</h2>
+          <h2>{{ activeCategory === "全部" ? "基础动效" : activeCategory }}</h2>
         </div>
         <small>{{ filteredMotions.length }} / {{ basicMotions.length }}</small>
       </header>
-
-      <el-input v-model="keyword" placeholder="搜索内置动效" clearable />
 
       <div class="category-tabs">
         <button
@@ -31,9 +29,21 @@
             :class="{ active: selectedMotion.id === motion.id }"
             @click="selectedMotionId = motion.id"
           >
+            <div class="motion-thumb">
+              <MotionPreviewVisual
+                :motion-id="motion.id"
+                :alt="`${motion.name}缩略预览`"
+                :playing="selectedMotion.id === motion.id"
+                :duration="motion.duration"
+                :iteration="motion.iteration"
+                :timing-function="motion.timingFunction"
+                color="#0070F3"
+                :glow="8"
+              />
+            </div>
             <div class="motion-card-copy">
               <strong>{{ motion.name }}</strong>
-              <p>{{ motion.scene }}</p>
+              <p>{{ motion.duration }}s · {{ motion.scene }}</p>
             </div>
           </article>
         </div>
@@ -48,21 +58,44 @@
         <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
       </header>
 
-      <section ref="previewCapture" class="motion-stage" :key="`${selectedMotion.id}-${previewKey}`">
+      <section ref="previewCapture" class="motion-stage" :class="{ paused: !previewPlaying }" :key="`${selectedMotion.id}-${previewKey}`">
         <div
-          class="screen-card"
+          v-if="svgAsset"
+          class="screen-card imported-svg-only"
           :class="[`preview-${selectedMotion.previewType}`, `motion-${selectedMotion.id}`]"
           :style="previewStyle"
         >
           <span v-if="selectedMotion.previewType === 'ripple'" class="ripple" :style="rippleStyle"></span>
           <span v-if="selectedMotion.previewType === 'scan'" class="scan-line" :style="scanStyle"></span>
-          <div v-if="svgAsset" class="imported-svg" v-html="svgAsset.markup"></div>
-          <template v-else>
-            <p>数据态势</p>
-            <strong>87.62</strong>
-            <small>{{ selectedMotion.category }}</small>
-          </template>
+          <div class="imported-svg" v-html="svgAsset.markup"></div>
         </div>
+        <MotionPreviewVisual
+          v-else
+          class="editor-motion-visual"
+          :motion-id="selectedMotion.id"
+          :alt="`${selectedMotion.name}动效预览`"
+          :playing="previewPlaying"
+          :duration="motionConfig.duration"
+          :delay="motionConfig.delay"
+          :iteration="motionConfig.iteration"
+          :timing-function="motionConfig.timingFunction"
+          :direction="motionConfig.direction"
+          :color="motionConfig.color"
+          :opacity="motionConfig.opacity"
+          :translate-x="motionConfig.translateX"
+          :translate-y="motionConfig.translateY"
+          :scale="motionConfig.scale"
+          :rotate="motionConfig.rotate"
+          :blur="motionConfig.blur"
+          :shadow="motionConfig.shadow"
+          :glow="motionConfig.glow"
+          :loop-speed="motionConfig.loopSpeed"
+          :blink-frequency="motionConfig.blinkFrequency"
+          :border-width="motionConfig.borderWidth"
+          :amplitude="motionConfig.amplitude"
+          :scan-speed="motionConfig.scanSpeed"
+          :ripple-radius="motionConfig.rippleRadius"
+        />
       </section>
 
     </main>
@@ -70,7 +103,7 @@
     <aside class="motion-info panel">
       <header class="library-head param-head">
         <div>
-          <h2>参数编辑</h2>
+          <h2>参数设置</h2>
         </div>
         <el-button size="small" @click="resetConfig">重置</el-button>
       </header>
@@ -138,7 +171,7 @@
         <div><h2>导出代码</h2></div>
         <div class="export-actions">
           <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
-          <el-button type="primary" size="small" @click="copyCode">复制代码</el-button>
+          <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
         </div>
       </header>
       <el-tabs v-model="activeExport">
@@ -166,14 +199,17 @@ import type { SvgPreviewAsset } from "@/types/svgFlow";
 import { readSvgPreviewFile } from "@/utils/svgFlow";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
+import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
 
 type MotionEditorConfig = BasicMotionConfig;
 
+const props = defineProps<{ initialMotionId?: string }>();
 const store = useMyMotionStore();
 const keyword = ref("");
 const activeCategory = ref<"全部" | MotionCategory>("全部");
-const selectedMotionId = ref(basicMotions[0].id);
+const selectedMotionId = ref(basicMotions.some((motion) => motion.id === props.initialMotionId) ? props.initialMotionId! : basicMotions[0].id);
 const previewKey = ref(0);
+const previewPlaying = ref(true);
 const previewCapture = ref<HTMLElement>();
 const svgAsset = ref<SvgPreviewAsset>();
 const svgFileInput = ref<HTMLInputElement>();
@@ -239,12 +275,14 @@ onMounted(() => {
   window.addEventListener("datamotion:import-svg", triggerSvgImport);
   window.addEventListener("datamotion:save", saveSelected);
   window.addEventListener("datamotion:export", downloadHtml);
+  window.addEventListener("datamotion:search", handleGlobalSearch);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("datamotion:import-svg", triggerSvgImport);
   window.removeEventListener("datamotion:save", saveSelected);
   window.removeEventListener("datamotion:export", downloadHtml);
+  window.removeEventListener("datamotion:search", handleGlobalSearch);
 });
 
 watch(selectedMotionId, () => {
@@ -279,6 +317,11 @@ function createDefaultConfig(): MotionEditorConfig {
 function resetConfig(): void {
   Object.assign(motionConfig, createDefaultConfig());
   previewKey.value += 1;
+  previewPlaying.value = true;
+}
+
+function handleGlobalSearch(event: Event): void {
+  keyword.value = (event as CustomEvent<string>).detail ?? "";
 }
 
 async function saveSelected(): Promise<void> {
@@ -392,12 +435,12 @@ const NumberControl = defineComponent({
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 340px minmax(440px, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) minmax(220px, 32vh);
+  grid-template-columns: 220px minmax(420px, 1fr) 320px;
+  grid-template-rows: minmax(360px, 1fr) minmax(236px, 34vh);
   grid-template-areas:
     "list preview params"
-    "list export export";
-  gap: 10px;
+    "list export params";
+  gap: 16px;
 }
 
 .motion-sidebar,
@@ -405,14 +448,14 @@ const NumberControl = defineComponent({
 .motion-info {
   min-width: 0;
   min-height: 0;
-  padding: 16px;
+  padding: 18px;
 }
 
 .motion-sidebar {
   grid-area: list;
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  gap: 12px;
+  grid-template-rows: auto auto 1fr;
+  gap: 14px;
 }
 
 .library-head {
@@ -433,7 +476,7 @@ const NumberControl = defineComponent({
 .library-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.3;
   font-weight: 600;
 }
@@ -468,24 +511,24 @@ const NumberControl = defineComponent({
 .svg-import-button input { display: none; }
 
 .category-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .category-tabs button {
-  border: 1px solid var(--dm-hairline);
-  border-radius: 999px;
-  background: var(--dm-surface-raised);
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
   color: var(--dm-secondary);
-  padding: 8px 12px;
+  padding: 7px 6px;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .category-tabs button.active {
-  border-color: var(--dm-tertiary);
-  color: var(--dm-primary);
-  background: rgba(0, 112, 243, 0.12);
+  color: var(--dm-tertiary);
+  background: rgba(255, 255, 255, 0.085);
 }
 
 .motion-list-scroll {
@@ -494,34 +537,57 @@ const NumberControl = defineComponent({
 
 .motion-list {
   display: grid;
-  gap: 8px;
-  padding-right: 8px;
+  gap: 6px;
+  padding-right: 5px;
 }
 
 .motion-card {
   min-width: 0;
-  border: 1px solid var(--dm-hairline);
+  border: 0;
   border-radius: var(--dm-radius-md);
-  background: var(--dm-surface-raised);
-  padding: 10px 12px;
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 7px;
   cursor: pointer;
   transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
 }
 
 .motion-card:hover:not(.active) {
-  border-color: var(--dm-secondary);
+  background: rgba(255, 255, 255, 0.045);
 }
 
 .motion-card.active {
-  border-color: var(--dm-tertiary);
-  background: rgba(0, 112, 243, 0.11);
-  box-shadow: inset 0 0 24px rgba(0, 112, 243, 0.045);
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: none;
+}
+
+.motion-thumb {
+  width: 58px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #101010;
+  color: var(--dm-tertiary);
+}
+
+.motion-thumb :deep(.motion-preview-visual) {
+  background-color: var(--dm-motion-canvas-background);
+}
+
+.motion-thumb :deep(.preview-target) {
+  width: 68%;
 }
 
 .motion-card strong {
   display: block;
   color: var(--dm-primary);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.35;
   font-weight: 600;
 }
@@ -529,7 +595,7 @@ const NumberControl = defineComponent({
 .motion-card p {
   margin: 3px 0 0;
   color: var(--dm-secondary);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
@@ -548,25 +614,43 @@ const NumberControl = defineComponent({
   grid-area: preview;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 
 .hidden-file-input { display: none; }
 
 .motion-stage {
+  position: relative;
   min-height: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--dm-hairline);
+  border: 0;
   border-radius: var(--dm-radius-lg);
-  background: #020406;
-  box-shadow: inset 0 0 40px rgba(0, 112, 243, 0.035);
+  overflow: hidden;
+  background-color: #0d0d0d;
+  box-shadow: none;
+}
+
+.motion-stage::before {
+  display: none;
+}
+
+.editor-motion-visual {
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: var(--dm-radius-lg);
+  background-color: var(--dm-motion-canvas-background);
+  box-shadow: none;
 }
 
 .screen-card {
   position: relative;
-  width: 240px;
-  height: 150px;
+  width: min(320px, 58%);
+  aspect-ratio: 1.15;
+  height: auto;
   display: grid;
   place-items: center;
   align-content: center;
@@ -574,13 +658,17 @@ const NumberControl = defineComponent({
   overflow: hidden;
   border: 1px solid var(--dm-tertiary);
   border-radius: var(--dm-radius-lg);
-  background: var(--dm-surface-soft);
+  background: rgba(20, 19, 15, 0.94);
   color: var(--dm-primary);
   transform-origin: center;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28), inset 0 0 22px rgba(255, 255, 255, 0.018);
 }
 
 .screen-card strong {
-  font-size: 38px;
+  color: var(--dm-tertiary);
+  font-size: clamp(38px, 4vw, 60px);
+  line-height: 1;
+  text-shadow: none;
 }
 
 .screen-card p,
@@ -588,6 +676,44 @@ const NumberControl = defineComponent({
   margin: 0;
   color: var(--dm-secondary);
 }
+
+.screen-card p { color: var(--dm-primary); font-size: 14px; }
+.screen-card small { margin-top: 8px; font-size: 12px; }
+
+.screen-card.imported-svg-only {
+  overflow: visible;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+}
+
+.preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-heading .el-icon { color: var(--dm-tertiary); }
+
+.preview-chart {
+  width: 82%;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--dm-tertiary);
+}
+
+.preview-chart .el-icon {
+  width: 100%;
+  height: 100%;
+  font-size: 62px;
+  opacity: 0.8;
+}
+
+.motion-stage.paused :is(.screen-card, .screen-card *, .ripple, .scan-line, .editor-motion-visual, .editor-motion-visual *) { animation-play-state: paused !important; }
 
 .imported-svg {
   width: min(78%, 180px);
@@ -626,7 +752,7 @@ const NumberControl = defineComponent({
   min-width: 0;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 12px;
+  gap: 14px;
   overflow: hidden;
 }
 
@@ -636,8 +762,8 @@ const NumberControl = defineComponent({
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px 14px;
   overflow: hidden;
 }
 
@@ -673,8 +799,8 @@ const NumberControl = defineComponent({
 
 .param-section {
   display: grid;
-  gap: 14px;
-  padding-bottom: 18px;
+  gap: 15px;
+  padding: 14px 2px 18px;
 }
 
 .param-section + .param-section {
@@ -685,7 +811,7 @@ const NumberControl = defineComponent({
 .param-section h3 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -729,7 +855,7 @@ const NumberControl = defineComponent({
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 78px;
+  grid-template-columns: minmax(0, 1fr) 72px;
   gap: 10px;
   align-items: center;
 }
@@ -739,8 +865,8 @@ const NumberControl = defineComponent({
 }
 
 :deep(.control-row .el-input-number) {
-  width: 78px;
-  max-width: 78px;
+  width: 72px;
+  max-width: 72px;
 }
 
 .preview-fade span,

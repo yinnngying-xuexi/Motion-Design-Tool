@@ -114,7 +114,7 @@ export const basicMotions: BasicMotionTemplate[] = [
     name: "高亮发光",
     category: "强调动效",
     scene: "关键指标、重点状态",
-    description: "用蓝青光效强调重要状态。",
+    description: "用蓝色光效强调重要状态。",
     previewType: "glow",
     duration: 1.8,
     timingFunction: "ease-in-out",
@@ -160,7 +160,7 @@ export const basicMotions: BasicMotionTemplate[] = [
   {
     id: "border-flow",
     name: "边框流光",
-    category: "大屏装饰",
+    category: "强调动效",
     scene: "数据卡片、图表容器",
     description: "用于重点模块边框，形成科技感流动提示。",
     previewType: "glow",
@@ -172,7 +172,7 @@ export const basicMotions: BasicMotionTemplate[] = [
   {
     id: "scan-line",
     name: "扫描线",
-    category: "大屏装饰",
+    category: "强调动效",
     scene: "图表容器、监测面板",
     description: "垂直扫描用于表达系统巡检与实时刷新。",
     previewType: "scan",
@@ -180,17 +180,5 @@ export const basicMotions: BasicMotionTemplate[] = [
     timingFunction: "linear",
     iteration: "infinite",
     editableParams: ["duration", "color", "iteration"]
-  },
-  {
-    id: "map-point",
-    name: "地图光点闪烁",
-    category: "大屏装饰",
-    scene: "地图点位、区域标注",
-    description: "点位闪烁用于大屏地图状态表达。",
-    previewType: "ripple",
-    duration: 1.6,
-    timingFunction: "ease-out",
-    iteration: "infinite",
-    editableParams: ["duration", "rippleSize", "color", "iteration"]
   }
 ];

@@ -43,7 +43,7 @@ export const useMyMotionStore = defineStore("my-motion", () => {
     const motion: SavedMotion = {
       id,
       name: template.name,
-      category: "大屏装饰",
+      category: "强调动效",
       scene: template.scene,
       description: template.description,
       previewType: ["linear-flow", "comet-flow", "svg-flow", "scan"].includes(template.previewType) ? "scan" : "glow",
@@ -75,7 +75,7 @@ export const useMyMotionStore = defineStore("my-motion", () => {
     const motion: SavedMotion = {
       id,
       name: "SVG流光工具",
-      category: "大屏装饰",
+      category: "强调动效",
       scene: "自定义 SVG 路径",
       description: `SVG 流光：${svgFlow.source.fileName}`,
       previewType: "scan",

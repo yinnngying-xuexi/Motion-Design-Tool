@@ -53,10 +53,10 @@ function createView(): void {
             border: "none"
           },
           ".cm-activeLine": {
-            backgroundColor: "rgba(0, 112, 243, 0.12)"
+            backgroundColor: "rgba(255, 255, 255, 0.07)"
           },
           ".cm-activeLineGutter": {
-            backgroundColor: "rgba(0, 112, 243, 0.12)"
+            backgroundColor: "rgba(255, 255, 255, 0.07)"
           }
         })
       ]

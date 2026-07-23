@@ -6,13 +6,13 @@
           <h2>自定义素材库</h2>
         </div>
         <el-upload accept=".css,text/css" :show-file-list="false" :before-upload="handleCssUpload">
-          <el-button type="primary">上传 CSS</el-button>
+          <el-button class="dm-blue-action" type="primary">上传 CSS</el-button>
         </el-upload>
       </header>
 
       <div class="paste-box">
         <el-input v-model="templateName" placeholder="模板名称" />
-        <el-input v-model="cssDraft" type="textarea" :rows="8" placeholder="粘贴变量化 CSS 模板，例如 :root { --motion-color: #0070F3; }" />
+        <el-input v-model="cssDraft" type="textarea" :rows="8" placeholder="粘贴变量化 CSS 模板，例如 :root { --motion-color: #D8D8D4; }" />
         <el-button :disabled="!cssDraft.trim()" @click="createFromDraft">保存为素材</el-button>
       </div>
 
@@ -42,7 +42,7 @@
         </div>
       </header>
 
-      <div class="preview-stage">
+      <div class="preview-stage dm-motion-canvas">
         <div v-if="currentAsset" class="preview-host" v-html="previewMarkup"></div>
         <div v-else class="empty-state">
           <strong>上传或粘贴 CSS 模板</strong>
@@ -52,7 +52,7 @@
 
       <div class="template-rule">
         <span>模板规则</span>
-        <p>系统会读取 CSS 中的自定义变量，例如 <code>--motion-color: #0070F3;</code>，并将变量映射为右侧参数控件。</p>
+        <p>系统会读取 CSS 中的自定义变量，例如 <code>--motion-color: #D8D8D4;</code>，并将变量映射为右侧参数控件。</p>
       </div>
     </main>
 
@@ -144,7 +144,7 @@ interface CustomCssAsset {
 const STORAGE_KEY = "visual-motion-custom-css-assets";
 const defaultDraft = `:root {
   --motion-size: 140px;
-  --motion-color: #0070F3;
+  --motion-color: #D8D8D4;
   --motion-duration: 2.4s;
   --motion-glow: 24px;
 }
@@ -390,12 +390,12 @@ ${htmlCssCode.value}
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 340px minmax(440px, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) minmax(220px, 32vh);
+  grid-template-columns: 236px minmax(440px, 1fr) 360px;
+  grid-template-rows: minmax(360px, 1fr) minmax(236px, 34vh);
   grid-template-areas:
     "list preview params"
-    "list export export";
-  gap: 10px;
+    "list export params";
+  gap: 12px;
 }
 
 .panel {
@@ -404,9 +404,9 @@ ${htmlCssCode.value}
   overflow: hidden;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: var(--dm-surface-soft);
-  padding: 16px;
-  box-shadow: inset 0 0 0 1px rgba(0, 112, 243, 0.02);
+  background: linear-gradient(145deg, rgba(17, 18, 18, 0.98), rgba(10, 11, 11, 0.98));
+  padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
 }
 
 .asset-list {
@@ -454,7 +454,7 @@ ${htmlCssCode.value}
 .section-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.3;
 }
 
@@ -508,8 +508,8 @@ ${htmlCssCode.value}
 
 .asset-card.active {
   border-color: var(--dm-tertiary);
-  background: rgba(0, 112, 243, 0.11);
-  box-shadow: inset 0 0 24px rgba(0, 112, 243, 0.045);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: none;
 }
 
 .asset-card strong {
@@ -545,8 +545,8 @@ ${htmlCssCode.value}
   min-height: 0;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: #020406;
-  box-shadow: inset 0 0 40px rgba(0, 112, 243, 0.035);
+  background-color: var(--dm-motion-canvas-background);
+  box-shadow: inset 0 0 90px rgba(255, 255, 255, 0.015);
 }
 
 .preview-host {

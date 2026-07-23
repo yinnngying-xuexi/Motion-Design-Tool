@@ -37,7 +37,15 @@ Thumbs.db
 
 # Local tool state
 .agents/
+.codex/
 
 # Local Netlify folder
 .netlify
 .openai/*.tgz
+
+# Local visual QA artifacts
+/datamotion-*.png
+/public/home-*.png
+/scripts/capture-*.mjs
+/scripts/test-saved-motion-artifact.mjs
+/scripts/push-commit-via-github-api.mjs

@@ -3,6 +3,10 @@ import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset } from "@/types/svgF
 
 export type DecorationParams = Record<string, string | number>;
 
+const DECORATION_BLUE = "#0070F3";
+const DECORATION_BLUE_LIGHT = "#7AB8FF";
+const DECORATION_BLUE_DARK = "#003B82";
+
 function svgFlowConfig(params: DecorationParams): SvgFlowConfig {
   return {
     direction: (param(params, "direction", "ltr") as SvgFlowConfig["direction"]),
@@ -11,9 +15,9 @@ function svgFlowConfig(params: DecorationParams): SvgFlowConfig {
     tail: Number(param(params, "tail", 820)),
     borderWidth: Number(param(params, "borderWidth", 3)),
     glow: Number(param(params, "glow", 12)),
-    headColor: String(param(params, "headColor", "#FFFFFF")),
-    tailColor: String(param(params, "tailColor", "#0070F3")),
-    endColor: String(param(params, "endColor", "#8F8F8F"))
+    headColor: String(param(params, "headColor", DECORATION_BLUE_LIGHT)),
+    tailColor: String(param(params, "tailColor", DECORATION_BLUE)),
+    endColor: String(param(params, "endColor", DECORATION_BLUE_DARK))
   };
 }
 
@@ -88,7 +92,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   const cls = decorationClassName(template);
   const kf = keyframesName(template);
   const size = param(params, "size", 160);
-  const color = param(params, "color", "#0070F3");
+  const color = param(params, "color", DECORATION_BLUE);
   const duration = param(params, "duration", 2.4);
   const opacity = param(params, "opacity", 1);
   const glow = param(params, "glow", 18);
@@ -161,7 +165,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   stroke-linecap: round;
   mask: url(#${cls}-mask);
   filter:
-    drop-shadow(0 0 ${Math.max(2, Math.round(cometGlow * 0.18))}px rgba(255, 255, 255, 0.85))
+    drop-shadow(0 0 ${Math.max(2, Math.round(cometGlow * 0.18))}px rgba(122, 184, 255, 0.9))
     drop-shadow(0 0 ${Math.max(4, Math.round(cometGlow * 0.66))}px ${color});
 }
 
@@ -240,7 +244,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   transform-origin: 50% 50%;
   box-shadow:
     0 0 ${glow}px ${color},
-    inset 0 0 ${Math.round(Number(glow) * 0.65)}px rgba(0, 112, 243, 0.32);
+    inset 0 0 ${Math.round(Number(glow) * 0.65)}px rgba(0, 112, 243, 0.18);
   z-index: 3;
 }
 
@@ -296,7 +300,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   width: 2px;
   height: 2px;
   border-radius: 50%;
-  background: #FFFFFF;
+  background: ${DECORATION_BLUE_LIGHT};
   box-shadow: 0 0 ${particleGlow}px ${color};
   animation: ${kf}Particle 2.8s ease-in-out infinite;
 }
@@ -361,7 +365,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   width: ${coreSize}px;
   height: ${coreSize}px;
   border-radius: 999px;
-  background: #FFFFFF;
+  background: ${DECORATION_BLUE_LIGHT};
   box-shadow:
     0 0 ${glowSize}px ${color},
     -10px 0 ${Math.max(4, Math.round(glowSize * 0.8))}px ${color},
@@ -407,7 +411,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   width: ${coreSize}px;
   height: ${coreSize}px;
   border-radius: 999px;
-  background: #FFFFFF;
+  background: ${DECORATION_BLUE_LIGHT};
   box-shadow:
     0 0 ${glowSize}px ${color},
     -10px 0 ${Math.max(4, Math.round(glowSize * 0.8))}px ${color},
@@ -593,10 +597,10 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
     <defs>
       <path id="${cls}-path" d="M3840 2H2722.2C2670.59 2 2622.3 27.4476 2593.12 70.0193C2567.97 106.709 2530.28 128 2490.49 128H1349.51C1309.72 128 1272.03 106.709 1246.88 70.0193C1217.7 27.4476 1169.41 2 1117.8 2H0"></path>
       <linearGradient id="${cls}-color" x1="0" y1="65" x2="3840" y2="65" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#55E6FF"></stop>
+        <stop offset="0" stop-color="${DECORATION_BLUE}"></stop>
         <stop class="${cls}__color" offset="0.42"></stop>
-        <stop offset="0.58" stop-color="#FFFFFF"></stop>
-        <stop offset="1" stop-color="#6AA7FF"></stop>
+        <stop offset="0.58" stop-color="${DECORATION_BLUE_LIGHT}"></stop>
+        <stop offset="1" stop-color="#005FD1"></stop>
       </linearGradient>
       <linearGradient id="${cls}-mask-gradient" x1="1" y1="0" x2="0" y2="0">
         <stop offset="0" stop-color="#FFFFFF" stop-opacity="1"></stop>
