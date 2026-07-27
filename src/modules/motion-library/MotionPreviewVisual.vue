@@ -10,7 +10,29 @@
   >
     <div class="preview-target" :style="targetStyle">
       <div class="preview-rectangle">
-        <span v-if="showsSweep" class="preview-sweep"></span>
+        <svg
+          v-if="showsBorderOrbit"
+          class="preview-border-orbit"
+          viewBox="0 0 176 110"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <rect class="orbit-track" x="2" y="2" width="172" height="106" rx="10" pathLength="100"></rect>
+          <rect
+            v-for="segment in borderFlowTrailSegments"
+            :key="segment.id"
+            class="orbit-segment"
+            :class="{ 'orbit-segment-head': segment.isHead }"
+            x="2"
+            y="2"
+            width="172"
+            height="106"
+            rx="10"
+            pathLength="100"
+            :style="borderFlowSegmentStyle(segment)"
+          ></rect>
+        </svg>
+        <span v-if="showsScan" class="preview-sweep"></span>
       </div>
       <span v-if="showsRipple" class="preview-ripple"></span>
       <span v-if="showsRipple" class="preview-ripple preview-ripple-secondary"></span>
@@ -20,6 +42,12 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import {
+  BORDER_FLOW_DASH_GAP,
+  BORDER_FLOW_DASH_LENGTH,
+  borderFlowTrailSegments,
+  type BorderFlowTrailSegment
+} from "@/utils/borderFlowTrail";
 
 interface Props {
   motionId: string;
@@ -73,7 +101,8 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const previewSource = computed(() => `live-rectangle:${props.motionId}`);
-const showsSweep = computed(() => ["border-flow", "scan-line"].includes(props.motionId));
+const showsBorderOrbit = computed(() => props.motionId === "border-flow");
+const showsScan = computed(() => props.motionId === "scan-line");
 const showsRipple = computed(() => props.motionId === "pulse-spread");
 const effectiveDuration = computed(() => {
   if (props.motionId === "alert-blink" || props.motionId === "soft-blink") {
@@ -93,8 +122,18 @@ const rootStyle = computed(() => ({
   "--preview-border-width": `${Math.max(props.borderWidth, 1)}px`,
   "--preview-amplitude": `${Math.max(props.amplitude, 0)}px`,
   "--preview-scan-speed": `${Math.max(props.scanSpeed, 0.1)}s`,
-  "--preview-ripple-size": `${Math.max(props.rippleRadius, 24)}px`
+  "--preview-ripple-size": `${Math.max(props.rippleRadius, 24)}px`,
+  "--orbit-dash-length": BORDER_FLOW_DASH_LENGTH,
+  "--orbit-dash-gap": BORDER_FLOW_DASH_GAP
 }));
+
+function borderFlowSegmentStyle(segment: BorderFlowTrailSegment): Record<string, string | number> {
+  return {
+    "--orbit-start": `${segment.offset}px`,
+    "--orbit-opacity": segment.opacity,
+    "--orbit-width": `${Math.max(0.5, props.borderWidth * segment.widthFactor)}px`
+  };
+}
 
 const targetStyle = computed(() => ({
   opacity: props.opacity,
@@ -156,7 +195,7 @@ const targetStyle = computed(() => ({
   animation-fill-mode: both;
 }
 
-.is-paused :is(.preview-rectangle, .preview-sweep, .preview-ripple) {
+.is-paused :is(.preview-rectangle, .preview-sweep, .preview-ripple, .preview-border-orbit .orbit-segment) {
   animation-play-state: paused !important;
 }
 
@@ -178,6 +217,15 @@ const targetStyle = computed(() => ({
 .motion-scan-line .preview-rectangle,
 .motion-slow-rotate .preview-rectangle {
   background: #171717;
+}
+
+.motion-border-flow .preview-rectangle {
+  overflow: visible;
+  border-color: color-mix(in srgb, var(--preview-color) 16%, rgba(255, 255, 255, 0.08));
+  background: #111317;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 0 calc(var(--preview-glow) * 0.32) color-mix(in srgb, var(--preview-color) 10%, transparent);
 }
 
 .motion-highlight-glow .preview-rectangle {
@@ -218,23 +266,55 @@ const targetStyle = computed(() => ({
   overflow: visible;
 }
 
+.preview-border-orbit {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.orbit-track,
+.orbit-segment {
+  fill: none;
+  stroke: var(--preview-color);
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+
+.orbit-track {
+  stroke-width: max(0.6px, calc(var(--preview-border-width) * 0.62));
+  opacity: 0.12;
+}
+
+.orbit-segment {
+  stroke-width: var(--orbit-width);
+  stroke-dasharray: var(--orbit-dash-length) var(--orbit-dash-gap);
+  opacity: var(--orbit-opacity);
+}
+
+.orbit-segment-head {
+  stroke: color-mix(in srgb, var(--preview-color) 76%, white 24%);
+  filter:
+    drop-shadow(0 0 calc(var(--preview-glow) * 0.26) var(--preview-color))
+    drop-shadow(0 0 calc(var(--preview-glow) * 0.46) color-mix(in srgb, var(--preview-color) 34%, transparent));
+}
+
+.motion-border-flow.is-playing .orbit-segment {
+  animation: borderOrbit var(--preview-duration) linear infinite;
+}
+
 .preview-sweep {
   position: absolute;
-  inset: 0 auto 0 -46%;
-  width: 36%;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--preview-color) 82%, transparent), transparent);
-  transform: skewX(-12deg);
-  opacity: 0.8;
-}
-
-.is-playing .preview-sweep {
-  animation: sharedSweep var(--preview-scan-speed) linear infinite;
-}
-
-.motion-scan-line .preview-sweep {
   inset: -2px 0 auto;
   width: 100%;
   height: 2px;
+  opacity: 0;
+}
+
+.motion-scan-line .preview-sweep {
   background: var(--preview-color);
   box-shadow:
     0 0 calc(var(--preview-glow) * 0.5) var(--preview-color),
@@ -243,8 +323,7 @@ const targetStyle = computed(() => ({
 }
 
 .motion-scan-line.is-playing .preview-sweep {
-  animation-name: sharedScan;
-  animation-duration: var(--preview-duration);
+  animation: sharedScan var(--preview-duration) linear infinite;
 }
 
 .preview-ripple {
@@ -308,9 +387,9 @@ const targetStyle = computed(() => ({
 
 @keyframes sharedRotate { to { transform: rotate(360deg); } }
 
-@keyframes sharedSweep {
-  from { transform: translateX(0) skewX(-12deg); }
-  to { transform: translateX(410%) skewX(-12deg); }
+@keyframes borderOrbit {
+  from { stroke-dashoffset: var(--orbit-start); }
+  to { stroke-dashoffset: calc(var(--orbit-start) - 100px); }
 }
 
 @keyframes sharedScan {
@@ -364,6 +443,7 @@ const targetStyle = computed(() => ({
 @media (prefers-reduced-motion: reduce) {
   .preview-rectangle,
   .preview-sweep,
-  .preview-ripple { animation: none !important; }
+  .preview-ripple,
+  .preview-border-orbit * { animation: none !important; }
 }
 </style>

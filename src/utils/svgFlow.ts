@@ -9,11 +9,11 @@ export const SVG_FLOW_OPEN_KEY = "visual-motion-svg-flow-open";
 export function createDefaultSvgFlowConfig(): SvgFlowConfig {
   return {
     direction: "ltr",
-    duration: 7.5,
-    pause: 2,
-    tail: 820,
+    duration: 5,
+    pause: 0.8,
+    tail: 420,
     borderWidth: 3,
-    glow: 12,
+    glow: 14,
     headColor: "#7AB8FF",
     tailColor: "#0070F3",
     endColor: "#003B82"

@@ -74,10 +74,10 @@ export const useMyMotionStore = defineStore("my-motion", () => {
     const id = `svg-flow-${svgFlow.source.fileName.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase() || "custom"}`;
     const motion: SavedMotion = {
       id,
-      name: "SVG流光工具",
+      name: "路径流光",
       category: "强调动效",
       scene: "自定义 SVG 路径",
-      description: `SVG 流光：${svgFlow.source.fileName}`,
+      description: `路径流光：${svgFlow.source.fileName}`,
       previewType: "scan",
       duration: svgFlow.config.duration,
       timingFunction: "linear",

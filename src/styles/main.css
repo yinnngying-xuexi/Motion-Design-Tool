@@ -126,7 +126,7 @@ textarea {
 }
 
 .app-shell.home-mode {
-  grid-template-columns: 242px minmax(0, 1fr);
+  grid-template-columns: 206px minmax(0, 1fr);
   grid-template-rows: 94px minmax(0, 1fr);
   grid-template-areas:
     "toolbar content"
@@ -355,7 +355,7 @@ textarea {
 }
 
 .app-shell.editor-mode {
-  grid-template-columns: 242px minmax(0, 1fr);
+  grid-template-columns: 206px minmax(0, 1fr);
   grid-template-rows: 94px minmax(0, 1fr);
   grid-template-areas:
     "toolbar toolbar"
@@ -375,9 +375,9 @@ textarea {
 }
 
 .editor-mode .toolbar-brand {
-  width: 242px;
+  width: 206px;
   height: 100%;
-  flex: 0 0 242px;
+  flex: 0 0 206px;
   gap: 8px;
   margin-left: -28px;
   padding: 30.5px 0 19.5px 28px;
@@ -612,20 +612,26 @@ textarea {
 
 .el-input-number__increase,
 .el-input-number__decrease {
-  border-color: var(--dm-hairline);
+  border-color: rgba(237, 237, 237, 0.055);
   background: #1a1a1a;
-  color: var(--dm-secondary);
+  color: rgba(237, 237, 237, 0.34);
+}
+
+.el-input-number.is-controls-right .el-input-number__increase {
+  border-left-color: rgba(237, 237, 237, 0.055);
+  border-bottom-color: rgba(237, 237, 237, 0.055);
 }
 
 .el-input-number.is-controls-right .el-input-number__decrease {
   border: 0 !important;
+  border-left: 1px solid rgba(237, 237, 237, 0.055) !important;
   box-shadow: none !important;
 }
 
 .el-input-number__increase:hover,
 .el-input-number__decrease:hover {
   background: #222222;
-  color: var(--dm-primary);
+  color: rgba(237, 237, 237, 0.68);
 }
 
 .el-input-number__increase.is-disabled,

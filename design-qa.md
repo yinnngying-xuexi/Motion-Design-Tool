@@ -1,3 +1,210 @@
+**路径流光合并 Design QA（2026-07-27）**
+
+- Source annotation: `C:\Users\asus\AppData\Local\Temp\codex-clipboard-a3352f52-3bd4-4b56-8e85-8547654b4cfc.png`。
+- Implementation URL: `http://127.0.0.1:5173/`。
+- Preview implementation: `F:\codex文件\loading\datamotion-path-flow-preview-final-20260727.png`。
+- Code implementation: `F:\codex文件\loading\datamotion-path-flow-code-final-20260727.png`。
+- Viewport: `1600 × 900`，Edge，DPR 1。
+
+**Findings**
+
+- “线性流光”中已移除“水平线性流光”和“折线路径流光”。
+- 原“弧形彗星流光”和“SVG 流光工具”已收拢为单一“路径流光”，列表中只显示这一项。
+- “路径流光”默认使用内置弧线路径，可直接预览、保存和导出；导入 SVG 后沿导入路径生成同一套效果。
+- 默认流动时长为 `5s`、间隔为 `0.8s`、拖尾长度为 `420px`、线宽为 `3px`、发光强度为 `14px`。
+- 流光使用移动渐隐遮罩，光头清晰、拖尾逐渐衰减；底层轨道透明度为 `0.12`，避免抢夺主体。
+- 参数区保留流动方向、时长、间隔、拖尾、线宽、发光和三段蓝色配置。
+- 预览与代码视图切换正常，导出代码包含路径、渐隐遮罩和 SVG 动画。
+- Edge 控制台无脚本错误，网络请求无失败。
+- `vue-tsc --noEmit` 与 Vite 生产构建通过；仅保留既有的主包超过 500 kB 提示。
+
+**Implementation Checklist**
+
+- [x] 删除两个标注的不需要流光。
+- [x] 将剩余两套路径逻辑合并为“路径流光”。
+- [x] 优化默认路径、速度、拖尾、亮度和底轨透明度。
+- [x] 默认路径无需导入 SVG 即可保存与导出。
+- [x] 保留导入自定义 SVG 路径的能力。
+- [x] 完成 Edge 预览、代码、控制台、网络和生产构建验证。
+
+final result: passed
+
+---
+
+**基础动效与装饰组件结构统一 Design QA（2026-07-27）**
+
+- Source visual truth: `F:\codex文件\loading\datamotion-workspace-actions-preview-final-20260727.png`，基础动效编辑页。
+- User comparison crops:
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-06e53f9f-16e1-4374-a1c2-e31e522a3785.png`。
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-ea4dd4b8-fe43-4a84-b0b3-395292789754.png`。
+- Decoration preview implementation: `F:\codex文件\loading\datamotion-decoration-unified-preview-final-20260727.png`。
+- Decoration code implementation: `F:\codex文件\loading\datamotion-decoration-unified-code-final-20260727.png`。
+- Combined comparison: `F:\codex文件\loading\datamotion-basic-decoration-unified-comparison-20260727.png`。
+- Viewport / pixels: 基础动效与装饰组件均为 `1600 × 900` CSS 像素，Edge，DPR 1，无密度缩放。
+- State: 基础动效“淡入”和装饰组件“星环粒子底座”，分别检查动效预览与代码展示。
+
+**Findings**
+
+- 未发现仍需处理的 P0 / P1 / P2 问题。
+- 左侧二级库宽度均为 `200px`，分类按钮和选中卡片的背景色、零描边、圆角与间距数据一致。
+- 基础动效和装饰组件均采用“标题说明、动效预览 / 代码展示切换、同一行操作按钮、单一内容区域”的中间工作区结构。
+- 装饰组件主标题右侧不再重复显示“图标底座、线性流光”等板块名称，所有效果统一只保留名称与说明。
+- 两页操作顺序一致，均为“导入动效、导出 HTML、复制代码”。
+- 装饰组件代码视图没有额外格式标签，直接展示 HTML + CSS，与基础动效一致。
+- 顶部工具栏两页均只保留蓝色“保存到我的动效”，不再重复显示导入按钮。
+- 右侧面板宽度均为 `320px`，标题统一为“参数设置”；装饰组件数字输入已去掉上下步进按钮，避免数值被遮挡。
+- 字体沿用现有系统字体，标题均为 `28px`；分类与列表信息继续使用同一字号层级。
+- 黑灰表面、蓝色强调和像素格画布均来自现有设计变量，没有引入新色彩。
+- 装饰效果继续使用真实生成代码渲染，缩略图和主预览清晰，无新增或替换图片资源。
+- 文案使用效果名称、板块、说明和现有操作名称，无占位内容。
+- Edge 实测预览与代码切换正常，装饰效果正常渲染，代码编辑器有内容；控制台无脚本错误，网络请求无失败。
+- `vue-tsc --noEmit` 与 Vite 生产构建通过；仅保留既有的主包超过 500 kB 提示。
+
+**Full-view Comparison Evidence**
+
+- `datamotion-basic-decoration-unified-comparison-20260727.png` 将两页以相同视口、相同密度并排展示。
+- 三栏比例、左侧库样式、中间工作区层级、右侧参数区域和顶部工具栏在两页中保持同一视觉骨架。
+
+**Focused Region Comparison Evidence**
+
+- Edge 读取基础动效和装饰组件的左栏宽度均为 `200px`。
+- 两页选中卡片背景均为 `rgba(255, 255, 255, 0.09)`、描边均为 `0px`、圆角均为 `10px`。
+- 两页选中分类背景均为 `rgba(255, 255, 255, 0.086)`、描边均为 `0px`、圆角均为 `8px`。
+- `datamotion-decoration-unified-code-final-20260727.png` 单独验证装饰组件代码视图。
+
+**Comparison History**
+
+- 第一次截图发现装饰组件数字输入仍保留步进按钮，在 `72px` 宽输入框内造成三位数被遮挡，按 P2 修复。
+- 将装饰组件数字输入改为与基础动效一致的无步进按钮样式。
+- 第二次截图中尺寸 `188`、时长 `4.2` 等数值完整显示，未发现新的 P0 / P1 / P2 问题。
+
+**Implementation Checklist**
+
+- [x] 装饰组件左侧二级库统一为基础动效样式。
+- [x] 装饰组件中间工作区增加动效预览与代码展示切换。
+- [x] 两种视图共用同一内容区域。
+- [x] 操作入口、顺序、圆角和蓝色按钮统一。
+- [x] 右侧参数面板宽度、标题和数字输入样式统一。
+- [x] 保留装饰效果参数、导入、保存、复制和导出逻辑。
+- [x] 完成 Edge 双状态验证、同视口并排比较和生产构建。
+
+final result: passed
+
+---
+
+**基础动效工作区视图切换 Design QA（2026-07-27）**
+
+- Source visual truth: `C:\Users\asus\AppData\Local\Temp\codex-clipboard-fa21ac27-4d69-438a-a154-c9e6ac3ddd08.png`。
+- Follow-up annotations:
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-8eab64d9-f692-4884-a95d-cbf4d7c68c58.png`。
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-5b107e5e-e5ad-4a30-b18d-a35f0286c759.png`。
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-7a3b5454-9c25-4f75-ac38-483bf4c7b38b.png`。
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-bf4aac3b-7e45-444e-b314-f2463ac2706c.png`。
+- Source pixels: `1058 × 876`，参考图仅包含中间工作区。
+- Implementation URL: `http://127.0.0.1:5173/`。
+- Preview implementation: `F:\codex文件\loading\datamotion-preview-tab-final-20260727.png`。
+- Code implementation: `F:\codex文件\loading\datamotion-code-tab-final-20260727.png`。
+- Combined comparison: `F:\codex文件\loading\datamotion-reference-comparison-20260727.png`。
+- Follow-up preview implementation: `F:\codex文件\loading\datamotion-workspace-actions-preview-final-20260727.png`。
+- Follow-up code implementation: `F:\codex文件\loading\datamotion-workspace-actions-code-final-20260727.png`。
+- Follow-up combined comparison: `F:\codex文件\loading\datamotion-actions-reference-comparison-20260727.png`。
+- Code-tabs focused comparison: `F:\codex文件\loading\datamotion-code-tabs-reference-comparison-20260727.png`。
+- Implementation pixels / CSS viewport: `1600 × 900`，Edge，DPR 1。
+- Density normalization: 参考图等比缩放至 `1087 × 900`，与 `1600 × 900` 实现截图并排比较；参考图是中间区域裁切，因此只比较工作区标题、切换栏、操作按钮和预览画布，不用其宽度判断完整应用的三栏比例。
+- State: 基础动效“淡入”，分别检查“动效预览”和“代码展示”。
+
+**Findings**
+
+- 未发现需要继续处理的 P0 / P1 / P2 问题。
+- 中间工作区已按参考图形成“标题与说明、视图切换与操作、单一内容画布”三层结构。
+- “动效预览”和“代码展示”不会同时占据纵向空间；切换后分别显示像素格预览画布或代码编辑器。
+- 代码视图已按后续标注去掉 HTML + CSS、Vue Component、JSON Config 二级标签，直接展示 HTML + CSS 代码；复制和 HTML 导出逻辑保持不变。
+- 顶部工具栏不再重复显示“导入动效”，中间操作区使用“导入动效”替换原来的“保存到我的动效”；顶部蓝色“保存到我的动效”继续保留。
+- 中间三个操作按钮圆角统一收紧至 `4px`。
+- 当前动效标题从 `22px` 放大至 `28px`。
+- 四个一级导航项所在左栏从 `242px` 缩短为 `206px`，首页和编辑页保持对齐。
+- 字体继续沿用项目现有系统字体，标题、说明和标签层级与参考图一致，没有引入新字体或视觉体系。
+- 颜色继续使用现有黑灰表面和 `#0070F3` 蓝色操作强调，未出现额外亮色。
+- 预览区域没有新增图片资源；真实动效组件继续在像素格画布中渲染，清晰度和缩放正常。
+- 文案来自现有动效名称、说明和导出类型，没有新增占位文字。
+- Edge 实测两个视图切换正常；控制台无脚本错误，网络请求无失败。
+- `vue-tsc --noEmit` 与 Vite 生产构建通过；仅保留既有的主包超过 500 kB 提示。
+
+**Full-view Comparison Evidence**
+
+- `datamotion-reference-comparison-20260727.png` 显示参考图和完整编辑器并排结果。
+- 参考图中的顶部说明、蓝色下划线切换、右侧操作按钮和大画布关系均已映射到实际中间工作区。
+- 完整应用必须同时保留基础动效列表和参数面板，因此中间画布宽度小于裁切参考图；这属于既有产品结构约束，不是视觉偏差。
+
+**Focused Region Comparison Evidence**
+
+- 中间工作区本身就是本次唯一焦点区域，完整截图中标题、标签、按钮和画布均可清楚辨认，无需追加局部放大。
+- `datamotion-code-tab-final-20260727.png` 单独验证代码视图占满同一内容区域，并保持内部代码类型切换。
+- `datamotion-code-tabs-reference-comparison-20260727.png` 验证二级代码类型标签已完全移除，代码直接从内容区顶部开始。
+
+**Comparison History**
+
+- 第一次实现完成预览与代码切换，以及左侧导航收窄。
+- 第二次根据标注图调整操作入口、移除代码二级标签、收紧按钮圆角并放大标题。
+- 最新 Edge 截图显示工作区操作顺序为“导入动效、导出 HTML、复制代码”，顶部只保留“保存到我的动效”；没有遗留 P0 / P1 / P2 问题。
+
+**Implementation Checklist**
+
+- [x] 中间展示区增加“动效预览 / 代码展示”切换。
+- [x] 预览和代码使用同一个内容区域，避免上下堆叠。
+- [x] 操作按钮与切换栏同排。
+- [x] 保留动效参数、复制代码和导出 HTML 的原有逻辑。
+- [x] 将“导入动效”移动到中间操作区并移除顶部重复入口。
+- [x] 去掉代码类型二级标签，默认直接显示 HTML + CSS。
+- [x] 操作按钮圆角调整为 `4px`。
+- [x] 当前动效标题调整为 `28px`。
+- [x] 四个一级导航项所在左栏收窄并保持首页、编辑页对齐。
+- [x] 完成 Edge 双状态截图、交互检查、控制台检查和生产构建。
+
+**Follow-up Polish**
+
+- P3：如后续继续压缩左栏，可在小于 `1440px` 的视口增加自动折叠规则；当前 `206px` 已满足本次“缩短一点”的要求。
+
+final result: passed
+
+---
+
+**边框流光与装饰组件精简 Design QA（2026-07-24）**
+
+- Implementation URL: `http://127.0.0.1:5173/`。
+- 边框流光起始帧：`F:\codex文件\loading\datamotion-border-orbit-start-20260724.png`。
+- 边框流光截图：`F:\codex文件\loading\datamotion-border-orbit-final-20260724.png`。
+- 装饰组件截图：`F:\codex文件\loading\datamotion-decoration-pruned-final-20260724.png`。
+- Viewport: `1600 × 900`，Edge，DPR 1。
+
+**Findings**
+
+- 边框流光由一条低亮度静态轨道和 24 个沿同一矩形路径连续衔接的 SVG 短段构成。
+- 透明度从光头的 `100%` 平滑衰减至尾端 `0%`，线宽从 `3.45px` 平滑收细至 `0.52px`。
+- 相邻短段轻微重叠，圆角处保持连续渐变，没有明显分层或硬切。
+- `stroke-dashoffset` 使用统一的 `px` 单位连续插值；相隔 `720ms` 的截图中光头位置已从上边移动至右下边。
+- 导出代码包含相同的 24 级渐隐边框结构和连续环绕动画。
+- 装饰组件只保留“图标底座、线性流光”两个板块，共 5 个效果。
+- 图标底座只保留“星环粒子底座”。
+- 星环缩略图和主画面均使用 `.decoration-effect-base-particle-star-ring` 生成根节点。
+- 数字步进箭头颜色透明度为 `34%`，分隔线透明度为 `5.5%`。
+- 浏览器控制台无脚本错误，网络请求无失败。
+- 类型检查与 Vite 生产构建通过；仅保留既有的主包体积提示。
+
+**Implementation Checklist**
+
+- [x] 边框流光改为环绕矩形四边。
+- [x] 增加流光透明度、粗细和长度变化。
+- [x] 删除两个旧图标底座。
+- [x] 删除扫描装饰和边框光效板块。
+- [x] 星环缩略图与主预览同源。
+- [x] 弱化数字输入上下箭头与分隔线。
+- [x] 完成 Edge 截图、样式数据和生产构建验证。
+
+final result: passed
+
+---
+
 **Design QA**
 
 - Source visual truth: C:UsersasusDownloadsChatGPT Image 2026年6月29日 10_17_37.png

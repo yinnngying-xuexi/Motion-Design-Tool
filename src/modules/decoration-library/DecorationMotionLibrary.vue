@@ -3,9 +3,9 @@
     <aside class="decoration-list panel">
       <header class="section-head">
         <div>
-          <h2>装饰动效库</h2>
+          <h2>装饰动效</h2>
         </div>
-        <small>系统内置</small>
+        <small>{{ sectionEffects.length }} / {{ decorationEffects.length }}</small>
       </header>
 
       <div class="section-tabs">
@@ -29,7 +29,14 @@
             :class="{ active: currentEffect.id === effect.id }"
             @click="selectEffect(effect.id)"
           >
-            <div class="effect-thumb dm-motion-canvas" :class="effect.previewType"><span></span></div>
+            <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
+              <div
+                v-if="effect.previewType === 'particle-base'"
+                class="real-effect-thumbnail"
+                v-html="effectThumbnailMarkup(effect)"
+              ></div>
+              <span v-else></span>
+            </div>
             <div class="effect-card-copy">
               <strong>{{ effect.name }}</strong>
               <p>{{ effect.defaultParams.duration }}s · {{ effect.scene }}</p>
@@ -40,22 +47,66 @@
     </aside>
 
     <main class="decoration-preview panel">
-      <header class="section-head">
-        <div>
-          <h2>{{ currentEffect.name }}</h2>
+      <header class="decoration-workspace-head">
+        <div class="decoration-title-copy">
+          <div class="decoration-title-line">
+            <h2>{{ currentEffect.name }}</h2>
+          </div>
+          <p>{{ currentEffect.description }}</p>
         </div>
         <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
       </header>
 
-      <div ref="previewCapture" class="preview-stage dm-motion-canvas">
-        <div class="generated-preview" v-html="previewMarkup"></div>
+      <div class="decoration-view-toolbar">
+        <div class="decoration-view-tabs" role="tablist" aria-label="装饰组件展示视图">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'preview'"
+            :class="{ active: activeWorkspaceView === 'preview' }"
+            @click="activeWorkspaceView = 'preview'"
+          >
+            动效预览
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'code'"
+            :class="{ active: activeWorkspaceView === 'code' }"
+            @click="activeWorkspaceView = 'code'"
+          >
+            代码展示
+          </button>
+        </div>
+        <div class="decoration-workspace-actions">
+          <el-button size="small" @click="triggerSvgImport">
+            <el-icon><Upload /></el-icon>
+            导入动效
+          </el-button>
+          <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
+          <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
+        </div>
+      </div>
+
+      <div class="decoration-workspace-content">
+        <div
+          v-show="activeWorkspaceView === 'preview'"
+          ref="previewCapture"
+          class="preview-stage dm-motion-canvas"
+          role="tabpanel"
+        >
+          <div class="generated-preview" v-html="previewMarkup"></div>
+        </div>
+        <section v-show="activeWorkspaceView === 'code'" class="decoration-code" role="tabpanel">
+          <CodeMirrorViewer :code="htmlCss" language="html" />
+        </section>
       </div>
     </main>
 
     <aside class="decoration-params panel">
       <header class="section-head">
         <div>
-          <h2>参数编辑</h2>
+          <h2>参数设置</h2>
         </div>
         <el-button size="small" @click="resetParams">重置</el-button>
       </header>
@@ -92,7 +143,7 @@
                   :min="paramItem.min"
                   :max="paramItem.max"
                   :step="paramItem.step"
-                  controls-position="right"
+                  :controls="false"
                   @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
                 />
               </div>
@@ -102,44 +153,21 @@
       </el-scrollbar>
     </aside>
 
-    <section class="decoration-export panel">
-      <header class="section-head">
-        <div>
-          <h2>导出代码</h2>
-        </div>
-        <div class="export-actions">
-          <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
-          <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
-        </div>
-      </header>
-      <el-tabs v-model="activeExport">
-        <el-tab-pane label="HTML + CSS" name="html">
-          <CodeMirrorViewer :code="htmlCss" language="html" />
-        </el-tab-pane>
-        <el-tab-pane label="Vue Component" name="vue">
-          <CodeMirrorViewer :code="vueCode" language="vue" />
-        </el-tab-pane>
-        <el-tab-pane label="JSON Config" name="json">
-          <CodeMirrorViewer :code="jsonCode" language="json" />
-        </el-tab-pane>
-      </el-tabs>
-    </section>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
+import { Upload } from "@element-plus/icons-vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { decorationEffects, decorationSections } from "@/data/decorationEffects";
 import {
   generateDecorationCss,
   generateDecorationCompositionCss,
   generateDecorationHtmlCss,
-  generateDecorationJson,
-  generateDecorationMarkup,
-  generateDecorationVue
+  generateDecorationMarkup
 } from "@/generators/decorationGenerator";
-import type { DecorationSection } from "@/types/decoration";
+import type { DecorationEffectTemplate, DecorationSection } from "@/types/decoration";
 import type { SvgFlowSource, SvgPreviewAsset } from "@/types/svgFlow";
 import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
 import { useMyMotionStore } from "@/stores/myMotionStore";
@@ -150,7 +178,7 @@ const props = defineProps<{ initialEffectId?: string }>();
 const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
 const activeSection = ref<DecorationSection>(initialEffect?.section ?? "图标底座");
 const activeEffectId = ref(initialEffect?.id ?? decorationEffects[0].id);
-const activeExport = ref<"html" | "vue" | "json">("html");
+const activeWorkspaceView = ref<"preview" | "code">("preview");
 const params = reactive<Record<string, string | number>>({});
 const svgSource = ref<SvgFlowSource>();
 const importedSvg = ref<SvgPreviewAsset>();
@@ -164,10 +192,7 @@ const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
 
 const cssCode = computed(() => generateDecorationCss(currentEffect.value, params));
 const htmlCss = computed(() => generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value));
-const vueCode = computed(() => generateDecorationVue(currentEffect.value, params, svgSource.value, importedSvg.value));
-const jsonCode = computed(() => generateDecorationJson(currentEffect.value, params, svgSource.value, importedSvg.value));
 const previewMarkup = computed(() => `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value)}`);
-const currentCode = computed(() => (activeExport.value === "vue" ? vueCode.value : activeExport.value === "json" ? jsonCode.value : htmlCss.value));
 
 watch(activeSection, () => {
   activeEffectId.value = sectionEffects.value[0]?.id ?? decorationEffects[0].id;
@@ -207,13 +232,17 @@ function selectEffect(id: string): void {
   activeEffectId.value = id;
 }
 
+function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
+  return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`;
+}
+
 function resetParams(): void {
   Object.keys(params).forEach((key) => delete params[key]);
   Object.assign(params, currentEffect.value.defaultParams);
 }
 
 async function copyCode(): Promise<void> {
-  await navigator.clipboard.writeText(currentCode.value);
+  await navigator.clipboard.writeText(htmlCss.value);
   ElMessage.success("代码已复制");
 }
 
@@ -249,9 +278,8 @@ function triggerSvgImport(): void {
 }
 
 async function saveFromToolbar(): Promise<void> {
-  if (isSvgFlow.value) {
-    if (svgSource.value) await saveSvgFlow();
-    else ElMessage.info("请先导入 SVG");
+  if (isSvgFlow.value && svgSource.value) {
+    await saveSvgFlow();
     return;
   }
 
@@ -274,7 +302,7 @@ async function saveSvgFlow(): Promise<void> {
   try {
     const artifact = await createMotionArtifact({
       id: "svg-flow-tool",
-      name: "SVG流光工具",
+      name: "路径流光",
       htmlCss: htmlCss.value,
       previewNode: previewCapture.value
     });
@@ -297,7 +325,7 @@ function downloadHtml(): void {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SVG流光工具</title>
+<title>路径流光</title>
 <style>body { margin: 0; padding: 24px; background: #000; }</style>
 </head>
 <body>
@@ -308,7 +336,7 @@ ${htmlCss.value}
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${svgSource.value?.fileName.replace(/\.svg$/i, "") || "svg-flow"}.html`;
+  anchor.download = `${svgSource.value?.fileName.replace(/\.svg$/i, "") || "path-flow"}.html`;
   anchor.click();
   URL.revokeObjectURL(url);
   ElMessage.success("HTML 文件已导出");
@@ -340,30 +368,28 @@ async function restoreSvgFlow(): Promise<void> {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 236px minmax(440px, 1fr) 360px;
-  grid-template-rows: minmax(360px, 1fr) minmax(236px, 34vh);
-  grid-template-areas:
-    "list preview params"
-    "list export params";
-  gap: 12px;
+  grid-template-columns: 200px minmax(500px, 1fr) 320px;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "list preview params";
+  gap: 16px;
 }
 
 .panel {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--dm-hairline);
+  border: 0;
   border-radius: var(--dm-radius-lg);
-  background: linear-gradient(145deg, rgba(17, 18, 18, 0.98), rgba(10, 11, 11, 0.98));
-  padding: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
+  background: #111111;
+  padding: 18px;
+  box-shadow: none;
 }
 
 .decoration-list {
   grid-area: list;
   display: grid;
   grid-template-rows: auto auto 1fr;
-  gap: 12px;
+  gap: 14px;
   align-content: start;
   overflow: hidden;
 }
@@ -374,15 +400,16 @@ async function restoreSvgFlow(): Promise<void> {
 
 .effect-stack {
   display: grid;
-  gap: 8px;
-  padding-right: 8px;
+  gap: 6px;
+  padding-right: 5px;
 }
 
 .decoration-preview {
   grid-area: preview;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 16px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0;
+  padding: 20px;
 }
 
 .hidden-file-input { display: none; }
@@ -391,14 +418,7 @@ async function restoreSvgFlow(): Promise<void> {
   grid-area: params;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 16px;
-}
-
-.decoration-export {
-  grid-area: export;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 12px;
+  gap: 14px;
 }
 
 .section-head {
@@ -420,6 +440,7 @@ async function restoreSvgFlow(): Promise<void> {
   color: var(--dm-primary);
   font-size: 15px;
   line-height: 1.3;
+  font-weight: 600;
 }
 
 .section-head small {
@@ -454,27 +475,27 @@ async function restoreSvgFlow(): Promise<void> {
 .section-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .section-tabs button {
-  border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-md);
-  background: var(--dm-surface-raised);
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
   color: var(--dm-secondary);
-  padding: 9px;
+  padding: 7px 6px;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .section-tabs button.active {
-  border-color: var(--dm-tertiary);
   color: var(--dm-tertiary);
-  background: rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.085);
 }
 
 .effect-card {
   min-width: 0;
-  border: 1px solid var(--dm-hairline);
+  border: 0;
   border-radius: var(--dm-radius-md);
   min-height: 70px;
   display: grid;
@@ -482,29 +503,43 @@ async function restoreSvgFlow(): Promise<void> {
   align-items: center;
   gap: 11px;
   padding: 7px;
-  background: rgba(255, 255, 255, 0.016);
+  background: rgba(255, 255, 255, 0.025);
   cursor: pointer;
   transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
 }
 
 .effect-card:hover:not(.active) {
-  border-color: var(--dm-secondary);
+  background: rgba(255, 255, 255, 0.045);
 }
 
 .effect-card.active {
-  border-color: var(--dm-tertiary);
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.09);
   box-shadow: none;
 }
 
 .effect-thumb {
+  position: relative;
   width: 58px;
   height: 54px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-md);
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
   background-color: var(--dm-motion-canvas-background);
+}
+
+.real-effect-thumbnail {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 188px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%) scale(0.24);
+  transform-origin: center;
+  pointer-events: none;
 }
 
 .effect-thumb span {
@@ -710,16 +745,140 @@ async function restoreSvgFlow(): Promise<void> {
   color: var(--dm-secondary);
 }
 
+.decoration-workspace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 16px;
+}
+
+.decoration-title-copy {
+  min-width: 0;
+}
+
+.decoration-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.decoration-title-line h2 {
+  margin: 0;
+  color: var(--dm-primary);
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 620;
+}
+
+.decoration-title-copy p {
+  margin: 7px 0 0;
+  color: var(--dm-secondary);
+  font-size: 12px;
+}
+
+.decoration-view-toolbar {
+  min-height: 46px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--dm-hairline);
+}
+
+.decoration-view-tabs {
+  align-self: stretch;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.decoration-view-tabs button {
+  position: relative;
+  min-width: 84px;
+  padding: 0 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--dm-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.decoration-view-tabs button::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.decoration-view-tabs button:hover {
+  color: var(--dm-primary);
+}
+
+.decoration-view-tabs button.active {
+  color: #1683ff;
+}
+
+.decoration-view-tabs button.active::after {
+  background: #0070f3;
+}
+
+.decoration-workspace-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-bottom: 9px;
+}
+
+.decoration-workspace-actions :deep(.el-button) {
+  border-radius: 4px;
+}
+
+.decoration-workspace-content {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  padding-top: 14px;
+}
+
+.decoration-workspace-content > * {
+  grid-area: 1 / 1;
+}
+
 .preview-stage {
   position: relative;
   display: grid;
   place-items: center;
   min-height: 0;
+  height: 100%;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
   overflow: hidden;
   background-color: var(--dm-motion-canvas-background);
   box-shadow: inset 0 0 90px rgba(255, 255, 255, 0.015);
+}
+
+.decoration-code {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--dm-hairline);
+  border-radius: var(--dm-radius-lg);
+  background: #0d0d0d;
+}
+
+.decoration-code :deep(.code-mirror-host) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
 }
 
 .active-svg-name {
@@ -802,7 +961,7 @@ async function restoreSvgFlow(): Promise<void> {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 92px;
+  grid-template-columns: minmax(0, 1fr) 72px;
   gap: 10px;
   align-items: center;
 }
@@ -812,8 +971,8 @@ async function restoreSvgFlow(): Promise<void> {
 }
 
 .number-row :deep(.el-input-number) {
-  width: 92px;
-  max-width: 92px;
+  width: 72px;
+  max-width: 72px;
 }
 
 .color-row {
@@ -823,18 +982,4 @@ async function restoreSvgFlow(): Promise<void> {
   align-items: center;
 }
 
-.decoration-export :deep(.el-tabs) {
-  height: 100%;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-}
-
-.decoration-export :deep(.el-tabs__content),
-.decoration-export :deep(.el-tab-pane) {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
 </style>

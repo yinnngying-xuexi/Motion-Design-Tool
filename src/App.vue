@@ -18,10 +18,6 @@
       </div>
 
       <div v-if="!isHome" class="toolbar-actions">
-        <el-button :disabled="!isEditorModule" @click="dispatchEditorAction('import-svg')">
-          <el-icon><Upload /></el-icon>
-          导入动效
-        </el-button>
         <el-button class="dm-blue-action save-motion-button" type="primary" :disabled="!isEditorModule" @click="dispatchEditorAction('save')">
           保存到我的动效
         </el-button>
@@ -62,7 +58,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Box, MagicStick, Picture, Search, Star, Upload } from "@element-plus/icons-vue";
+import { Box, MagicStick, Picture, Search, Star } from "@element-plus/icons-vue";
 import CustomAssetLibrary from "@/modules/custom-asset-library/CustomAssetLibrary.vue";
 import DecorationMotionLibrary from "@/modules/decoration-library/DecorationMotionLibrary.vue";
 import BasicMotionLibrary from "@/modules/motion-library/BasicMotionLibrary.vue";
@@ -74,7 +70,7 @@ type ModuleKey = "home" | "motion" | "decoration" | "my-motion" | "custom-asset"
 const activeModule = ref<ModuleKey>("home");
 const searchKeyword = ref("");
 const pendingMotionId = ref("fade-in");
-const pendingDecorationId = ref("base-orbit-ring");
+const pendingDecorationId = ref("base-particle-star-ring");
 const isEditorModule = computed(() => activeModule.value === "motion" || activeModule.value === "decoration");
 const isHome = computed(() => activeModule.value === "home");
 
@@ -110,7 +106,7 @@ function openSvgFlowTool(): void {
   selectModule("decoration");
 }
 
-function dispatchEditorAction(action: "import-svg" | "save"): void {
+function dispatchEditorAction(action: "save"): void {
   window.dispatchEvent(new CustomEvent(`datamotion:${action}`));
 }
 

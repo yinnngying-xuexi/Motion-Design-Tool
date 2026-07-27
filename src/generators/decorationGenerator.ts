@@ -10,11 +10,11 @@ const DECORATION_BLUE_DARK = "#003B82";
 function svgFlowConfig(params: DecorationParams): SvgFlowConfig {
   return {
     direction: (param(params, "direction", "ltr") as SvgFlowConfig["direction"]),
-    duration: Number(param(params, "duration", 7.5)),
-    pause: Number(param(params, "pause", 2)),
-    tail: Number(param(params, "tail", 820)),
+    duration: Number(param(params, "duration", 5)),
+    pause: Number(param(params, "pause", 0.8)),
+    tail: Number(param(params, "tail", 420)),
     borderWidth: Number(param(params, "borderWidth", 3)),
-    glow: Number(param(params, "glow", 12)),
+    glow: Number(param(params, "glow", 14)),
     headColor: String(param(params, "headColor", DECORATION_BLUE_LIGHT)),
     tailColor: String(param(params, "tailColor", DECORATION_BLUE)),
     endColor: String(param(params, "endColor", DECORATION_BLUE_DARK))
@@ -39,7 +39,7 @@ function defaultSvgFlowSource(): SvgFlowSource {
   return {
     fileName: "默认弧线路径.svg",
     viewBox: "0 0 1000 180",
-    shape: '<path d="M0 90 H250 C330 90 360 20 440 20 H720 C800 20 840 150 1000 150"></path>'
+    shape: '<path d="M0 116 H188 C274 116 298 34 390 34 H654 C746 34 778 146 880 146 H1000"></path>'
   };
 }
 
@@ -116,21 +116,22 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
 
 .${cls}__path {
   fill: none;
-  stroke: url(#${cls}-gradient);
+  stroke: ${config.headColor};
   stroke-width: ${config.borderWidth};
   stroke-linecap: round;
   stroke-linejoin: round;
   mask: url(#${cls}-mask);
   filter:
-    drop-shadow(0 0 2px ${config.headColor})
+    drop-shadow(0 0 1px ${config.headColor})
+    drop-shadow(0 0 ${Math.max(2, config.glow * 0.45)}px ${config.headColor})
     drop-shadow(0 0 ${config.glow}px ${config.tailColor});
 }
 
 .${cls}__track {
   fill: none;
-  stroke: ${config.tailColor};
+  stroke: ${config.endColor};
   stroke-width: ${Math.max(1, config.borderWidth * 0.5)};
-  opacity: 0.16;
+  opacity: 0.12;
 }
 
 .${cls}__meta { display: none; }
@@ -568,14 +569,10 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
   <svg class="${cls}__svg" viewBox="${currentSource.viewBox}" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <path id="${cls}-path" ${currentSource.shape.replace(/^<[^\s>]+|\/?>(?=$)/g, "").trim()}></path>
-      <linearGradient id="${cls}-gradient" ${metrics.gradient}>
-        <stop offset="0" stop-color="${config.endColor}" stop-opacity="0"></stop>
-        <stop offset="0.42" stop-color="${config.tailColor}" stop-opacity="0.72"></stop>
-        <stop offset="1" stop-color="${config.headColor}"></stop>
-      </linearGradient>
       <linearGradient id="${cls}-mask-gradient" ${metrics.gradient}>
         <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"></stop>
-        <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.58"></stop>
+        <stop offset="0.36" stop-color="#FFFFFF" stop-opacity="0.2"></stop>
+        <stop offset="0.74" stop-color="#FFFFFF" stop-opacity="0.78"></stop>
         <stop offset="1" stop-color="#FFFFFF"></stop>
       </linearGradient>
       <mask id="${cls}-mask" maskUnits="userSpaceOnUse" x="${maskX}" y="${maskY}" width="${maskWidth}" height="${maskHeight}">

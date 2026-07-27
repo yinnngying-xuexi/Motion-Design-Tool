@@ -51,53 +51,100 @@
     </aside>
 
     <main class="motion-preview-panel panel">
-      <header class="library-head">
-        <div>
-          <h2>{{ selectedMotion.name }}</h2>
+      <header class="motion-workspace-head">
+        <div class="motion-title-copy">
+          <div class="motion-title-line">
+            <h2>{{ selectedMotion.name }}</h2>
+            <span>{{ selectedMotion.id === "fade-in" ? "Fade In" : selectedMotion.category }}</span>
+          </div>
+          <p>{{ selectedMotion.description }}</p>
         </div>
         <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
       </header>
 
-      <section ref="previewCapture" class="motion-stage" :class="{ paused: !previewPlaying }" :key="`${selectedMotion.id}-${previewKey}`">
-        <div
-          v-if="svgAsset"
-          class="screen-card imported-svg-only"
-          :class="[`preview-${selectedMotion.previewType}`, `motion-${selectedMotion.id}`]"
-          :style="previewStyle"
-        >
-          <span v-if="selectedMotion.previewType === 'ripple'" class="ripple" :style="rippleStyle"></span>
-          <span v-if="selectedMotion.previewType === 'scan'" class="scan-line" :style="scanStyle"></span>
-          <div class="imported-svg" v-html="svgAsset.markup"></div>
+      <div class="motion-view-toolbar">
+        <div class="motion-view-tabs" role="tablist" aria-label="中间展示视图">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'preview'"
+            :class="{ active: activeWorkspaceView === 'preview' }"
+            @click="activeWorkspaceView = 'preview'"
+          >
+            动效预览
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'code'"
+            :class="{ active: activeWorkspaceView === 'code' }"
+            @click="activeWorkspaceView = 'code'"
+          >
+            代码展示
+          </button>
         </div>
-        <MotionPreviewVisual
-          v-else
-          class="editor-motion-visual"
-          :motion-id="selectedMotion.id"
-          :alt="`${selectedMotion.name}动效预览`"
-          :playing="previewPlaying"
-          :duration="motionConfig.duration"
-          :delay="motionConfig.delay"
-          :iteration="motionConfig.iteration"
-          :timing-function="motionConfig.timingFunction"
-          :direction="motionConfig.direction"
-          :color="motionConfig.color"
-          :opacity="motionConfig.opacity"
-          :translate-x="motionConfig.translateX"
-          :translate-y="motionConfig.translateY"
-          :scale="motionConfig.scale"
-          :rotate="motionConfig.rotate"
-          :blur="motionConfig.blur"
-          :shadow="motionConfig.shadow"
-          :glow="motionConfig.glow"
-          :loop-speed="motionConfig.loopSpeed"
-          :blink-frequency="motionConfig.blinkFrequency"
-          :border-width="motionConfig.borderWidth"
-          :amplitude="motionConfig.amplitude"
-          :scan-speed="motionConfig.scanSpeed"
-          :ripple-radius="motionConfig.rippleRadius"
-        />
-      </section>
+        <div class="workspace-actions">
+          <el-button size="small" @click="triggerSvgImport">
+            <el-icon><Upload /></el-icon>
+            导入动效
+          </el-button>
+          <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
+          <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
+        </div>
+      </div>
 
+      <div class="motion-workspace-content">
+        <section
+          v-show="activeWorkspaceView === 'preview'"
+          ref="previewCapture"
+          class="motion-stage"
+          :class="{ paused: !previewPlaying }"
+          :key="`${selectedMotion.id}-${previewKey}`"
+          role="tabpanel"
+        >
+          <div
+            v-if="svgAsset"
+            class="screen-card imported-svg-only"
+            :class="[`preview-${selectedMotion.previewType}`, `motion-${selectedMotion.id}`]"
+            :style="previewStyle"
+          >
+            <span v-if="selectedMotion.previewType === 'ripple'" class="ripple" :style="rippleStyle"></span>
+            <span v-if="selectedMotion.previewType === 'scan'" class="scan-line" :style="scanStyle"></span>
+            <div class="imported-svg" v-html="svgAsset.markup"></div>
+          </div>
+          <MotionPreviewVisual
+            v-else
+            class="editor-motion-visual"
+            :motion-id="selectedMotion.id"
+            :alt="`${selectedMotion.name}动效预览`"
+            :playing="previewPlaying"
+            :duration="motionConfig.duration"
+            :delay="motionConfig.delay"
+            :iteration="motionConfig.iteration"
+            :timing-function="motionConfig.timingFunction"
+            :direction="motionConfig.direction"
+            :color="motionConfig.color"
+            :opacity="motionConfig.opacity"
+            :translate-x="motionConfig.translateX"
+            :translate-y="motionConfig.translateY"
+            :scale="motionConfig.scale"
+            :rotate="motionConfig.rotate"
+            :blur="motionConfig.blur"
+            :shadow="motionConfig.shadow"
+            :glow="motionConfig.glow"
+            :loop-speed="motionConfig.loopSpeed"
+            :blink-frequency="motionConfig.blinkFrequency"
+            :border-width="motionConfig.borderWidth"
+            :amplitude="motionConfig.amplitude"
+            :scan-speed="motionConfig.scanSpeed"
+            :ripple-radius="motionConfig.rippleRadius"
+          />
+        </section>
+
+        <section v-show="activeWorkspaceView === 'code'" class="motion-export" role="tabpanel">
+          <CodeMirrorViewer :code="htmlCssCode" language="html" />
+        </section>
+      </div>
     </main>
 
     <aside class="motion-info panel">
@@ -166,31 +213,16 @@
       </el-scrollbar>
     </aside>
 
-    <section class="motion-export panel">
-      <header class="library-head">
-        <div><h2>导出代码</h2></div>
-        <div class="export-actions">
-          <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
-          <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
-        </div>
-      </header>
-      <el-tabs v-model="activeExport">
-        <el-tab-pane label="HTML + CSS" name="html"><CodeMirrorViewer :code="htmlCssCode" language="html" /></el-tab-pane>
-        <el-tab-pane label="Vue Component" name="vue"><CodeMirrorViewer :code="vueCode" language="vue" /></el-tab-pane>
-        <el-tab-pane label="JSON Config" name="json"><CodeMirrorViewer :code="jsonCode" language="json" /></el-tab-pane>
-      </el-tabs>
-    </section>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
+import { Upload } from "@element-plus/icons-vue";
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, resolveComponent, watch } from "vue";
 import { basicMotions } from "@/data/basicMotions";
 import {
   generateBasicMotionHtmlCss,
-  generateBasicMotionJson,
-  generateBasicMotionVue,
   type BasicMotionConfig
 } from "@/generators/basicMotionGenerator";
 import { useMyMotionStore } from "@/stores/myMotionStore";
@@ -213,7 +245,7 @@ const previewPlaying = ref(true);
 const previewCapture = ref<HTMLElement>();
 const svgAsset = ref<SvgPreviewAsset>();
 const svgFileInput = ref<HTMLInputElement>();
-const activeExport = ref<"html" | "vue" | "json">("html");
+const activeWorkspaceView = ref<"preview" | "code">("preview");
 
 const categories = computed(() => ["全部", ...new Set(basicMotions.map((motion) => motion.category))] as Array<"全部" | MotionCategory>);
 
@@ -229,9 +261,6 @@ const filteredMotions = computed(() =>
 const selectedMotion = computed(() => basicMotions.find((motion) => motion.id === selectedMotionId.value) ?? basicMotions[0]);
 const motionConfig = reactive<MotionEditorConfig>(createDefaultConfig());
 const htmlCssCode = computed(() => generateBasicMotionHtmlCss(selectedMotion.value, motionConfig, svgAsset.value));
-const vueCode = computed(() => generateBasicMotionVue(selectedMotion.value, motionConfig, svgAsset.value));
-const jsonCode = computed(() => generateBasicMotionJson(selectedMotion.value, motionConfig, svgAsset.value));
-const currentCode = computed(() => activeExport.value === "vue" ? vueCode.value : activeExport.value === "json" ? jsonCode.value : htmlCssCode.value);
 
 const previewStyle = computed(() => ({
   opacity: motionConfig.opacity,
@@ -359,7 +388,7 @@ async function handleSvgUpload(event: Event): Promise<void> {
 }
 
 async function copyCode(): Promise<void> {
-  await navigator.clipboard.writeText(currentCode.value);
+  await navigator.clipboard.writeText(htmlCssCode.value);
   ElMessage.success("代码已复制");
 }
 
@@ -435,11 +464,9 @@ const NumberControl = defineComponent({
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 220px minmax(420px, 1fr) 320px;
-  grid-template-rows: minmax(360px, 1fr) minmax(236px, 34vh);
-  grid-template-areas:
-    "list preview params"
-    "list export params";
+  grid-template-columns: 200px minmax(500px, 1fr) 320px;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "list preview params";
   gap: 16px;
 }
 
@@ -613,18 +640,130 @@ const NumberControl = defineComponent({
 .motion-preview-panel {
   grid-area: preview;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0;
+  padding: 20px;
 }
 
 .hidden-file-input { display: none; }
 
+.motion-workspace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 16px;
+}
+
+.motion-title-copy {
+  min-width: 0;
+}
+
+.motion-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.motion-title-line h2 {
+  margin: 0;
+  color: var(--dm-primary);
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 620;
+}
+
+.motion-title-line span {
+  color: var(--dm-secondary);
+  font-size: 14px;
+}
+
+.motion-title-copy p {
+  margin: 7px 0 0;
+  color: var(--dm-secondary);
+  font-size: 12px;
+}
+
+.motion-view-toolbar {
+  min-height: 46px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--dm-hairline);
+}
+
+.motion-view-tabs {
+  align-self: stretch;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.motion-view-tabs button {
+  position: relative;
+  min-width: 84px;
+  padding: 0 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--dm-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.motion-view-tabs button::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.motion-view-tabs button:hover {
+  color: var(--dm-primary);
+}
+
+.motion-view-tabs button.active {
+  color: #1683ff;
+}
+
+.motion-view-tabs button.active::after {
+  background: #0070f3;
+}
+
+.workspace-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-bottom: 9px;
+}
+
+.workspace-actions :deep(.el-button) {
+  border-radius: 4px;
+}
+
+.motion-workspace-content {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  padding-top: 14px;
+}
+
+.motion-workspace-content > * {
+  grid-area: 1 / 1;
+}
+
 .motion-stage {
   position: relative;
   min-height: 0;
+  height: 100%;
   display: grid;
   place-items: center;
-  border: 0;
+  border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
   overflow: hidden;
   background-color: #0d0d0d;
@@ -757,29 +896,22 @@ const NumberControl = defineComponent({
 }
 
 .motion-export {
-  grid-area: export;
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 12px 14px;
-  overflow: hidden;
-}
-
-.motion-export :deep(.el-tabs) {
   height: 100%;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
   overflow: hidden;
+  background: #0d0d0d;
+  border: 1px solid var(--dm-hairline);
+  border-radius: var(--dm-radius-lg);
 }
 
-.motion-export :deep(.el-tabs__content),
-.motion-export :deep(.el-tab-pane) {
+.motion-export :deep(.code-mirror-host) {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  border: 0;
 }
 
 .param-head {

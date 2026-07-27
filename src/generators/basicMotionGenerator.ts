@@ -1,5 +1,10 @@
 import type { BasicMotionTemplate } from "@/types/motion";
 import type { SvgPreviewAsset } from "@/types/svgFlow";
+import {
+  BORDER_FLOW_DASH_GAP,
+  BORDER_FLOW_DASH_LENGTH,
+  borderFlowTrailSegments
+} from "@/utils/borderFlowTrail";
 
 export interface BasicMotionConfig {
   duration: number;
@@ -69,7 +74,11 @@ function frames(template: BasicMotionTemplate, config: BasicMotionConfig): strin
   }
 }
 
-export function generateBasicMotionMarkup(template: BasicMotionTemplate, asset?: SvgPreviewAsset): string {
+export function generateBasicMotionMarkup(
+  template: BasicMotionTemplate,
+  asset?: SvgPreviewAsset,
+  config?: BasicMotionConfig
+): string {
   const { cls } = names(template);
   const content = asset
     ? `<div class="${cls}__svg">${asset.markup}</div>`
@@ -80,9 +89,21 @@ export function generateBasicMotionMarkup(template: BasicMotionTemplate, asset?:
     ? `<span class="${cls}__ripple"></span><span class="${cls}__ripple ${cls}__ripple--secondary"></span>`
     : "";
   const scan = template.previewType === "scan" ? `<span class="${cls}__scan"></span>` : "";
-  const sweep = template.id === "border-flow" ? `<span class="${cls}__sweep"></span>` : "";
+  const borderTrail = borderFlowTrailSegments
+    .map((segment) => {
+      const headClass = segment.isHead ? ` ${cls}__orbit-segment--head` : "";
+      const width = Math.max(0.5, (config?.borderWidth ?? 1) * segment.widthFactor);
+      return `  <rect class="${cls}__orbit-segment${headClass}" x="2" y="2" width="236" height="146" rx="10" pathLength="100" style="--orbit-start:${segment.offset}px;--orbit-opacity:${segment.opacity};--orbit-width:${width}px"></rect>`;
+    })
+    .join("\n");
+  const borderOrbit = template.id === "border-flow"
+    ? `<svg class="${cls}__orbit" viewBox="0 0 240 150" preserveAspectRatio="none" aria-hidden="true">
+  <rect class="${cls}__orbit-track" x="2" y="2" width="236" height="146" rx="10" pathLength="100"></rect>
+${borderTrail}
+</svg>`
+    : "";
   const modifier = asset ? ` ${cls}--svg-only` : "";
-  return `<div class="${cls}${modifier}">${ripple}${scan}${sweep}${content}</div>`;
+  return `<div class="${cls}${modifier}">${ripple}${scan}${borderOrbit}${content}</div>`;
 }
 
 export function generateBasicMotionCss(template: BasicMotionTemplate, config: BasicMotionConfig): string {
@@ -93,11 +114,20 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
     ? "none"
     : `${keyframes} ${speed}s ${config.timingFunction} ${config.delay}s ${config.iteration} ${config.direction}`;
   const pulseSpread = template.id === "pulse-spread";
-  const baseBorder = pulseSpread ? "0" : `${config.borderWidth}px solid ${config.color}`;
+  const borderFlow = template.id === "border-flow";
+  const baseBorder = pulseSpread
+    ? "0"
+    : borderFlow
+      ? `${config.borderWidth}px solid color-mix(in srgb, ${config.color} 16%, rgba(255,255,255,.08))`
+      : `${config.borderWidth}px solid ${config.color}`;
   const baseBackground = pulseSpread ? "transparent" : template.id === "highlight-glow" ? `${config.color}D9` : "#0A0A0A";
-  const baseShadow = pulseSpread ? "none" : template.id === "highlight-glow"
-    ? `0 0 ${Math.max(4, config.glow * 0.55)}px ${config.color}AA, 0 0 ${Math.max(10, config.glow * 1.15)}px ${config.color}44`
-    : `0 0 ${config.shadow}px rgba(0,0,0,.8), 0 0 ${config.glow}px ${config.color}`;
+  const baseShadow = pulseSpread
+    ? "none"
+    : borderFlow
+      ? `inset 0 1px 0 rgba(255,255,255,.035), 0 0 ${Math.max(3, config.glow * 0.32)}px color-mix(in srgb, ${config.color} 10%, transparent)`
+      : template.id === "highlight-glow"
+        ? `0 0 ${Math.max(4, config.glow * 0.55)}px ${config.color}AA, 0 0 ${Math.max(10, config.glow * 1.15)}px ${config.color}44`
+        : `0 0 ${config.shadow}px rgba(0,0,0,.8), 0 0 ${config.glow}px ${config.color}`;
   return `.${cls} {
   position: relative;
   width: 240px;
@@ -106,10 +136,11 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
   place-items: center;
   align-content: center;
   gap: 6px;
-  overflow: hidden;
+  overflow: ${borderFlow ? "visible" : "hidden"};
   color: ${config.color};
   opacity: ${config.opacity};
   border: ${baseBorder};
+  border-radius: 12px;
   background: ${baseBackground};
   box-shadow: ${baseShadow};
   transform: translate(${config.translateX}px, ${config.translateY}px) scale(${config.scale}) rotate(${config.rotate}deg);
@@ -125,7 +156,11 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
 .${cls}__ripple { position:absolute; z-index:1; width:${config.rippleRadius}px; height:${config.rippleRadius}px; border:${Math.max(1, config.borderWidth)}px solid ${config.color}; border-radius:50%; box-shadow:0 0 ${Math.max(4, config.glow * 0.45)}px ${config.color}; animation:${keyframes}Ripple ${speed}s cubic-bezier(.18,.72,.28,1) infinite; }
 .${cls}__ripple--secondary { animation-delay: calc(${speed}s / -2); }
 .${cls}__scan { position:absolute; inset:-2px 0 auto; height:2px; background:${config.color}; box-shadow:0 0 ${config.glow}px ${config.color}; animation:${keyframes}Scan ${config.scanSpeed}s linear infinite; }
-.${cls}__sweep { position:absolute; inset:0 auto 0 -46%; width:36%; background:linear-gradient(90deg,transparent,${config.color},transparent); transform:skewX(-12deg); opacity:.86; animation:${keyframes}Sweep ${speed}s linear infinite; }
+.${cls}__orbit { position:absolute; z-index:3; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+.${cls}__orbit-track, .${cls}__orbit-segment { fill:none; stroke:${config.color}; vector-effect:non-scaling-stroke; stroke-linecap:round; }
+.${cls}__orbit-track { stroke-width:${Math.max(0.6, config.borderWidth * 0.62)}px; opacity:.12; }
+.${cls}__orbit-segment { stroke-width:var(--orbit-width); stroke-dasharray:${BORDER_FLOW_DASH_LENGTH} ${BORDER_FLOW_DASH_GAP}; opacity:var(--orbit-opacity); animation:${keyframes}Orbit ${speed}s linear infinite; }
+.${cls}__orbit-segment--head { stroke:color-mix(in srgb, ${config.color} 76%, white 24%); filter:drop-shadow(0 0 ${Math.max(4, config.glow * 0.26)}px ${config.color}) drop-shadow(0 0 ${Math.max(6, config.glow * 0.46)}px color-mix(in srgb, ${config.color} 34%, transparent)); }
 @keyframes ${keyframes} { ${frames(template, config)} }
 @keyframes ${keyframes}Core {
   0%, 100% { opacity:.82; transform:scale(.82); }
@@ -141,18 +176,18 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
   12%, 88% { opacity:1; }
   100% { transform:translateY(152px); opacity:0; }
 }
-@keyframes ${keyframes}Sweep {
-  from { transform:translateX(0) skewX(-12deg); }
-  to { transform:translateX(410%) skewX(-12deg); }
+@keyframes ${keyframes}Orbit {
+  from { stroke-dashoffset:var(--orbit-start); }
+  to { stroke-dashoffset:calc(var(--orbit-start) - 100px); }
 }`;
 }
 
 export function generateBasicMotionHtmlCss(template: BasicMotionTemplate, config: BasicMotionConfig, asset?: SvgPreviewAsset): string {
-  return `${generateBasicMotionMarkup(template, asset)}\n\n<style>\n${generateBasicMotionCss(template, config)}\n</style>`;
+  return `${generateBasicMotionMarkup(template, asset, config)}\n\n<style>\n${generateBasicMotionCss(template, config)}\n</style>`;
 }
 
 export function generateBasicMotionVue(template: BasicMotionTemplate, config: BasicMotionConfig, asset?: SvgPreviewAsset): string {
-  return `<template>\n  ${generateBasicMotionMarkup(template, asset)}\n</template>\n\n<style scoped>\n${generateBasicMotionCss(template, config)}\n</style>`;
+  return `<template>\n  ${generateBasicMotionMarkup(template, asset, config)}\n</template>\n\n<style scoped>\n${generateBasicMotionCss(template, config)}\n</style>`;
 }
 
 export function generateBasicMotionJson(template: BasicMotionTemplate, config: BasicMotionConfig, asset?: SvgPreviewAsset): string {
