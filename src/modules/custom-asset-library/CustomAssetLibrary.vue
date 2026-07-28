@@ -42,12 +42,27 @@
         </div>
       </header>
 
-      <div class="preview-stage dm-motion-canvas">
-        <div v-if="currentAsset" class="preview-host" v-html="previewMarkup"></div>
-        <div v-else class="empty-state">
-          <strong>上传或粘贴 CSS 模板</strong>
-          <p>第一版支持变量化 CSS。建议模板使用 `.custom-asset-target` 作为预览选择器。</p>
+      <div class="preview-surface">
+        <div
+          ref="previewCapture"
+          :key="`${currentAssetId}-${previewKey}`"
+          class="preview-stage dm-motion-canvas"
+          :class="{ paused: !previewPlaying }"
+        >
+          <div v-if="currentAsset" class="preview-host" v-html="previewMarkup"></div>
+          <div v-else class="empty-state">
+            <strong>上传或粘贴 CSS 模板</strong>
+            <p>第一版支持变量化 CSS。建议模板使用 `.custom-asset-target` 作为预览选择器。</p>
+          </div>
         </div>
+        <PreviewPlaybackControls
+          :playing="previewPlaying"
+          :speed="previewSpeed"
+          :disabled="!currentAsset"
+          @replay="replayPreview"
+          @toggle="togglePreview"
+          @change-speed="setPreviewSpeed"
+        />
       </div>
 
       <div class="template-rule">
@@ -128,9 +143,10 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
 import type { UploadRawFile } from "element-plus";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import type { CssVariableParam } from "@/types/decoration";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
+import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 
 interface CustomCssAsset {
   id: string;
@@ -167,6 +183,10 @@ const currentAssetId = ref("");
 const templateName = ref("自定义 CSS 模板");
 const cssDraft = ref(defaultDraft);
 const activeExport = ref<"html" | "css" | "json">("html");
+const previewCapture = ref<HTMLElement>();
+const previewKey = ref(0);
+const previewPlaying = ref(true);
+const previewSpeed = ref(1);
 const variableValues = reactive<Record<string, string>>({});
 
 const currentAsset = computed(() => assets.value.find((asset) => asset.id === currentAssetId.value) ?? null);
@@ -210,6 +230,13 @@ onBeforeUnmount(() => {
 
 watch(currentAsset, () => {
   resetVariables();
+  previewPlaying.value = true;
+  previewSpeed.value = 1;
+  previewKey.value += 1;
+});
+
+watch([previewMarkup, previewPlaying, previewSpeed], () => {
+  void nextTick(applyPlaybackState);
 });
 
 watch(
@@ -281,6 +308,36 @@ function resetVariables(): void {
   Object.keys(variableValues).forEach((key) => delete variableValues[key]);
   currentAsset.value?.variables.forEach((variable) => {
     variableValues[variable.name] = variable.value;
+  });
+}
+
+function togglePreview(): void {
+  previewPlaying.value = !previewPlaying.value;
+  void nextTick(applyPlaybackState);
+}
+
+function setPreviewSpeed(speed: number): void {
+  previewSpeed.value = speed;
+  void nextTick(applyPlaybackState);
+}
+
+async function replayPreview(): Promise<void> {
+  previewPlaying.value = true;
+  previewKey.value += 1;
+  await nextTick();
+  previewCapture.value?.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.currentTime = 0;
+  });
+  applyPlaybackState();
+}
+
+function applyPlaybackState(): void {
+  const target = previewCapture.value;
+  if (!target) return;
+  target.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.playbackRate = previewSpeed.value;
+    if (previewPlaying.value) animation.play();
+    else animation.pause();
   });
 }
 
@@ -539,14 +596,25 @@ ${htmlCssCode.value}
   color: var(--dm-secondary);
 }
 
+.preview-surface {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .preview-stage {
   display: grid;
   place-items: center;
   min-height: 0;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-lg);
+  border-radius: var(--dm-radius-lg) var(--dm-radius-lg) 0 0;
   background-color: var(--dm-motion-canvas-background);
   box-shadow: inset 0 0 90px rgba(255, 255, 255, 0.015);
+}
+
+.preview-stage.paused :deep(*) {
+  animation-play-state: paused !important;
 }
 
 .preview-host {

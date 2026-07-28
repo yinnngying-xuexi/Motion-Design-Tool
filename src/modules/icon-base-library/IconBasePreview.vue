@@ -10,11 +10,6 @@
           <el-radio-button label="black">纯黑</el-radio-button>
           <el-radio-button label="transparent-grid">透明网格</el-radio-button>
         </el-radio-group>
-        <el-button-group>
-          <el-button size="small" @click="playing = true">播放</el-button>
-          <el-button size="small" @click="playing = false">暂停</el-button>
-          <el-button size="small" @click="replay">重播</el-button>
-        </el-button-group>
       </div>
     </header>
 
@@ -32,6 +27,14 @@
         <span>上传 PNG / SVG / WebP 后可在这里实时预览动效。</span>
       </div>
     </div>
+    <PreviewPlaybackControls
+      :playing="playing"
+      :speed="previewSpeed"
+      :disabled="!asset"
+      @replay="replay"
+      @toggle="playing = !playing"
+      @change-speed="previewSpeed = $event"
+    />
   </section>
 </template>
 
@@ -39,6 +42,7 @@
 import { computed, ref } from "vue";
 import type { IconBaseAsset, IconBaseBackground } from "@/types/iconBase";
 import { hexToRgb } from "@/generators/iconBaseGenerator";
+import PreviewPlaybackControls from "./PreviewPlaybackControls.vue";
 
 const props = defineProps<{
   asset: IconBaseAsset | null;
@@ -46,6 +50,7 @@ const props = defineProps<{
 
 const background = ref<IconBaseBackground>("ink");
 const playing = ref(true);
+const previewSpeed = ref(1);
 const previewKey = ref(0);
 
 const config = computed(() => props.asset?.motionConfig);
@@ -63,8 +68,8 @@ const previewStyle = computed(() => {
     height: `${item.height}px`,
     opacity: item.opacity,
     transform: `scale(${item.scale}) rotate(${item.rotate}deg)`,
-    "--duration": `${item.duration}s`,
-    "--delay": `${item.delay}s`,
+    "--duration": `${item.duration / previewSpeed.value}s`,
+    "--delay": `${item.delay / previewSpeed.value}s`,
     "--iteration": item.iteration,
     "--timing": item.timingFunction,
     "--direction": item.direction,
@@ -97,8 +102,8 @@ function replay(): void {
 .preview-panel {
   min-width: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 16px;
+  grid-template-rows: auto 1fr auto;
+  gap: 0;
 }
 
 .section-head {
@@ -106,6 +111,7 @@ function replay(): void {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding-bottom: 16px;
 }
 
 .section-head span {
@@ -137,7 +143,7 @@ function replay(): void {
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-lg);
+  border-radius: var(--dm-radius-lg) var(--dm-radius-lg) 0 0;
 }
 
 .preview-stage.ink {

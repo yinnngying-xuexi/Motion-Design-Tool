@@ -89,13 +89,22 @@
       </div>
 
       <div class="decoration-workspace-content">
-        <div
-          v-show="activeWorkspaceView === 'preview'"
-          ref="previewCapture"
-          class="preview-stage dm-motion-canvas"
-          role="tabpanel"
-        >
-          <div class="generated-preview" v-html="previewMarkup"></div>
+        <div v-show="activeWorkspaceView === 'preview'" class="preview-surface" role="tabpanel">
+          <div
+            ref="previewCapture"
+            :key="`${currentEffect.id}-${previewKey}`"
+            class="preview-stage dm-motion-canvas"
+            :class="{ paused: !previewPlaying }"
+          >
+            <div class="generated-preview" v-html="previewMarkup"></div>
+          </div>
+          <PreviewPlaybackControls
+            :playing="previewPlaying"
+            :speed="previewSpeed"
+            @replay="replayPreview"
+            @toggle="togglePreview"
+            @change-speed="setPreviewSpeed"
+          />
         </div>
         <section v-show="activeWorkspaceView === 'code'" class="decoration-code" role="tabpanel">
           <CodeMirrorViewer :code="htmlCss" language="html" />
@@ -173,12 +182,16 @@ import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, creat
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
+import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 
 const props = defineProps<{ initialEffectId?: string }>();
 const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
 const activeSection = ref<DecorationSection>(initialEffect?.section ?? "图标底座");
 const activeEffectId = ref(initialEffect?.id ?? decorationEffects[0].id);
 const activeWorkspaceView = ref<"preview" | "code">("preview");
+const previewKey = ref(0);
+const previewPlaying = ref(true);
+const previewSpeed = ref(1);
 const params = reactive<Record<string, string | number>>({});
 const svgSource = ref<SvgFlowSource>();
 const importedSvg = ref<SvgPreviewAsset>();
@@ -207,6 +220,10 @@ watch(() => props.initialEffectId, async (id) => {
 });
 
 watch(currentEffect, resetParams, { immediate: true });
+
+watch([previewMarkup, previewPlaying, previewSpeed], () => {
+  void nextTick(applyPlaybackState);
+});
 
 watch([svgSource, params], () => {
   if (!isSvgFlow.value || !svgSource.value) return;
@@ -239,6 +256,48 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
 function resetParams(): void {
   Object.keys(params).forEach((key) => delete params[key]);
   Object.assign(params, currentEffect.value.defaultParams);
+}
+
+function togglePreview(): void {
+  previewPlaying.value = !previewPlaying.value;
+  void nextTick(applyPlaybackState);
+}
+
+function setPreviewSpeed(speed: number): void {
+  previewSpeed.value = speed;
+  void nextTick(applyPlaybackState);
+}
+
+async function replayPreview(): Promise<void> {
+  previewPlaying.value = true;
+  previewKey.value += 1;
+  await nextTick();
+  previewCapture.value?.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.currentTime = 0;
+  });
+  previewCapture.value?.querySelectorAll("svg").forEach((svg) => {
+    const animatedSvg = svg as SVGSVGElement & { setCurrentTime?: (seconds: number) => void };
+    animatedSvg.setCurrentTime?.(0);
+  });
+  applyPlaybackState();
+}
+
+function applyPlaybackState(): void {
+  const target = previewCapture.value;
+  if (!target) return;
+  target.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.playbackRate = previewSpeed.value;
+    if (previewPlaying.value) animation.play();
+    else animation.pause();
+  });
+  target.querySelectorAll("svg").forEach((svg) => {
+    const animatedSvg = svg as SVGSVGElement & {
+      pauseAnimations?: () => void;
+      unpauseAnimations?: () => void;
+    };
+    if (previewPlaying.value) animatedSvg.unpauseAnimations?.();
+    else animatedSvg.pauseAnimations?.();
+  });
 }
 
 async function copyCode(): Promise<void> {
@@ -850,6 +909,13 @@ async function restoreSvgFlow(): Promise<void> {
   grid-area: 1 / 1;
 }
 
+.preview-surface {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .preview-stage {
   position: relative;
   display: grid;
@@ -857,10 +923,14 @@ async function restoreSvgFlow(): Promise<void> {
   min-height: 0;
   height: 100%;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-lg);
+  border-radius: var(--dm-radius-lg) var(--dm-radius-lg) 0 0;
   overflow: hidden;
   background-color: var(--dm-motion-canvas-background);
   box-shadow: inset 0 0 90px rgba(255, 255, 255, 0.015);
+}
+
+.preview-stage.paused :deep(*) {
+  animation-play-state: paused !important;
 }
 
 .decoration-code {

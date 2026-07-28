@@ -94,52 +94,59 @@
       </div>
 
       <div class="motion-workspace-content">
-        <section
-          v-show="activeWorkspaceView === 'preview'"
-          ref="previewCapture"
-          class="motion-stage"
-          :class="{ paused: !previewPlaying }"
-          :key="`${selectedMotion.id}-${previewKey}`"
-          role="tabpanel"
-        >
-          <div
-            v-if="svgAsset"
-            class="screen-card imported-svg-only"
-            :class="[`preview-${selectedMotion.previewType}`, `motion-${selectedMotion.id}`]"
-            :style="previewStyle"
+        <div v-show="activeWorkspaceView === 'preview'" class="preview-surface" role="tabpanel">
+          <section
+            ref="previewCapture"
+            class="motion-stage"
+            :class="{ paused: !previewPlaying }"
+            :key="`${selectedMotion.id}-${previewKey}`"
           >
-            <span v-if="selectedMotion.previewType === 'ripple'" class="ripple" :style="rippleStyle"></span>
-            <span v-if="selectedMotion.previewType === 'scan'" class="scan-line" :style="scanStyle"></span>
-            <div class="imported-svg" v-html="svgAsset.markup"></div>
-          </div>
-          <MotionPreviewVisual
-            v-else
-            class="editor-motion-visual"
-            :motion-id="selectedMotion.id"
-            :alt="`${selectedMotion.name}动效预览`"
+            <div
+              v-if="svgAsset"
+              class="screen-card imported-svg-only"
+              :class="[`preview-${selectedMotion.previewType}`, `motion-${selectedMotion.id}`]"
+              :style="previewStyle"
+            >
+              <span v-if="selectedMotion.previewType === 'ripple'" class="ripple" :style="rippleStyle"></span>
+              <span v-if="selectedMotion.previewType === 'scan'" class="scan-line" :style="scanStyle"></span>
+              <div class="imported-svg" v-html="svgAsset.markup"></div>
+            </div>
+            <MotionPreviewVisual
+              v-else
+              class="editor-motion-visual"
+              :motion-id="selectedMotion.id"
+              :alt="`${selectedMotion.name}动效预览`"
+              :playing="previewPlaying"
+              :duration="motionConfig.duration / previewSpeed"
+              :delay="motionConfig.delay / previewSpeed"
+              :iteration="motionConfig.iteration"
+              :timing-function="motionConfig.timingFunction"
+              :direction="motionConfig.direction"
+              :color="motionConfig.color"
+              :opacity="motionConfig.opacity"
+              :translate-x="motionConfig.translateX"
+              :translate-y="motionConfig.translateY"
+              :scale="motionConfig.scale"
+              :rotate="motionConfig.rotate"
+              :blur="motionConfig.blur"
+              :shadow="motionConfig.shadow"
+              :glow="motionConfig.glow"
+              :loop-speed="motionConfig.loopSpeed"
+              :blink-frequency="motionConfig.blinkFrequency * previewSpeed"
+              :border-width="motionConfig.borderWidth"
+              :amplitude="motionConfig.amplitude"
+              :scan-speed="motionConfig.scanSpeed / previewSpeed"
+              :ripple-radius="motionConfig.rippleRadius"
+            />
+          </section>
+          <PreviewPlaybackControls
             :playing="previewPlaying"
-            :duration="motionConfig.duration"
-            :delay="motionConfig.delay"
-            :iteration="motionConfig.iteration"
-            :timing-function="motionConfig.timingFunction"
-            :direction="motionConfig.direction"
-            :color="motionConfig.color"
-            :opacity="motionConfig.opacity"
-            :translate-x="motionConfig.translateX"
-            :translate-y="motionConfig.translateY"
-            :scale="motionConfig.scale"
-            :rotate="motionConfig.rotate"
-            :blur="motionConfig.blur"
-            :shadow="motionConfig.shadow"
-            :glow="motionConfig.glow"
-            :loop-speed="motionConfig.loopSpeed"
-            :blink-frequency="motionConfig.blinkFrequency"
-            :border-width="motionConfig.borderWidth"
-            :amplitude="motionConfig.amplitude"
-            :scan-speed="motionConfig.scanSpeed"
-            :ripple-radius="motionConfig.rippleRadius"
+            :speed="previewSpeed"
+            @replay="replayPreview"
+            @toggle="togglePreview"
+            @change-speed="setPreviewSpeed"
           />
-        </section>
+        </div>
 
         <section v-show="activeWorkspaceView === 'code'" class="motion-export" role="tabpanel">
           <CodeMirrorViewer :code="htmlCssCode" language="html" />
@@ -219,7 +226,7 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
 import { Upload } from "@element-plus/icons-vue";
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, resolveComponent, watch } from "vue";
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, resolveComponent, watch } from "vue";
 import { basicMotions } from "@/data/basicMotions";
 import {
   generateBasicMotionHtmlCss,
@@ -231,6 +238,7 @@ import type { SvgPreviewAsset } from "@/types/svgFlow";
 import { readSvgPreviewFile } from "@/utils/svgFlow";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
+import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
 
 type MotionEditorConfig = BasicMotionConfig;
@@ -242,6 +250,7 @@ const activeCategory = ref<"全部" | MotionCategory>("全部");
 const selectedMotionId = ref(basicMotions.some((motion) => motion.id === props.initialMotionId) ? props.initialMotionId! : basicMotions[0].id);
 const previewKey = ref(0);
 const previewPlaying = ref(true);
+const previewSpeed = ref(1);
 const previewCapture = ref<HTMLElement>();
 const svgAsset = ref<SvgPreviewAsset>();
 const svgFileInput = ref<HTMLInputElement>();
@@ -270,8 +279,8 @@ const previewStyle = computed(() => ({
   borderColor: motionConfig.color,
   boxShadow: `0 0 ${motionConfig.shadow}px rgba(0,0,0,0.8), 0 0 ${motionConfig.glow}px ${motionConfig.color}`,
   color: motionConfig.color,
-  animationDuration: `${selectedMotion.value.previewType === "blink" ? 1 / motionConfig.blinkFrequency : motionConfig.duration / motionConfig.loopSpeed}s`,
-  animationDelay: `${motionConfig.delay}s`,
+  animationDuration: `${(selectedMotion.value.previewType === "blink" ? 1 / motionConfig.blinkFrequency : motionConfig.duration / motionConfig.loopSpeed) / previewSpeed.value}s`,
+  animationDelay: `${motionConfig.delay / previewSpeed.value}s`,
   animationIterationCount: motionConfig.iteration,
   animationTimingFunction: motionConfig.timingFunction,
   animationDirection: motionConfig.direction,
@@ -283,8 +292,8 @@ const rippleStyle = computed(() => ({
   width: `${motionConfig.rippleRadius}px`,
   height: `${motionConfig.rippleRadius}px`,
   borderColor: motionConfig.color,
-  animationDuration: `${motionConfig.duration / motionConfig.loopSpeed}s`,
-  animationDelay: `${motionConfig.delay}s`,
+  animationDuration: `${motionConfig.duration / motionConfig.loopSpeed / previewSpeed.value}s`,
+  animationDelay: `${motionConfig.delay / previewSpeed.value}s`,
   animationIterationCount: motionConfig.iteration,
   animationTimingFunction: motionConfig.timingFunction,
   animationDirection: motionConfig.direction
@@ -292,8 +301,8 @@ const rippleStyle = computed(() => ({
 
 const scanStyle = computed(() => ({
   background: motionConfig.color,
-  animationDuration: `${motionConfig.scanSpeed}s`,
-  animationDelay: `${motionConfig.delay}s`,
+  animationDuration: `${motionConfig.scanSpeed / previewSpeed.value}s`,
+  animationDelay: `${motionConfig.delay / previewSpeed.value}s`,
   animationIterationCount: motionConfig.iteration,
   animationTimingFunction: motionConfig.timingFunction,
   animationDirection: motionConfig.direction
@@ -347,6 +356,39 @@ function resetConfig(): void {
   Object.assign(motionConfig, createDefaultConfig());
   previewKey.value += 1;
   previewPlaying.value = true;
+  previewSpeed.value = 1;
+}
+
+function replayPreview(): void {
+  previewPlaying.value = true;
+  previewKey.value += 1;
+  void nextTick(() => {
+    previewCapture.value?.querySelectorAll("svg").forEach((svg) => {
+      const animatedSvg = svg as SVGSVGElement & { setCurrentTime?: (seconds: number) => void };
+      animatedSvg.setCurrentTime?.(0);
+    });
+    applySvgPlaybackState();
+  });
+}
+
+function togglePreview(): void {
+  previewPlaying.value = !previewPlaying.value;
+  void nextTick(applySvgPlaybackState);
+}
+
+function setPreviewSpeed(speed: number): void {
+  previewSpeed.value = speed;
+}
+
+function applySvgPlaybackState(): void {
+  previewCapture.value?.querySelectorAll("svg").forEach((svg) => {
+    const animatedSvg = svg as SVGSVGElement & {
+      pauseAnimations?: () => void;
+      unpauseAnimations?: () => void;
+    };
+    if (previewPlaying.value) animatedSvg.unpauseAnimations?.();
+    else animatedSvg.pauseAnimations?.();
+  });
 }
 
 function handleGlobalSearch(event: Event): void {
@@ -757,6 +799,13 @@ const NumberControl = defineComponent({
   grid-area: 1 / 1;
 }
 
+.preview-surface {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .motion-stage {
   position: relative;
   min-height: 0;
@@ -764,7 +813,7 @@ const NumberControl = defineComponent({
   display: grid;
   place-items: center;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-lg);
+  border-radius: var(--dm-radius-lg) var(--dm-radius-lg) 0 0;
   overflow: hidden;
   background-color: #0d0d0d;
   box-shadow: none;

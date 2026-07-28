@@ -37,7 +37,26 @@
 
     <el-dialog v-model="previewVisible" width="760px" class="motion-preview-dialog" append-to-body>
       <template #header><div class="dialog-title"><strong>{{ previewMotion?.name }}</strong><span>HTML 实时预览</span></div></template>
-      <div class="dialog-preview"><iframe v-if="previewMotion?.artifact" :srcdoc="previewMotion.artifact.html" title="已保存动效预览" sandbox="" /></div>
+      <div class="dialog-preview-surface">
+        <div class="dialog-preview">
+          <iframe
+            v-if="previewMotion?.artifact"
+            ref="previewFrame"
+            :key="previewFrameKey"
+            :srcdoc="previewMotion.artifact.html"
+            title="已保存动效预览"
+            sandbox="allow-same-origin"
+            @load="applyFramePlaybackState"
+          />
+        </div>
+        <PreviewPlaybackControls
+          :playing="previewPlaying"
+          :speed="previewSpeed"
+          @replay="replayPreview"
+          @toggle="togglePreview"
+          @change-speed="setPreviewSpeed"
+        />
+      </div>
       <template #footer>
         <el-button @click="previewVisible = false">关闭</el-button>
         <el-button :disabled="!previewMotion?.artifact" @click="previewMotion && downloadImage(previewMotion)">下载图片</el-button>
@@ -52,11 +71,16 @@ import { onMounted, ref } from "vue";
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import type { SavedMotion } from "@/types/motion";
 import { SVG_FLOW_OPEN_KEY } from "@/utils/svgFlow";
+import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 
 const store = useMyMotionStore();
 const emit = defineEmits<{ editSvgFlow: [] }>();
 const previewVisible = ref(false);
 const previewMotion = ref<SavedMotion>();
+const previewFrame = ref<HTMLIFrameElement>();
+const previewFrameKey = ref(0);
+const previewPlaying = ref(true);
+const previewSpeed = ref(1);
 
 onMounted(() => {
   store.loadFromLocal();
@@ -80,7 +104,43 @@ function editSvgFlow(motion: SavedMotion): void {
 function openPreview(motion: SavedMotion): void {
   if (!motion.artifact) return;
   previewMotion.value = motion;
+  previewPlaying.value = true;
+  previewSpeed.value = 1;
+  previewFrameKey.value += 1;
   previewVisible.value = true;
+}
+
+function togglePreview(): void {
+  previewPlaying.value = !previewPlaying.value;
+  applyFramePlaybackState();
+}
+
+function setPreviewSpeed(speed: number): void {
+  previewSpeed.value = speed;
+  applyFramePlaybackState();
+}
+
+function replayPreview(): void {
+  previewPlaying.value = true;
+  previewFrameKey.value += 1;
+}
+
+function applyFramePlaybackState(): void {
+  const document = previewFrame.value?.contentDocument;
+  if (!document) return;
+  document.getAnimations().forEach((animation) => {
+    animation.playbackRate = previewSpeed.value;
+    if (previewPlaying.value) animation.play();
+    else animation.pause();
+  });
+  document.querySelectorAll("svg").forEach((svg) => {
+    const animatedSvg = svg as SVGSVGElement & {
+      pauseAnimations?: () => void;
+      unpauseAnimations?: () => void;
+    };
+    if (previewPlaying.value) animatedSvg.unpauseAnimations?.();
+    else animatedSvg.pauseAnimations?.();
+  });
 }
 
 function downloadHtml(motion: SavedMotion): void {
@@ -271,11 +331,16 @@ function downloadBlob(blob: Blob, fileName: string): void {
   font-size: 12px;
 }
 
+.dialog-preview-surface {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .dialog-preview {
-  height: 420px;
+  height: 390px;
   overflow: hidden;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-md);
+  border-radius: var(--dm-radius-md) var(--dm-radius-md) 0 0;
   background: #000;
 }
 
