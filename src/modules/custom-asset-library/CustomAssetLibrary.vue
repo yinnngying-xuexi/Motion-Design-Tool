@@ -609,7 +609,7 @@ ${htmlCssCode.value}
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 116px;
+  grid-template-columns: minmax(0, 1fr) var(--dm-param-value-width);
   gap: 10px;
   align-items: center;
 }

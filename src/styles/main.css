@@ -20,6 +20,8 @@
   --dm-surface-soft: #101010;
   --dm-surface-raised: #151515;
   --dm-control: #191919;
+  --dm-param-value-width: 60px;
+  --dm-slider-thumb-size: 16px;
   --dm-on-primary: #101010;
   --dm-hairline: rgba(255, 255, 255, 0.075);
   --dm-hairline-strong: rgba(255, 255, 255, 0.14);
@@ -657,6 +659,11 @@ textarea {
   --el-slider-runway-bg-color: rgba(237, 237, 237, 0.16);
   --el-slider-stop-bg-color: var(--dm-tertiary);
   padding-inline: 12px;
+}
+
+.el-slider__button {
+  width: var(--dm-slider-thumb-size);
+  height: var(--dm-slider-thumb-size);
 }
 
 .el-scrollbar__thumb {

@@ -961,7 +961,7 @@ async function restoreSvgFlow(): Promise<void> {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px;
+  grid-template-columns: minmax(0, 1fr) var(--dm-param-value-width);
   gap: 10px;
   align-items: center;
 }
@@ -971,8 +971,8 @@ async function restoreSvgFlow(): Promise<void> {
 }
 
 .number-row :deep(.el-input-number) {
-  width: 72px;
-  max-width: 72px;
+  width: var(--dm-param-value-width);
+  max-width: var(--dm-param-value-width);
 }
 
 .color-row {

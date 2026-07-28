@@ -31,7 +31,7 @@
             :aria-label="`打开${motion.name}编辑器`"
             @mouseenter="playMotion(motion.id)"
             @mouseleave="stopMotion(motion.id)"
-            @focus="playMotion(motion.id)"
+            @focus="playMotionOnKeyboardFocus($event, motion.id)"
             @blur="stopMotion(motion.id)"
             @click="openResult(motion)"
             @keyup.enter="openResult(motion)"
@@ -205,6 +205,13 @@ function playMotion(id: string): void {
   requestAnimationFrame(() => {
     previewingId.value = id;
   });
+}
+
+function playMotionOnKeyboardFocus(event: FocusEvent, id: string): void {
+  const target = event.currentTarget;
+  if (target instanceof HTMLElement && target.matches(":focus-visible")) {
+    playMotion(id);
+  }
 }
 
 function stopMotion(id: string): void {

@@ -214,7 +214,7 @@ const NumberControl = defineComponent({
 
 :deep(.control-row) {
   display: grid;
-  grid-template-columns: 1fr 76px;
+  grid-template-columns: 1fr var(--dm-param-value-width);
   gap: 10px;
   align-items: center;
 }

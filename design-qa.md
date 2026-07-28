@@ -1,3 +1,39 @@
+**全局参数控件尺寸统一 Design QA（2026-07-28）**
+
+- Source annotations:
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-ba35b628-dbb3-47b1-a7e7-f4a5bca830ed.png`。
+  - `C:\Users\asus\AppData\Local\Temp\codex-clipboard-c4196a62-554d-49c7-a738-fff90054d5a5.png`。
+- Implementation URL: `http://127.0.0.1:5173/`。
+
+**Findings**
+
+- 数值输入框统一收窄为 `60px`。
+- 滑杆圆形手柄统一缩小为 `16 × 16px`，保留原有点击热区，避免降低可操作性。
+- 基础动效、装饰组件、自定义素材和图标底座参数组件均使用同一全局尺寸变量。
+- Edge 读取基础动效和装饰组件计算尺寸一致：输入框 `60px`，滑杆手柄 `16 × 16px`。
+- 生产构建通过；仅保留既有的主包超过 500 kB 提示。
+
+final result: passed
+
+---
+
+**首页卡片单击进入修复 Design QA（2026-07-28）**
+
+- Implementation URL: `http://127.0.0.1:5173/`。
+- Viewport: Edge 本地开发页。
+- State: 首页第一张“淡入”卡片，从未获得焦点的初始状态执行真实鼠标单击。
+
+**Findings**
+
+- 原因是第一次按下鼠标时触发卡片焦点事件，焦点事件重建了预览子节点，导致浏览器取消同一次鼠标按下与松开之间的点击。
+- 卡片焦点预览现仅在 `:focus-visible` 成立时触发，即保留键盘导航预览，不再干扰鼠标点击。
+- Edge 实测第一次点击只产生 `1` 次 click 事件，首页立即进入“淡入”编辑页。
+- 生产构建通过；仅保留既有的主包超过 500 kB 提示。
+
+final result: passed
+
+---
+
 **路径流光合并 Design QA（2026-07-27）**
 
 - Source annotation: `C:\Users\asus\AppData\Local\Temp\codex-clipboard-a3352f52-3bd4-4b56-8e85-8547654b4cfc.png`。
