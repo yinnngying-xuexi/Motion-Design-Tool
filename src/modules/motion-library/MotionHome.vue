@@ -46,8 +46,15 @@
                 :duration="motion.durationValue"
                 :iteration="motion.iteration"
                 :timing-function="motion.timingFunction"
-                color="#0070F3"
-                :glow="14"
+                :direction="motion.previewConfig.direction"
+                :color="motion.previewConfig.color ?? '#0070F3'"
+                :min-opacity="motion.previewConfig.minOpacity"
+                :max-opacity="motion.previewConfig.maxOpacity"
+                :min-scale="motion.previewConfig.minScale"
+                :max-scale="motion.previewConfig.maxScale"
+                :offset-y="motion.previewConfig.offsetY"
+                :glow-peak="motion.previewConfig.glowPeak ?? 14"
+                :glow-strength="motion.previewConfig.glowStrength"
               />
               <div
                 v-else
@@ -93,6 +100,7 @@ import { basicMotions } from "@/data/basicMotions";
 import { decorationEffects } from "@/data/decorationEffects";
 import { generateDecorationCss, generateDecorationMarkup } from "@/generators/decorationGenerator";
 import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
+import type { BasicMotionConfig } from "@/types/motion";
 
 interface HomeMotion {
   kind: "basic" | "decoration";
@@ -106,6 +114,7 @@ interface HomeMotion {
   durationValue: number;
   iteration: string;
   timingFunction: string;
+  previewConfig: Partial<BasicMotionConfig>;
   previewHtml: string;
   previewScale: string;
 }
@@ -140,6 +149,7 @@ const featuredMotions: HomeMotion[] = motionMeta.map((item) => {
     durationValue: source.duration,
     iteration: source.iteration,
     timingFunction: source.timingFunction,
+    previewConfig: source.defaultConfig,
     previewHtml: "",
     previewScale: "1"
   };
@@ -159,6 +169,7 @@ const searchableBasicMotions: HomeMotion[] = basicMotions.map((motion) => {
     durationValue: motion.duration,
     iteration: motion.iteration,
     timingFunction: motion.timingFunction,
+    previewConfig: motion.defaultConfig,
     previewHtml: "",
     previewScale: "1"
   };
@@ -176,6 +187,7 @@ const searchableDecorationMotions: HomeMotion[] = decorationEffects.map((effect)
   durationValue: Number(effect.defaultParams.duration ?? 2.4),
   iteration: "infinite",
   timingFunction: "linear",
+  previewConfig: {},
   previewHtml: `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`,
   previewScale: decorationPreviewScale(effect.previewType)
 }));

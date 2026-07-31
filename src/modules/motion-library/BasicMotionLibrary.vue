@@ -37,8 +37,15 @@
                 :duration="motion.duration"
                 :iteration="motion.iteration"
                 :timing-function="motion.timingFunction"
-                color="#0070F3"
-                :glow="8"
+                :direction="motion.defaultConfig.direction"
+                :color="motion.defaultConfig.color ?? '#0070F3'"
+                :min-opacity="motion.defaultConfig.minOpacity"
+                :max-opacity="motion.defaultConfig.maxOpacity"
+                :min-scale="motion.defaultConfig.minScale"
+                :max-scale="motion.defaultConfig.maxScale"
+                :offset-y="motion.defaultConfig.offsetY"
+                :glow-peak="motion.defaultConfig.glowPeak ?? 8"
+                :glow-strength="motion.defaultConfig.glowStrength"
               />
             </div>
             <div class="motion-card-copy">
@@ -85,8 +92,8 @@
         </div>
         <div class="workspace-actions">
           <el-button size="small" @click="triggerSvgImport">
-            <el-icon><Upload /></el-icon>
-            导入动效
+            <el-icon><Download /></el-icon>
+            导入 SVG
           </el-button>
           <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
           <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
@@ -98,53 +105,63 @@
           <section
             ref="previewCapture"
             class="motion-stage"
-            :class="{ paused: !previewPlaying }"
+            :class="{ paused: previewState !== 'playing' }"
             :key="`${selectedMotion.id}-${previewKey}`"
           >
-            <div
-              v-if="svgAsset"
-              class="screen-card imported-svg-only"
-              :class="[`preview-${selectedMotion.previewType}`, `motion-${selectedMotion.id}`]"
-              :style="previewStyle"
-            >
-              <span v-if="selectedMotion.previewType === 'ripple'" class="ripple" :style="rippleStyle"></span>
-              <span v-if="selectedMotion.previewType === 'scan'" class="scan-line" :style="scanStyle"></span>
-              <div class="imported-svg" v-html="svgAsset.markup"></div>
-            </div>
             <MotionPreviewVisual
-              v-else
               class="editor-motion-visual"
               :motion-id="selectedMotion.id"
               :alt="`${selectedMotion.name}动效预览`"
-              :playing="previewPlaying"
-              :duration="motionConfig.duration / previewSpeed"
-              :delay="motionConfig.delay / previewSpeed"
-              :iteration="motionConfig.iteration"
+              :playing="previewAnimationActive"
+              :duration="previewMotionDuration"
+              :delay="motionConfig.delay"
+              :iteration="previewIteration"
               :timing-function="motionConfig.timingFunction"
               :direction="motionConfig.direction"
               :color="motionConfig.color"
-              :opacity="motionConfig.opacity"
-              :translate-x="motionConfig.translateX"
-              :translate-y="motionConfig.translateY"
-              :scale="motionConfig.scale"
-              :rotate="motionConfig.rotate"
-              :blur="motionConfig.blur"
-              :shadow="motionConfig.shadow"
-              :glow="motionConfig.glow"
-              :loop-speed="motionConfig.loopSpeed"
-              :blink-frequency="motionConfig.blinkFrequency * previewSpeed"
+              :start-opacity="motionConfig.startOpacity"
+              :end-opacity="motionConfig.endOpacity"
+              :min-opacity="motionConfig.minOpacity"
+              :max-opacity="motionConfig.maxOpacity"
+              :start-scale="motionConfig.startScale"
+              :end-scale="motionConfig.endScale"
+              :min-scale="motionConfig.minScale"
+              :max-scale="motionConfig.maxScale"
+              :start-blur="motionConfig.startBlur"
+              :offset-x="motionConfig.offsetX"
+              :offset-y="motionConfig.offsetY"
+              :rotation-angle="motionConfig.rotationAngle"
+              :emphasis-scale="motionConfig.emphasisScale"
+              :rebound-scale="motionConfig.reboundScale"
+              :glow-base="motionConfig.glowBase"
+              :glow-peak="motionConfig.glowPeak"
+              :glow-strength="motionConfig.glowStrength"
+              :blink-frequency="motionConfig.blinkFrequency"
               :border-width="motionConfig.borderWidth"
-              :amplitude="motionConfig.amplitude"
-              :scan-speed="motionConfig.scanSpeed / previewSpeed"
-              :ripple-radius="motionConfig.rippleRadius"
+              :scan-speed="motionConfig.scanSpeed"
+              :scan-direction="motionConfig.scanDirection"
+              :scan-line-width="motionConfig.scanLineWidth"
+              :scan-length="motionConfig.scanLength"
+              :ripple-start-radius="motionConfig.rippleStartRadius"
+              :ripple-end-radius="motionConfig.rippleEndRadius"
+              :ripple-count="motionConfig.rippleCount"
+              :ripple-interval="motionConfig.rippleInterval"
+              :flow-length="motionConfig.flowLength"
+              :flow-head-opacity="motionConfig.flowHeadOpacity"
+              :flow-tail-opacity="motionConfig.flowTailOpacity"
+              :flow-head-width="motionConfig.flowHeadWidth"
+              :flow-tail-width="motionConfig.flowTailWidth"
+              :svg-markup="svgAsset?.markup"
+              :svg-color-mode="svgStyle.colorMode"
+              :svg-fill-color="svgStyle.fillColor"
+              :svg-stroke-color="svgStyle.strokeColor"
+              :svg-stroke-width="svgStyle.strokeWidth"
+              :svg-opacity="svgStyle.opacity"
             />
           </section>
           <PreviewPlaybackControls
-            :playing="previewPlaying"
-            :speed="previewSpeed"
-            @replay="replayPreview"
-            @toggle="togglePreview"
-            @change-speed="setPreviewSpeed"
+            :duration="previewMotionDuration"
+            @replay="restartTimelinePlayback"
           />
         </div>
 
@@ -163,60 +180,54 @@
       </header>
 
       <el-scrollbar class="param-scroll">
-        <div class="param-section">
-          <h3>基础参数</h3>
-          <NumberControl label="动效时长 duration" v-model="motionConfig.duration" :min="0.1" :max="10" :step="0.1" unit="s" />
-          <NumberControl label="延迟时间 delay" v-model="motionConfig.delay" :min="0" :max="5" :step="0.1" unit="s" />
-          <FieldBlock label="播放次数 iteration-count">
-            <el-select v-model="motionConfig.iteration">
-              <el-option label="1 次" value="1" />
-              <el-option label="2 次" value="2" />
-              <el-option label="3 次" value="3" />
-              <el-option label="无限循环" value="infinite" />
-            </el-select>
-          </FieldBlock>
-          <FieldBlock label="播放方向 direction">
-            <el-select v-model="motionConfig.direction">
-              <el-option label="normal" value="normal" />
-              <el-option label="reverse" value="reverse" />
-              <el-option label="alternate" value="alternate" />
-              <el-option label="alternate-reverse" value="alternate-reverse" />
-            </el-select>
-          </FieldBlock>
-          <FieldBlock label="缓动曲线 timing-function">
-            <el-select v-model="motionConfig.timingFunction">
-              <el-option label="linear" value="linear" />
-              <el-option label="ease" value="ease" />
-              <el-option label="ease-in" value="ease-in" />
-              <el-option label="ease-out" value="ease-out" />
-              <el-option label="ease-in-out" value="ease-in-out" />
-            </el-select>
-          </FieldBlock>
-          <NumberControl label="透明度 opacity" v-model="motionConfig.opacity" :min="0.1" :max="1" :step="0.05" />
-          <NumberControl label="横向位移 translateX" v-model="motionConfig.translateX" :min="-160" :max="160" :step="1" unit="px" />
-          <NumberControl label="纵向位移 translateY" v-model="motionConfig.translateY" :min="-160" :max="160" :step="1" unit="px" />
-          <NumberControl label="缩放 scale" v-model="motionConfig.scale" :min="0.2" :max="2.5" :step="0.05" />
-          <NumberControl label="旋转 rotate" v-model="motionConfig.rotate" :min="-360" :max="360" :step="1" unit="deg" />
-          <NumberControl label="模糊 blur" v-model="motionConfig.blur" :min="0" :max="24" :step="1" unit="px" />
-          <NumberControl label="阴影 shadow" v-model="motionConfig.shadow" :min="0" :max="64" :step="1" unit="px" />
+        <div v-for="group in selectedMotion.paramGroups" :key="group.id" class="param-section">
+          <h3>{{ group.title }}</h3>
+          <template v-for="param in group.params" :key="param.key">
+            <NumberControl
+              v-if="param.type === 'number'"
+              :label="param.label"
+              :model-value="numberValue(param.key)"
+              :min="param.min"
+              :max="param.max"
+              :step="param.step"
+              :unit="param.unit"
+              @update:model-value="setMotionParam(param.key, $event)"
+              @commit="commitMotionParam"
+            />
+            <FieldBlock v-else-if="param.type === 'color'" :label="param.label">
+              <div class="color-row">
+                <el-color-picker
+                  :model-value="stringValue(param.key)"
+                  @update:model-value="setMotionParam(param.key, $event || '#0070F3')"
+                />
+                <el-input
+                  :model-value="stringValue(param.key)"
+                  @update:model-value="setMotionParam(param.key, $event)"
+                />
+              </div>
+            </FieldBlock>
+            <FieldBlock v-else :label="param.label">
+              <el-select
+                :model-value="motionConfig[param.key]"
+                @update:model-value="setCommittedMotionParam(param.key, $event)"
+              >
+                <el-option
+                  v-for="option in param.options"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </FieldBlock>
+          </template>
         </div>
 
-        <div class="param-section">
-          <h3>动效细节</h3>
-          <NumberControl label="发光强度 glow" v-model="motionConfig.glow" :min="0" :max="64" :step="1" unit="px" />
-          <NumberControl label="闪烁频率" v-model="motionConfig.blinkFrequency" :min="0.2" :max="8" :step="0.1" unit="Hz" />
-          <NumberControl label="循环速度" v-model="motionConfig.loopSpeed" :min="0.2" :max="4" :step="0.1" />
-          <NumberControl label="动效幅度" v-model="motionConfig.amplitude" :min="0" :max="100" :step="1" />
-          <FieldBlock label="颜色 color">
-            <div class="color-row">
-              <el-color-picker v-model="motionConfig.color" />
-              <el-input v-model="motionConfig.color" />
-            </div>
-          </FieldBlock>
-          <NumberControl label="边框宽度 border-width" v-model="motionConfig.borderWidth" :min="0" :max="12" :step="1" unit="px" />
-          <NumberControl label="扫描线速度" v-model="motionConfig.scanSpeed" :min="0.2" :max="8" :step="0.1" unit="s" />
-          <NumberControl label="扩散半径" v-model="motionConfig.rippleRadius" :min="20" :max="260" :step="1" unit="px" />
-        </div>
+        <SvgStylePanel
+          v-if="svgAsset"
+          :model-value="svgStyle"
+          :primary-color="svgAsset.primaryColor"
+          @update:model-value="updateSvgStyle"
+        />
       </el-scrollbar>
     </aside>
 
@@ -225,7 +236,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
-import { Upload } from "@element-plus/icons-vue";
+import { Download } from "@element-plus/icons-vue";
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, resolveComponent, watch } from "vue";
 import { basicMotions } from "@/data/basicMotions";
 import {
@@ -233,13 +244,18 @@ import {
   type BasicMotionConfig
 } from "@/generators/basicMotionGenerator";
 import { useMyMotionStore } from "@/stores/myMotionStore";
-import type { MotionCategory } from "@/types/motion";
-import type { SvgPreviewAsset } from "@/types/svgFlow";
-import { readSvgPreviewFile } from "@/utils/svgFlow";
+import type {
+  BasicMotionParamKey,
+  BasicMotionTemplate,
+  MotionCategory
+} from "@/types/motion";
+import type { SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
+import { createDefaultSvgStyleConfig, readSvgPreviewFile } from "@/utils/svgFlow";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
+import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
 
 type MotionEditorConfig = BasicMotionConfig;
 
@@ -249,12 +265,20 @@ const keyword = ref("");
 const activeCategory = ref<"全部" | MotionCategory>("全部");
 const selectedMotionId = ref(basicMotions.some((motion) => motion.id === props.initialMotionId) ? props.initialMotionId! : basicMotions[0].id);
 const previewKey = ref(0);
-const previewPlaying = ref(true);
-const previewSpeed = ref(1);
+type PreviewState = "idle" | "playing" | "paused" | "ended";
+const previewState = ref<PreviewState>("idle");
+const previewCurrentTime = ref(0);
+const previewLooping = ref(false);
 const previewCapture = ref<HTMLElement>();
 const svgAsset = ref<SvgPreviewAsset>();
+const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
 const svgFileInput = ref<HTMLInputElement>();
 const activeWorkspaceView = ref<"preview" | "code">("preview");
+const motionConfigMemory = new Map<string, MotionEditorConfig>();
+let previewFrameId = 0;
+let previewLastTick = 0;
+let parameterReplayTimer = 0;
+let suppressTimelineRestart = false;
 
 const categories = computed(() => ["全部", ...new Set(basicMotions.map((motion) => motion.category))] as Array<"全部" | MotionCategory>);
 
@@ -269,44 +293,21 @@ const filteredMotions = computed(() =>
 
 const selectedMotion = computed(() => basicMotions.find((motion) => motion.id === selectedMotionId.value) ?? basicMotions[0]);
 const motionConfig = reactive<MotionEditorConfig>(createDefaultConfig());
-const htmlCssCode = computed(() => generateBasicMotionHtmlCss(selectedMotion.value, motionConfig, svgAsset.value));
-
-const previewStyle = computed(() => ({
-  opacity: motionConfig.opacity,
-  transform: `translate(${motionConfig.translateX}px, ${motionConfig.translateY}px) scale(${motionConfig.scale}) rotate(${motionConfig.rotate}deg)`,
-  filter: `blur(${motionConfig.blur}px)`,
-  borderWidth: `${motionConfig.borderWidth}px`,
-  borderColor: motionConfig.color,
-  boxShadow: `0 0 ${motionConfig.shadow}px rgba(0,0,0,0.8), 0 0 ${motionConfig.glow}px ${motionConfig.color}`,
-  color: motionConfig.color,
-  animationDuration: `${(selectedMotion.value.previewType === "blink" ? 1 / motionConfig.blinkFrequency : motionConfig.duration / motionConfig.loopSpeed) / previewSpeed.value}s`,
-  animationDelay: `${motionConfig.delay / previewSpeed.value}s`,
-  animationIterationCount: motionConfig.iteration,
-  animationTimingFunction: motionConfig.timingFunction,
-  animationDirection: motionConfig.direction,
-  "--motion-color": motionConfig.color,
-  "--motion-amplitude": `${motionConfig.amplitude}px`
-}));
-
-const rippleStyle = computed(() => ({
-  width: `${motionConfig.rippleRadius}px`,
-  height: `${motionConfig.rippleRadius}px`,
-  borderColor: motionConfig.color,
-  animationDuration: `${motionConfig.duration / motionConfig.loopSpeed / previewSpeed.value}s`,
-  animationDelay: `${motionConfig.delay / previewSpeed.value}s`,
-  animationIterationCount: motionConfig.iteration,
-  animationTimingFunction: motionConfig.timingFunction,
-  animationDirection: motionConfig.direction
-}));
-
-const scanStyle = computed(() => ({
-  background: motionConfig.color,
-  animationDuration: `${motionConfig.scanSpeed / previewSpeed.value}s`,
-  animationDelay: `${motionConfig.delay / previewSpeed.value}s`,
-  animationIterationCount: motionConfig.iteration,
-  animationTimingFunction: motionConfig.timingFunction,
-  animationDirection: motionConfig.direction
-}));
+const htmlCssCode = computed(() => generateBasicMotionHtmlCss(selectedMotion.value, motionConfig, svgAsset.value, svgStyle));
+const previewAnimationActive = computed(() => previewState.value !== "idle");
+const previewMotionDuration = computed(() => {
+  if (selectedMotion.value.id === "alert-blink") return 1 / Math.max(motionConfig.blinkFrequency, 0.1);
+  if (selectedMotion.value.id === "scan-line") return motionConfig.scanSpeed;
+  return motionConfig.duration;
+});
+const previewTotalTime = computed(() => Math.max(0.01, motionConfig.delay + previewMotionDuration.value));
+const isConfiguredLoop = computed(() =>
+  ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate"].includes(selectedMotion.value.id)
+);
+const previewIteration = computed(() => isConfiguredLoop.value ? "infinite" : "1");
+const usesCommittedParameterReplay = computed(() =>
+  ["slide-up", "slide-left", "scale-in", "breath", "float", "soft-blink", "glow-pulse", "slow-rotate"].includes(selectedMotion.value.id)
+);
 
 onMounted(() => {
   store.loadFromLocal();
@@ -314,79 +315,217 @@ onMounted(() => {
   window.addEventListener("datamotion:save", saveSelected);
   window.addEventListener("datamotion:export", downloadHtml);
   window.addEventListener("datamotion:search", handleGlobalSearch);
+  void nextTick(restartTimelinePlayback);
 });
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(previewFrameId);
+  window.clearTimeout(parameterReplayTimer);
   window.removeEventListener("datamotion:import-svg", triggerSvgImport);
   window.removeEventListener("datamotion:save", saveSelected);
   window.removeEventListener("datamotion:export", downloadHtml);
   window.removeEventListener("datamotion:search", handleGlobalSearch);
 });
 
-watch(selectedMotionId, () => {
-  resetConfig();
+watch(selectedMotionId, async (nextId, previousId) => {
+  if (previousId) motionConfigMemory.set(previousId, { ...motionConfig });
+  const nextTemplate = basicMotions.find((motion) => motion.id === nextId) ?? basicMotions[0];
+  suppressTimelineRestart = true;
+  Object.assign(motionConfig, motionConfigMemory.get(nextId) ?? createDefaultConfig(nextTemplate));
+  previewKey.value += 1;
+  stopTimelineAtStart();
+  await nextTick();
+  suppressTimelineRestart = false;
+  restartTimelinePlayback();
 });
 
-function createDefaultConfig(): MotionEditorConfig {
-  return {
-    duration: selectedMotion.value?.duration ?? 1.2,
+watch(motionConfig, () => {
+  motionConfigMemory.set(selectedMotionId.value, { ...motionConfig });
+  if (!suppressTimelineRestart && !usesCommittedParameterReplay.value) scheduleParameterReplay();
+}, { deep: true });
+
+function createDefaultConfig(template: BasicMotionTemplate = selectedMotion.value): MotionEditorConfig {
+  const defaults: MotionEditorConfig = {
+    duration: template?.duration ?? 1.2,
     delay: 0,
-    iteration: selectedMotion.value?.iteration === "3" ? "3" : selectedMotion.value?.iteration === "1" ? "1" : "infinite",
+    iteration: template?.iteration === "3" ? "3" : template?.iteration === "1" ? "1" : "infinite",
     direction: "normal",
-    timingFunction: (selectedMotion.value?.timingFunction as MotionEditorConfig["timingFunction"]) ?? "ease-in-out",
-    opacity: 1,
-    translateX: 0,
-    translateY: 0,
-    scale: 1,
-    rotate: 0,
-    blur: 0,
-    shadow: 24,
-    glow: 18,
-    blinkFrequency: 1,
-    loopSpeed: 1,
-    amplitude: 24,
+    timingFunction: (template?.timingFunction as MotionEditorConfig["timingFunction"]) ?? "ease-in-out",
     color: "#0070F3",
+    startOpacity: 0,
+    endOpacity: 1,
+    minOpacity: 0.35,
+    maxOpacity: 1,
+    startScale: 0.72,
+    endScale: 1,
+    minScale: 0.98,
+    maxScale: 1.045,
+    startBlur: 0,
+    offsetX: 48,
+    offsetY: 24,
+    rotationAngle: 360,
+    emphasisScale: 1.12,
+    reboundScale: 0.97,
+    glowBase: 6,
+    glowPeak: 24,
+    glowStrength: 50,
     borderWidth: 1,
-    scanSpeed: 1.8,
-    rippleRadius: 96
+    blinkFrequency: 1,
+    rippleStartRadius: 24,
+    rippleEndRadius: 170,
+    rippleCount: 3,
+    rippleInterval: 0.45,
+    flowLength: 18,
+    flowHeadOpacity: 1,
+    flowTailOpacity: 0,
+    flowHeadWidth: 3.4,
+    flowTailWidth: 0.5,
+    scanSpeed: 2.4,
+    scanDirection: "top-to-bottom",
+    scanLineWidth: 2,
+    scanLength: 100,
+    assetScale: 1,
+    assetOffsetX: 0,
+    assetOffsetY: 0
   };
+  const configured = { ...defaults, ...template.defaultConfig };
+  if (template.id === "glow-pulse" && svgAsset.value?.primaryColor) {
+    configured.color = svgAsset.value.primaryColor;
+  }
+  return configured;
 }
 
 function resetConfig(): void {
   Object.assign(motionConfig, createDefaultConfig());
-  previewKey.value += 1;
-  previewPlaying.value = true;
-  previewSpeed.value = 1;
+  motionConfigMemory.set(selectedMotionId.value, { ...motionConfig });
+  scheduleParameterReplay();
 }
 
-function replayPreview(): void {
-  previewPlaying.value = true;
+function numberValue(key: BasicMotionParamKey): number {
+  return Number(motionConfig[key]);
+}
+
+function stringValue(key: BasicMotionParamKey): string {
+  return String(motionConfig[key]);
+}
+
+function setMotionParam(key: BasicMotionParamKey, value: string | number): void {
+  (motionConfig as unknown as Record<BasicMotionParamKey, string | number>)[key] = value;
+}
+
+function setCommittedMotionParam(key: BasicMotionParamKey, value: string | number): void {
+  setMotionParam(key, value);
+  if (usesCommittedParameterReplay.value) scheduleParameterReplay();
+}
+
+function commitMotionParam(): void {
+  if (usesCommittedParameterReplay.value) scheduleParameterReplay();
+}
+
+function stopTimelineAtStart(): void {
+  cancelAnimationFrame(previewFrameId);
+  previewState.value = "idle";
+  previewCurrentTime.value = 0;
+  previewLastTick = 0;
+}
+
+function scheduleParameterReplay(): void {
+  window.clearTimeout(parameterReplayTimer);
+  parameterReplayTimer = window.setTimeout(() => {
+    restartTimelinePlayback();
+  }, 150);
+}
+
+function restartTimelinePlayback(): void {
+  cancelAnimationFrame(previewFrameId);
+  previewCurrentTime.value = 0;
+  previewState.value = "playing";
   previewKey.value += 1;
   void nextTick(() => {
-    previewCapture.value?.querySelectorAll("svg").forEach((svg) => {
-      const animatedSvg = svg as SVGSVGElement & { setCurrentTime?: (seconds: number) => void };
-      animatedSvg.setCurrentTime?.(0);
-    });
-    applySvgPlaybackState();
+    syncPreviewAnimations(0, true);
+    if (isConfiguredLoop.value) return;
+    startTimelineClock();
   });
 }
 
-function togglePreview(): void {
-  previewPlaying.value = !previewPlaying.value;
-  void nextTick(applySvgPlaybackState);
+function handlePrimaryPlayback(): void {
+  if (previewState.value === "playing") {
+    pauseTimelinePlayback();
+    return;
+  }
+  if (previewState.value === "paused") {
+    continueTimelinePlayback();
+    return;
+  }
+  restartTimelinePlayback();
 }
 
-function setPreviewSpeed(speed: number): void {
-  previewSpeed.value = speed;
+function pauseTimelinePlayback(): void {
+  cancelAnimationFrame(previewFrameId);
+  previewState.value = "paused";
+  void nextTick(() => syncPreviewAnimations(previewCurrentTime.value, false));
 }
 
-function applySvgPlaybackState(): void {
+function continueTimelinePlayback(): void {
+  previewState.value = "playing";
+  void nextTick(() => {
+    syncPreviewAnimations(previewCurrentTime.value, true);
+    startTimelineClock();
+  });
+}
+
+function seekPreview(time: number): void {
+  cancelAnimationFrame(previewFrameId);
+  previewCurrentTime.value = Math.min(previewTotalTime.value, Math.max(0, time));
+  previewState.value = previewCurrentTime.value >= previewTotalTime.value ? "ended" : "paused";
+  void nextTick(() => syncPreviewAnimations(previewCurrentTime.value, false));
+}
+
+function startTimelineClock(): void {
+  cancelAnimationFrame(previewFrameId);
+  previewLastTick = performance.now();
+  previewFrameId = requestAnimationFrame(updateTimelineClock);
+}
+
+function updateTimelineClock(timestamp: number): void {
+  if (previewState.value !== "playing") return;
+  const elapsed = Math.max(0, (timestamp - previewLastTick) / 1000);
+  previewLastTick = timestamp;
+  const nextTime = previewCurrentTime.value + elapsed;
+
+  if (nextTime >= previewTotalTime.value) {
+    if (previewLooping.value) {
+      previewCurrentTime.value = 0;
+      syncPreviewAnimations(0, true);
+      previewFrameId = requestAnimationFrame(updateTimelineClock);
+      return;
+    }
+    previewCurrentTime.value = previewTotalTime.value;
+    previewState.value = "ended";
+    void nextTick(() => syncPreviewAnimations(previewTotalTime.value, false));
+    return;
+  }
+
+  previewCurrentTime.value = nextTime;
+  previewFrameId = requestAnimationFrame(updateTimelineClock);
+}
+
+function syncPreviewAnimations(time: number, shouldPlay: boolean): void {
+  const timeInMilliseconds = time * 1000;
+  previewCapture.value?.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.currentTime = timeInMilliseconds;
+    if (shouldPlay) animation.play();
+    else animation.pause();
+  });
+
   previewCapture.value?.querySelectorAll("svg").forEach((svg) => {
     const animatedSvg = svg as SVGSVGElement & {
+      setCurrentTime?: (seconds: number) => void;
       pauseAnimations?: () => void;
       unpauseAnimations?: () => void;
     };
-    if (previewPlaying.value) animatedSvg.unpauseAnimations?.();
+    animatedSvg.setCurrentTime?.(time);
+    if (shouldPlay) animatedSvg.unpauseAnimations?.();
     else animatedSvg.pauseAnimations?.();
   });
 }
@@ -420,13 +559,23 @@ async function handleSvgUpload(event: Event): Promise<void> {
   const file = input.files?.[0];
   if (!file) return;
   try {
-    svgAsset.value = await readSvgPreviewFile(file);
+    const asset = await readSvgPreviewFile(file);
+    svgAsset.value = asset;
+    Object.assign(svgStyle, createDefaultSvgStyleConfig(asset.primaryColor));
+    const glowConfig = motionConfigMemory.get("glow-pulse");
+    if (glowConfig) motionConfigMemory.set("glow-pulse", { ...glowConfig, color: asset.primaryColor });
+    if (selectedMotion.value.id === "glow-pulse") motionConfig.color = asset.primaryColor;
+    scheduleParameterReplay();
     ElMessage.success("SVG 已导入并应用当前动效");
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "SVG 导入失败");
   } finally {
     input.value = "";
   }
+}
+
+function updateSvgStyle(value: SvgStyleConfig): void {
+  Object.assign(svgStyle, value);
 }
 
 async function copyCode(): Promise<void> {
@@ -467,10 +616,14 @@ const NumberControl = defineComponent({
     step: { type: Number, default: 1 },
     unit: { type: String, default: "" }
   },
-  emits: ["update:modelValue"],
+  emits: ["update:modelValue", "commit"],
   setup(props, { emit }) {
     const update = (value: number | number[] | undefined): void => {
       emit("update:modelValue", Array.isArray(value) ? value[0] : Number(value ?? props.modelValue));
+    };
+    const commit = (value: number | number[] | undefined): void => {
+      update(value);
+      emit("commit");
     };
 
     return () =>
@@ -485,7 +638,8 @@ const NumberControl = defineComponent({
             min: props.min,
             max: props.max,
             step: props.step,
-            onInput: update
+            onInput: update,
+            onChange: commit
           }),
           h(resolveComponent("el-input-number"), {
             modelValue: props.modelValue,
@@ -493,7 +647,7 @@ const NumberControl = defineComponent({
             max: props.max,
             step: props.step,
             controls: false,
-            onChange: update
+            onChange: commit
           })
         ])
       ]);
@@ -996,6 +1150,13 @@ const NumberControl = defineComponent({
   font-weight: 600;
 }
 
+.param-section-note {
+  margin: -2px 0 0;
+  color: var(--dm-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .color-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1050,52 +1211,46 @@ const NumberControl = defineComponent({
   max-width: var(--dm-param-value-width);
 }
 
-.preview-fade span,
 .preview-fade {
   animation-name: motionFade;
 }
 
-.preview-slide span,
 .preview-slide {
   animation-name: motionSlide;
 }
 
-.motion-slide-up span,
 .motion-slide-up {
   animation-name: motionSlideUp;
 }
 
-.motion-slide-left span,
 .motion-slide-left {
   animation-name: motionSlideLeft;
 }
 
-.preview-scale span,
 .preview-scale {
   animation-name: motionScale;
 }
 
-.preview-pulse span,
+.motion-scale-tip {
+  animation-name: motionScaleTip;
+}
+
 .preview-pulse {
   animation-name: motionPulse;
 }
 
-.preview-float span,
 .preview-float {
   animation-name: motionFloat;
 }
 
-.preview-blink span,
 .preview-blink {
   animation-name: motionBlink;
 }
 
-.preview-rotate span,
 .preview-rotate {
   animation-name: motionRotate;
 }
 
-.preview-glow span,
 .preview-glow {
   animation-name: motionGlow;
 }
@@ -1115,46 +1270,58 @@ const NumberControl = defineComponent({
 }
 
 @keyframes motionFade {
-  50% { opacity: 0.35; }
+  from { opacity: var(--motion-start-opacity); filter: blur(var(--motion-start-blur)); }
+  to { opacity: var(--motion-end-opacity); filter: blur(0); }
 }
 
 @keyframes motionSlide {
-  0%, 100% { translate: 0 0; }
-  50% { translate: var(--motion-amplitude) calc(var(--motion-amplitude) * -1); }
+  from { opacity: var(--motion-start-opacity); }
+  to { opacity: 1; }
 }
 
 @keyframes motionSlideUp {
-  0% { translate: 0 16px; opacity: 0.2; }
-  45%, 100% { translate: 0 0; opacity: 1; }
+  from { translate: 0 var(--motion-offset-y); opacity: var(--motion-start-opacity); }
+  to { translate: 0 0; opacity: 1; }
 }
 
 @keyframes motionSlideLeft {
-  0% { translate: -16px 0; opacity: 0.2; }
-  45%, 100% { translate: 0 0; opacity: 1; }
+  from { translate: var(--motion-offset-x) 0; opacity: var(--motion-start-opacity); }
+  to { translate: 0 0; opacity: 1; }
 }
 
 @keyframes motionScale {
-  50% { scale: 1.08; }
+  from { scale: var(--motion-start-scale); opacity: var(--motion-start-opacity); }
+  to { scale: var(--motion-end-scale); opacity: 1; }
+}
+
+@keyframes motionScaleTip {
+  0%, 100% { scale: 1; }
+  48% { scale: var(--motion-emphasis-scale); }
+  72% { scale: var(--motion-rebound-scale); }
 }
 
 @keyframes motionPulse {
-  50% { scale: 1.06; opacity: 0.72; }
+  0%, 100% { scale: var(--motion-min-scale); }
+  50% { scale: 1; }
 }
 
 @keyframes motionFloat {
-  50% { translate: 0 calc(var(--motion-amplitude) * -1); }
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 calc(var(--motion-offset-y) * -1); }
 }
 
 @keyframes motionBlink {
-  50% { opacity: 0.28; }
+  0%, 100% { opacity: var(--motion-max-opacity); }
+  50% { opacity: var(--motion-min-opacity); }
 }
 
 @keyframes motionRotate {
-  to { rotate: 360deg; }
+  to { rotate: var(--motion-rotation); }
 }
 
 @keyframes motionGlow {
-  50% { box-shadow: 0 0 24px var(--motion-color); }
+  0%, 100% { filter: drop-shadow(0 0 var(--motion-glow-base) var(--motion-color)); }
+  50% { filter: drop-shadow(0 0 var(--motion-glow-peak) var(--motion-color)); }
 }
 
 @keyframes motionRipple {

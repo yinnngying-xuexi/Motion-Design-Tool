@@ -9,6 +9,17 @@ export interface SvgFlowSource {
 export interface SvgPreviewAsset {
   fileName: string;
   markup: string;
+  primaryColor: string;
+}
+
+export type SvgColorMode = "original" | "monochrome";
+
+export interface SvgStyleConfig {
+  colorMode: SvgColorMode;
+  fillColor: string;
+  strokeColor: string;
+  strokeWidth: number;
+  opacity: number;
 }
 
 export interface SvgFlowConfig {

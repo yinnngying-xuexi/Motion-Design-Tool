@@ -1,4 +1,4 @@
-import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset } from "@/types/svgFlow";
+import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
 
 const SHAPE_SELECTOR = "path,line,polyline,polygon,circle,ellipse,rect";
 
@@ -29,7 +29,7 @@ export function parseSvgFlowSource(text: string, fileName: string): SvgFlowSourc
   }
 
   svg.querySelectorAll("script,foreignObject,iframe,object,embed").forEach((node) => node.remove());
-  svg.querySelectorAll("*").forEach((element) => {
+  [svg, ...svg.querySelectorAll("*")].forEach((element) => {
     [...element.attributes].forEach((attribute) => {
       const value = attribute.value.trim().toLowerCase();
       if (attribute.name.toLowerCase().startsWith("on") || value.startsWith("javascript:")) {
@@ -64,12 +64,14 @@ function parseSafeSvg(text: string): SVGSVGElement {
   const svg = doc.querySelector("svg");
   if (!svg || doc.querySelector("parsererror")) throw new Error("无法读取这个 SVG 文件");
 
-  svg.querySelectorAll("script,foreignObject,iframe,object,embed").forEach((node) => node.remove());
-  svg.querySelectorAll("*").forEach((element) => {
+  svg.querySelectorAll("script,style,link,foreignObject,iframe,object,embed").forEach((node) => node.remove());
+  [svg, ...svg.querySelectorAll("*")].forEach((element) => {
     [...element.attributes].forEach((attribute) => {
       const name = attribute.name.toLowerCase();
       const value = attribute.value.trim().toLowerCase();
-      if (name.startsWith("on") || value.startsWith("javascript:") || name === "href" && value.startsWith("data:text/html")) {
+      const isExternalReference = (name === "href" || name === "xlink:href") && value && !value.startsWith("#");
+      const hasUnsafeUrl = /url\s*\(\s*(?!['"]?#)/i.test(attribute.value) || /javascript:|expression\s*\(/i.test(attribute.value);
+      if (name.startsWith("on") || isExternalReference || hasUnsafeUrl || value.startsWith("javascript:")) {
         element.removeAttribute(attribute.name);
       }
     });
@@ -80,10 +82,39 @@ function parseSafeSvg(text: string): SVGSVGElement {
   return svg;
 }
 
+function detectPrimarySvgColor(svg: SVGSVGElement): string {
+  const candidates = [...svg.querySelectorAll("*")].flatMap((element) => {
+    const style = element.getAttribute("style") ?? "";
+    const styleFill = style.match(/(?:^|;)\s*fill\s*:\s*([^;]+)/i)?.[1];
+    const styleStroke = style.match(/(?:^|;)\s*stroke\s*:\s*([^;]+)/i)?.[1];
+    return [element.getAttribute("fill"), styleFill, element.getAttribute("stroke"), styleStroke];
+  });
+  const color = candidates.find((value) => {
+    if (!value) return false;
+    const normalized = value.trim().toLowerCase();
+    return normalized !== "none" && normalized !== "transparent" && normalized !== "currentcolor" && !normalized.startsWith("url(");
+  });
+  return color?.trim() || "#0070F3";
+}
+
+export function createDefaultSvgStyleConfig(primaryColor = "#0070F3"): SvgStyleConfig {
+  return {
+    colorMode: "original",
+    fillColor: primaryColor,
+    strokeColor: primaryColor,
+    strokeWidth: 1,
+    opacity: 1
+  };
+}
+
 export async function readSvgPreviewFile(file: File): Promise<SvgPreviewAsset> {
   validateSvgFile(file);
   const svg = parseSafeSvg(await file.text());
-  return { fileName: file.name, markup: new XMLSerializer().serializeToString(svg) };
+  return {
+    fileName: file.name,
+    markup: new XMLSerializer().serializeToString(svg),
+    primaryColor: detectPrimarySvgColor(svg)
+  };
 }
 
 function validateSvgFile(file: File): void {

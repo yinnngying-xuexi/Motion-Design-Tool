@@ -1,5 +1,5 @@
 import type { DecorationEffectTemplate } from "@/types/decoration";
-import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset } from "@/types/svgFlow";
+import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
 
 export type DecorationParams = Record<string, string | number>;
 
@@ -523,12 +523,25 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
 }`;
 }
 
-export function generateDecorationCompositionCss(asset?: SvgPreviewAsset): string {
+export function generateDecorationCompositionCss(asset?: SvgPreviewAsset, style?: SvgStyleConfig): string {
   if (!asset) return "";
+  const current = style ?? {
+    colorMode: "original",
+    fillColor: "#0070F3",
+    strokeColor: "#0070F3",
+    strokeWidth: 1,
+    opacity: 1
+  };
+  const monochromeCss = current.colorMode === "monochrome"
+    ? `.decoration-composition__svg :is(path,rect,circle,ellipse,polygon,polyline,line) { stroke:${current.strokeColor} !important; stroke-width:${current.strokeWidth}px !important; }
+.decoration-composition__svg :is(path,rect,circle,ellipse,polygon):not([fill="none"]) { fill:${current.fillColor} !important; }
+.decoration-composition__svg :is([fill="none"],line,polyline) { fill:none !important; }`
+    : `.decoration-composition__svg [stroke]:not([stroke="none"]) { stroke-width:${current.strokeWidth}px !important; }`;
   return `.decoration-composition { position: relative; display: grid; place-items: center; isolation: isolate; }
 .decoration-composition__effect { position: relative; z-index: 1; }
-.decoration-composition__svg { position: absolute; z-index: 2; width: 88px; height: 88px; display: grid; place-items: center; pointer-events: none; }
-.decoration-composition__svg svg { width: 100%; height: 100%; display: block; overflow: visible; }`;
+.decoration-composition__svg { position: absolute; z-index: 2; width: 88px; height: 88px; display: grid; place-items: center; opacity:${current.opacity}; pointer-events: none; }
+.decoration-composition__svg svg { width: 100%; height: 100%; display: block; overflow: visible; }
+${monochromeCss}`;
 }
 
 function composeDecoration(markup: string, asset?: SvgPreviewAsset): string {
@@ -539,12 +552,12 @@ function composeDecoration(markup: string, asset?: SvgPreviewAsset): string {
 </div>`;
 }
 
-export function generateDecorationHtmlCss(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
+export function generateDecorationHtmlCss(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig): string {
   return `${generateDecorationMarkup(template, params, source, asset)}
 
 <style>
 ${generateDecorationCss(template, params)}
-${generateDecorationCompositionCss(asset)}
+${generateDecorationCompositionCss(asset, svgStyle)}
 </style>`;
 }
 
@@ -632,18 +645,18 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
   return composeDecoration(`<div class="${decorationClassName(template)}"></div>`, asset);
 }
 
-export function generateDecorationVue(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
+export function generateDecorationVue(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig): string {
   return `<template>
   ${generateDecorationMarkup(template, params, source, asset)}
 </template>
 
 <style scoped>
 ${generateDecorationCss(template, params)}
-${generateDecorationCompositionCss(asset)}
+${generateDecorationCompositionCss(asset, svgStyle)}
 </style>`;
 }
 
-export function generateDecorationJson(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
+export function generateDecorationJson(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig): string {
   return JSON.stringify(
     {
       id: template.id,
@@ -653,7 +666,8 @@ export function generateDecorationJson(template: DecorationEffectTemplate, param
       scene: template.scene,
       params,
       svgSource: template.generator === "svg-flow" && source ? source : undefined,
-      importedSvg: template.generator !== "svg-flow" && asset ? asset : undefined
+      importedSvg: template.generator !== "svg-flow" && asset ? asset : undefined,
+      svgStyle: asset ? svgStyle : undefined
     },
     null,
     2

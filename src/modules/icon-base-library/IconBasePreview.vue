@@ -28,12 +28,9 @@
       </div>
     </div>
     <PreviewPlaybackControls
-      :playing="playing"
-      :speed="previewSpeed"
       :disabled="!asset"
+      :duration="config?.duration ?? 0"
       @replay="replay"
-      @toggle="playing = !playing"
-      @change-speed="previewSpeed = $event"
     />
   </section>
 </template>

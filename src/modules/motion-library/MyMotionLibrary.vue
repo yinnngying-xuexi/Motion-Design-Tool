@@ -50,11 +50,8 @@
           />
         </div>
         <PreviewPlaybackControls
-          :playing="previewPlaying"
-          :speed="previewSpeed"
+          :duration="previewMotion?.duration ?? 0"
           @replay="replayPreview"
-          @toggle="togglePreview"
-          @change-speed="setPreviewSpeed"
         />
       </div>
       <template #footer>

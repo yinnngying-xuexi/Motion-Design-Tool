@@ -56,12 +56,9 @@
           </div>
         </div>
         <PreviewPlaybackControls
-          :playing="previewPlaying"
-          :speed="previewSpeed"
           :disabled="!currentAsset"
+          :duration="previewDuration"
           @replay="replayPreview"
-          @toggle="togglePreview"
-          @change-speed="setPreviewSpeed"
         />
       </div>
 
@@ -196,6 +193,14 @@ const currentCss = computed(() => {
 });
 const previewClass = computed(() => findPreviewClass(currentCss.value));
 const previewMarkup = computed(() => `<style>${currentCss.value}</style><div class="${previewClass.value}"></div>`);
+const previewDuration = computed(() => {
+  const durationVariable = currentAsset.value?.variables.find((variable) => /duration/i.test(variable.name));
+  if (!durationVariable) return 0;
+  const rawValue = variableValues[durationVariable.name] ?? durationVariable.value;
+  const numericValue = Number.parseFloat(rawValue);
+  if (!Number.isFinite(numericValue)) return 0;
+  return durationVariable.unit === "ms" ? numericValue / 1000 : numericValue;
+});
 const htmlCssCode = computed(() => {
   if (!currentAsset.value) return "";
   return `<div class="${previewClass.value}"></div>

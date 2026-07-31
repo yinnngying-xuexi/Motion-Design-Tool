@@ -80,8 +80,8 @@
         </div>
         <div class="decoration-workspace-actions">
           <el-button size="small" @click="triggerSvgImport">
-            <el-icon><Upload /></el-icon>
-            导入动效
+            <el-icon><Download /></el-icon>
+            导入 SVG
           </el-button>
           <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
           <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
@@ -99,11 +99,8 @@
             <div class="generated-preview" v-html="previewMarkup"></div>
           </div>
           <PreviewPlaybackControls
-            :playing="previewPlaying"
-            :speed="previewSpeed"
+            :duration="Number(params.duration ?? currentEffect.defaultParams.duration ?? 0)"
             @replay="replayPreview"
-            @toggle="togglePreview"
-            @change-speed="setPreviewSpeed"
           />
         </div>
         <section v-show="activeWorkspaceView === 'code'" class="decoration-code" role="tabpanel">
@@ -159,6 +156,12 @@
             </template>
           </div>
         </div>
+        <SvgStylePanel
+          v-if="importedSvg && !isSvgFlow"
+          :model-value="svgStyle"
+          :primary-color="importedSvg.primaryColor"
+          @update:model-value="updateSvgStyle"
+        />
       </el-scrollbar>
     </aside>
 
@@ -167,7 +170,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
-import { Upload } from "@element-plus/icons-vue";
+import { Download } from "@element-plus/icons-vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { decorationEffects, decorationSections } from "@/data/decorationEffects";
 import {
@@ -177,12 +180,13 @@ import {
   generateDecorationMarkup
 } from "@/generators/decorationGenerator";
 import type { DecorationEffectTemplate, DecorationSection } from "@/types/decoration";
-import type { SvgFlowSource, SvgPreviewAsset } from "@/types/svgFlow";
-import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
+import type { SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
+import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
+import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
 
 const props = defineProps<{ initialEffectId?: string }>();
 const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
@@ -195,6 +199,7 @@ const previewSpeed = ref(1);
 const params = reactive<Record<string, string | number>>({});
 const svgSource = ref<SvgFlowSource>();
 const importedSvg = ref<SvgPreviewAsset>();
+const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
 const svgFileInput = ref<HTMLInputElement>();
 const previewCapture = ref<HTMLElement>();
 const motionStore = useMyMotionStore();
@@ -204,8 +209,8 @@ const currentEffect = computed(() => decorationEffects.find((effect) => effect.i
 const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
 
 const cssCode = computed(() => generateDecorationCss(currentEffect.value, params));
-const htmlCss = computed(() => generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value));
-const previewMarkup = computed(() => `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value)}`);
+const htmlCss = computed(() => generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle));
+const previewMarkup = computed(() => `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value)}`);
 
 watch(activeSection, () => {
   activeEffectId.value = sectionEffects.value[0]?.id ?? decorationEffects[0].id;
@@ -315,9 +320,12 @@ async function handleSvgUpload(event: Event): Promise<void> {
       const [flowSource, previewAsset] = await Promise.all([readSvgFlowFile(file), readSvgPreviewFile(file)]);
       svgSource.value = flowSource;
       importedSvg.value = previewAsset;
+      Object.assign(svgStyle, createDefaultSvgStyleConfig(previewAsset.primaryColor));
       ElMessage.success("SVG 路径已读取");
     } else {
-      importedSvg.value = await readSvgPreviewFile(file);
+      const previewAsset = await readSvgPreviewFile(file);
+      importedSvg.value = previewAsset;
+      Object.assign(svgStyle, createDefaultSvgStyleConfig(previewAsset.primaryColor));
       try {
         svgSource.value = await readSvgFlowFile(file);
       } catch {
@@ -330,6 +338,10 @@ async function handleSvgUpload(event: Event): Promise<void> {
   } finally {
     input.value = "";
   }
+}
+
+function updateSvgStyle(value: SvgStyleConfig): void {
+  Object.assign(svgStyle, value);
 }
 
 function triggerSvgImport(): void {
