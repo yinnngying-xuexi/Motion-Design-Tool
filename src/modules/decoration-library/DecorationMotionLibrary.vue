@@ -42,6 +42,19 @@
               <p>{{ effect.defaultParams.duration }}s · {{ effect.scene }}</p>
             </div>
           </article>
+          <template v-if="activeSection === '图标底座' && customDecorationStore.components.length">
+            <div class="custom-list-title"><span>自定义组件</span><small>{{ customDecorationStore.components.length }}</small></div>
+            <article
+              v-for="component in customDecorationStore.components"
+              :key="component.id"
+              class="effect-card custom-effect-card"
+              :class="{ active: activeCustomId === component.id }"
+              @click="selectCustomComponent(component.id)"
+            >
+              <div class="effect-thumb dm-motion-canvas"><img :src="component.previewImage" :alt="component.name" /></div>
+              <div class="effect-card-copy"><strong>{{ component.name }}</strong><p>已保存的分层装饰组件</p></div>
+            </article>
+          </template>
         </div>
       </el-scrollbar>
     </aside>
@@ -50,7 +63,7 @@
       <header class="decoration-workspace-head">
         <div class="decoration-title-copy">
           <div class="decoration-title-line">
-            <h2>{{ currentEffect.name }}</h2>
+            <h2>{{ displayTitle }}</h2>
           </div>
           <p>{{ currentEffect.description }}</p>
         </div>
@@ -83,6 +96,7 @@
             <el-icon><Download /></el-icon>
             导入 SVG
           </el-button>
+          <el-button v-if="isStarRing" size="small" @click="saveAsCustomDecoration">保存为自定义组件</el-button>
           <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
           <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
         </div>
@@ -99,7 +113,7 @@
             <div class="generated-preview" v-html="previewMarkup"></div>
           </div>
           <PreviewPlaybackControls
-            :duration="Number(params.duration ?? currentEffect.defaultParams.duration ?? 0)"
+            :duration="previewDuration"
             @replay="replayPreview"
           />
         </div>
@@ -118,8 +132,16 @@
       </header>
 
       <el-scrollbar class="param-scroll">
-        <div class="param-stack">
-          <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
+        <StarRingParamPanel
+          v-if="isStarRing"
+          :model-value="starRingConfig"
+          @update:model-value="updateStarRingConfig"
+          @use-preset="restoreStarRingPreset"
+          @remap="openCurrentMapping"
+        />
+        <template v-else>
+          <div class="param-stack">
+            <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
             <label>
               <span>{{ paramItem.label }}</span>
               <small v-if="paramItem.unit">{{ paramItem.unit }}</small>
@@ -154,22 +176,31 @@
                 />
               </div>
             </template>
+            </div>
           </div>
-        </div>
-        <SvgStylePanel
-          v-if="importedSvg && !isSvgFlow"
-          :model-value="svgStyle"
-          :primary-color="importedSvg.primaryColor"
-          @update:model-value="updateSvgStyle"
-        />
+          <SvgStylePanel
+            v-if="importedSvg && !isSvgFlow"
+            :model-value="svgStyle"
+            :primary-color="importedSvg.primaryColor"
+            @update:model-value="updateSvgStyle"
+          />
+        </template>
       </el-scrollbar>
     </aside>
+
+    <StarRingMappingDialog
+      v-if="pendingStarRingAsset"
+      v-model="mappingDialogVisible"
+      :asset="pendingStarRingAsset"
+      :mapping="pendingStarRingMapping"
+      @confirm="confirmStarRingMapping"
+    />
 
   </section>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { Download } from "@element-plus/icons-vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { decorationEffects, decorationSections } from "@/data/decorationEffects";
@@ -179,7 +210,9 @@ import {
   generateDecorationHtmlCss,
   generateDecorationMarkup
 } from "@/generators/decorationGenerator";
+import { generateStarRingCss, generateStarRingHtmlCss, generateStarRingMarkup } from "@/generators/starRingGenerator";
 import type { DecorationEffectTemplate, DecorationSection } from "@/types/decoration";
+import type { StarRingDecorationConfig, StarRingLayerMapping, StarRingSvgAsset } from "@/types/decoration";
 import type { SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
 import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
 import { useMyMotionStore } from "@/stores/myMotionStore";
@@ -187,6 +220,10 @@ import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
+import StarRingParamPanel from "@/modules/decoration-library/StarRingParamPanel.vue";
+import StarRingMappingDialog from "@/modules/decoration-library/StarRingMappingDialog.vue";
+import { applyImportedStarRingConfig, createDefaultStarRingConfig, readStarRingSvgFile } from "@/utils/starRingDecoration";
+import { useCustomDecorationStore } from "@/stores/customDecorationStore";
 
 const props = defineProps<{ initialEffectId?: string }>();
 const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
@@ -197,20 +234,38 @@ const previewKey = ref(0);
 const previewPlaying = ref(true);
 const previewSpeed = ref(1);
 const params = reactive<Record<string, string | number>>({});
+const starRingConfig = ref<StarRingDecorationConfig>(createDefaultStarRingConfig());
+const pendingStarRingAsset = ref<StarRingSvgAsset>();
+const pendingStarRingMapping = ref<StarRingLayerMapping>(createDefaultStarRingConfig().layerMapping);
+const mappingDialogVisible = ref(false);
+const remappingExistingAsset = ref(false);
+const activeCustomId = ref("");
 const svgSource = ref<SvgFlowSource>();
 const importedSvg = ref<SvgPreviewAsset>();
 const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
 const svgFileInput = ref<HTMLInputElement>();
 const previewCapture = ref<HTMLElement>();
 const motionStore = useMyMotionStore();
+const customDecorationStore = useCustomDecorationStore();
 
 const sectionEffects = computed(() => decorationEffects.filter((effect) => effect.section === activeSection.value));
 const currentEffect = computed(() => decorationEffects.find((effect) => effect.id === activeEffectId.value) ?? sectionEffects.value[0] ?? decorationEffects[0]);
 const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
+const isStarRing = computed(() => currentEffect.value.id === "base-particle-star-ring");
+const activeCustomComponent = computed(() => customDecorationStore.components.find((item) => item.id === activeCustomId.value));
+const displayTitle = computed(() => activeCustomComponent.value?.name ?? currentEffect.value.name);
 
-const cssCode = computed(() => generateDecorationCss(currentEffect.value, params));
-const htmlCss = computed(() => generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle));
-const previewMarkup = computed(() => `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value)}`);
+const cssCode = computed(() => isStarRing.value ? generateStarRingCss(starRingConfig.value) : generateDecorationCss(currentEffect.value, params));
+const htmlCss = computed(() => isStarRing.value
+  ? generateStarRingHtmlCss(starRingConfig.value)
+  : generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle));
+const previewMarkup = computed(() => isStarRing.value
+  ? `<style>${cssCode.value}</style>${generateStarRingMarkup(starRingConfig.value)}`
+  : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value)}`);
+const previewDuration = computed(() => {
+  if (!isStarRing.value) return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0);
+  return Math.max(...Object.values(starRingConfig.value.layerConfigs).filter((layer) => layer.visible && layer.motion !== "none").map((layer) => layer.duration), 0);
+});
 
 watch(activeSection, () => {
   activeEffectId.value = sectionEffects.value[0]?.id ?? decorationEffects[0].id;
@@ -238,6 +293,7 @@ watch([svgSource, params], () => {
 onMounted(() => {
   localStorage.removeItem(SVG_FLOW_LEGACY_DRAFT_KEY);
   motionStore.loadFromLocal();
+  customDecorationStore.load();
   void restoreSvgFlow();
   window.addEventListener("datamotion:import-svg", triggerSvgImport);
   window.addEventListener("datamotion:save", saveFromToolbar);
@@ -251,14 +307,41 @@ onBeforeUnmount(() => {
 });
 
 function selectEffect(id: string): void {
+  activeCustomId.value = "";
   activeEffectId.value = id;
 }
 
+async function selectCustomComponent(id: string): Promise<void> {
+  const component = customDecorationStore.components.find((item) => item.id === id);
+  if (!component) return;
+  activeEffectId.value = "base-particle-star-ring";
+  await nextTick();
+  activeCustomId.value = id;
+  starRingConfig.value = JSON.parse(JSON.stringify(component.config)) as StarRingDecorationConfig;
+  void replayPreview();
+}
+
 function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
+  if (effect.id === "base-particle-star-ring") {
+    const config = createDefaultStarRingConfig();
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  }
   return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`;
 }
 
 function resetParams(): void {
+  if (isStarRing.value) {
+    if (starRingConfig.value.sourceMode === "imported" && starRingConfig.value.svg) {
+      const next = createDefaultStarRingConfig();
+      applyImportedStarRingConfig(next, starRingConfig.value.svg, starRingConfig.value.layerMapping);
+      starRingConfig.value = next;
+    } else {
+      starRingConfig.value = createDefaultStarRingConfig();
+    }
+    activeCustomId.value = "";
+    importedSvg.value = undefined;
+    return;
+  }
   Object.keys(params).forEach((key) => delete params[key]);
   Object.assign(params, currentEffect.value.defaultParams);
 }
@@ -316,7 +399,22 @@ async function handleSvgUpload(event: Event): Promise<void> {
   if (!file) return;
 
   try {
-    if (isSvgFlow.value) {
+    if (isStarRing.value) {
+      const { asset, mapping } = await readStarRingSvgFile(file);
+      if (asset.mode === "whole") {
+        const next = JSON.parse(JSON.stringify(starRingConfig.value)) as StarRingDecorationConfig;
+        applyImportedStarRingConfig(next, asset, mapping);
+        starRingConfig.value = next;
+        activeCustomId.value = "";
+        ElMessage.success("SVG 已按整体素材导入");
+      } else {
+        pendingStarRingAsset.value = asset;
+        pendingStarRingMapping.value = mapping;
+        remappingExistingAsset.value = false;
+        mappingDialogVisible.value = true;
+      }
+      importedSvg.value = undefined;
+    } else if (isSvgFlow.value) {
       const [flowSource, previewAsset] = await Promise.all([readSvgFlowFile(file), readSvgPreviewFile(file)]);
       svgSource.value = flowSource;
       importedSvg.value = previewAsset;
@@ -344,6 +442,65 @@ function updateSvgStyle(value: SvgStyleConfig): void {
   Object.assign(svgStyle, value);
 }
 
+function updateStarRingConfig(value: StarRingDecorationConfig): void {
+  starRingConfig.value = value;
+  void replayPreview();
+}
+
+function restoreStarRingPreset(): void {
+  starRingConfig.value = createDefaultStarRingConfig();
+  activeCustomId.value = "";
+  ElMessage.success("已恢复系统预设素材");
+  void replayPreview();
+}
+
+function openCurrentMapping(): void {
+  if (!starRingConfig.value.svg || starRingConfig.value.svg.mode !== "layered") return;
+  pendingStarRingAsset.value = starRingConfig.value.svg;
+  pendingStarRingMapping.value = JSON.parse(JSON.stringify(starRingConfig.value.layerMapping)) as StarRingLayerMapping;
+  remappingExistingAsset.value = true;
+  mappingDialogVisible.value = true;
+}
+
+function confirmStarRingMapping(mapping: StarRingLayerMapping): void {
+  const asset = pendingStarRingAsset.value;
+  if (!asset) return;
+  const previous = starRingConfig.value;
+  const next = JSON.parse(JSON.stringify(previous)) as StarRingDecorationConfig;
+  applyImportedStarRingConfig(next, asset, mapping);
+  if (remappingExistingAsset.value) {
+    Object.keys(next.layerConfigs).forEach((key) => {
+      const old = previous.layerConfigs[key];
+      if (old) next.layerConfigs[key] = { ...old, visible: next.layerConfigs[key].visible };
+    });
+  }
+  starRingConfig.value = next;
+  activeCustomId.value = "";
+  pendingStarRingMapping.value = mapping;
+  remappingExistingAsset.value = false;
+  const matched = new Set(Object.values(mapping).flat()).size;
+  ElMessage.success(`已应用分层素材，映射 ${matched} 个图层`);
+  void replayPreview();
+}
+
+async function saveAsCustomDecoration(): Promise<void> {
+  try {
+    const { value } = await ElMessageBox.prompt("保存后会出现在装饰组件的“自定义组件”区域。", "保存为自定义装饰组件", {
+      confirmButtonText: "保存",
+      cancelButtonText: "取消",
+      inputValue: activeCustomComponent.value?.name ?? starRingConfig.value.svg?.fileName.replace(/\.svg$/i, "") ?? "星环粒子底座",
+      inputPattern: /\S+/,
+      inputErrorMessage: "请输入组件名称"
+    });
+    const artifact = await createMotionArtifact({ id: "custom-star-ring", name: value.trim(), htmlCss: htmlCss.value, previewNode: previewCapture.value });
+    const saved = customDecorationStore.save(value.trim(), starRingConfig.value, artifact.previewImage);
+    activeCustomId.value = saved.id;
+    ElMessage.success("已保存为自定义装饰组件");
+  } catch {
+    // 用户取消时保持当前编辑状态。
+  }
+}
+
 function triggerSvgImport(): void {
   svgFileInput.value?.click();
 }
@@ -361,7 +518,7 @@ async function saveFromToolbar(): Promise<void> {
       htmlCss: htmlCss.value,
       previewNode: previewCapture.value
     });
-    motionStore.saveDecoration(currentEffect.value, { ...params }, artifact);
+    motionStore.saveDecoration(currentEffect.value, { ...params }, artifact, isStarRing.value ? starRingConfig.value : undefined);
     ElMessage.success("已保存 HTML、预览图和名称");
   } catch {
     ElMessage.error("保存失败，无法生成当前动效预览图");
@@ -396,7 +553,7 @@ function downloadHtml(): void {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>路径流光</title>
+<title>${displayTitle.value}</title>
 <style>body { margin: 0; padding: 24px; background: #000; }</style>
 </head>
 <body>
@@ -407,7 +564,7 @@ ${htmlCss.value}
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${svgSource.value?.fileName.replace(/\.svg$/i, "") || "path-flow"}.html`;
+  anchor.download = `${isStarRing.value ? "star-ring-base" : (svgSource.value?.fileName.replace(/\.svg$/i, "") || "path-flow")}.html`;
   anchor.click();
   URL.revokeObjectURL(url);
   ElMessage.success("HTML 文件已导出");
@@ -473,6 +630,21 @@ async function restoreSvgFlow(): Promise<void> {
   display: grid;
   gap: 6px;
   padding-right: 5px;
+}
+
+.custom-list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 4px 2px;
+  color: var(--dm-secondary);
+  font-size: 10px;
+}
+
+.custom-effect-card .effect-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .decoration-preview {

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import type { DecorationEffectTemplate } from "@/types/decoration";
+import type { DecorationEffectTemplate, StarRingDecorationConfig } from "@/types/decoration";
 import type { BasicMotionTemplate, SavedMotion, SavedMotionArtifact } from "@/types/motion";
 import type { SavedSvgFlowMotion } from "@/types/svgFlow";
 
@@ -38,7 +38,7 @@ export const useMyMotionStore = defineStore("my-motion", () => {
     saveToLocal();
   }
 
-  function saveDecoration(template: DecorationEffectTemplate, params: Record<string, string | number>, artifact: SavedMotionArtifact): void {
+  function saveDecoration(template: DecorationEffectTemplate, params: Record<string, string | number>, artifact: SavedMotionArtifact, starRing?: StarRingDecorationConfig): void {
     const id = "decoration-" + template.id;
     const motion: SavedMotion = {
       id,
@@ -47,7 +47,9 @@ export const useMyMotionStore = defineStore("my-motion", () => {
       scene: template.scene,
       description: template.description,
       previewType: ["linear-flow", "comet-flow", "svg-flow", "scan"].includes(template.previewType) ? "scan" : "glow",
-      duration: Number(params.duration ?? 2.4),
+      duration: starRing
+        ? Math.max(...Object.values(starRing.layerConfigs).filter((layer) => layer.visible && layer.motion !== "none").map((layer) => layer.duration), 0)
+        : Number(params.duration ?? 2.4),
       timingFunction: "linear",
       iteration: "infinite",
       editableParams: template.editableParams.map((param) => param.key),
@@ -55,7 +57,8 @@ export const useMyMotionStore = defineStore("my-motion", () => {
       source: "decoration-library",
       decoration: {
         effectId: template.id,
-        params: { ...params }
+        params: { ...params },
+        starRing: starRing ? JSON.parse(JSON.stringify(starRing)) as StarRingDecorationConfig : undefined
       },
       artifact
     };

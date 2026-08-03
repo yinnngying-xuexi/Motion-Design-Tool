@@ -102,6 +102,7 @@ export interface SavedMotion extends Omit<BasicMotionTemplate, "defaultConfig" |
   decoration?: {
     effectId: string;
     params: Record<string, string | number>;
+    starRing?: import("@/types/decoration").StarRingDecorationConfig;
   };
   svgFlow?: import("@/types/svgFlow").SavedSvgFlowMotion;
   artifact?: SavedMotionArtifact;
