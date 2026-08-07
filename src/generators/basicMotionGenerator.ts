@@ -9,7 +9,7 @@ function names(template: BasicMotionTemplate): { cls: string; keyframes: string 
   return { cls: `motion-${id}`, keyframes: `motion${id.replace(/-/g, "")}` };
 }
 
-function frames(template: BasicMotionTemplate, config: BasicMotionConfig): string {
+export function generateBasicMotionFrames(template: BasicMotionTemplate, config: BasicMotionConfig): string {
   switch (template.id) {
     case "fade-in":
       return `from { opacity:${config.startOpacity}; filter:blur(${config.startBlur}px); } to { opacity:${config.endOpacity}; filter:blur(0); }`;
@@ -191,7 +191,7 @@ ${generateSvgStyleCss(cls, svgStyle)}
 .${cls}__orbit-track { stroke-width:.7px; opacity:.12; }
 .${cls}__orbit-segment { stroke-width:var(--orbit-width); stroke-dasharray:1.4 98.6; opacity:var(--orbit-opacity); animation:${keyframes}Orbit ${speed}s linear infinite ${config.direction === "reverse" ? "reverse" : "normal"}; }
 .${cls}__orbit-segment--head { stroke:color-mix(in srgb,${config.color} 76%,white 24%); filter:drop-shadow(0 0 ${Math.max(3, config.glowPeak * 0.45)}px ${config.color}); }
-@keyframes ${keyframes} { ${frames(template, config)} }
+@keyframes ${keyframes} { ${generateBasicMotionFrames(template, config)} }
 @keyframes ${keyframes}Core { 0%,100% { opacity:.82; transform:scale(.82); } 50% { opacity:1; transform:scale(1.08); } }
 @keyframes ${keyframes}Ripple { 0% { opacity:.92; transform:translate(-50%,-50%) scale(${startRippleScale}); } 72% { opacity:.28; } 100% { opacity:0; transform:translate(-50%,-50%) scale(1); } }
 @keyframes ${keyframes}Scan { from { transform:${scan.transformFrom}; opacity:0; } 12%,88% { opacity:1; } to { transform:${scan.transformTo}; opacity:0; } }

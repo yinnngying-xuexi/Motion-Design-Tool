@@ -1,10 +1,58 @@
 import type {
+  BasicMotionConfig,
   BasicMotionParamKey,
   BasicMotionTemplate,
   MotionParamDefinition,
   MotionParamGroup,
   MotionParamOption
 } from "@/types/motion";
+
+export function createBasicMotionConfig(template: BasicMotionTemplate, primaryColor = "#0070F3"): BasicMotionConfig {
+  return {
+    duration: template.duration,
+    delay: 0,
+    iteration: template.iteration === "3" ? "3" : template.iteration === "1" ? "1" : "infinite",
+    direction: "normal",
+    timingFunction: template.timingFunction as BasicMotionConfig["timingFunction"],
+    startOpacity: 0,
+    endOpacity: 1,
+    minOpacity: 0.35,
+    maxOpacity: 1,
+    startScale: 0.85,
+    endScale: 1,
+    minScale: 0.96,
+    maxScale: 1,
+    startBlur: 0,
+    offsetX: 0,
+    offsetY: 8,
+    rotationAngle: 360,
+    emphasisScale: 1.12,
+    reboundScale: 0.97,
+    glowBase: 0,
+    glowPeak: 18,
+    glowStrength: 50,
+    borderWidth: 1,
+    blinkFrequency: 0.8,
+    rippleStartRadius: 24,
+    rippleEndRadius: 170,
+    rippleCount: 3,
+    rippleInterval: 0.45,
+    flowLength: 18,
+    flowHeadOpacity: 1,
+    flowTailOpacity: 0,
+    flowHeadWidth: 3.4,
+    flowTailWidth: 0.5,
+    scanSpeed: 2.4,
+    scanDirection: "top-to-bottom",
+    scanLineWidth: 1,
+    scanLength: 100,
+    assetScale: 1,
+    assetOffsetX: 0,
+    assetOffsetY: 0,
+    ...template.defaultConfig,
+    color: template.defaultConfig.color ?? primaryColor
+  };
+}
 
 const timingOptions: MotionParamOption[] = [
   { label: "线性 linear", value: "linear" },

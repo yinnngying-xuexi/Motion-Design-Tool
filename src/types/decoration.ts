@@ -1,3 +1,5 @@
+import type { BasicMotionConfig } from "@/types/motion";
+
 export type DecorationSection = "图标底座" | "线性流光";
 
 export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "scan" | "border-glow";
@@ -35,7 +37,7 @@ export interface CssVariableParam {
 
 export type StarRingLayerRole = "background" | "static-ring" | "rotating-ring" | "center" | "particles";
 export type StarRingEditableLayerRole = StarRingLayerRole | "whole";
-export type StarRingMotionType = "none" | "rotate" | "pulse" | "particle-float";
+export type StarRingMotionType = "none" | "basic" | "rotate" | "ring-highlight" | "pulse" | "particle-float";
 export type StarRingColorMode = "original" | "monochrome";
 
 export interface StarRingOverallConfig {
@@ -60,6 +62,9 @@ export interface StarRingLayerConfig {
   minScale: number;
   distance: number;
   minOpacity: number;
+  particleIntensity: number;
+  basicMotionId?: string;
+  basicMotionConfig?: Partial<BasicMotionConfig>;
 }
 
 export interface StarRingSvgLayer {
@@ -69,6 +74,13 @@ export interface StarRingSvgLayer {
   tagName: string;
   parentKey: string | null;
   depth: number;
+  highlightSegmentCount?: number;
+  highlightBounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface StarRingSvgAsset {

@@ -222,7 +222,7 @@ import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlayback
 import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
 import StarRingParamPanel from "@/modules/decoration-library/StarRingParamPanel.vue";
 import StarRingMappingDialog from "@/modules/decoration-library/StarRingMappingDialog.vue";
-import { applyImportedStarRingConfig, createDefaultStarRingConfig, readStarRingSvgFile } from "@/utils/starRingDecoration";
+import { applyImportedStarRingConfig, createDefaultStarRingConfig, readStarRingSvgFile, renameStarRingAssetLayers } from "@/utils/starRingDecoration";
 import { useCustomDecorationStore } from "@/stores/customDecorationStore";
 
 const props = defineProps<{ initialEffectId?: string }>();
@@ -264,7 +264,9 @@ const previewMarkup = computed(() => isStarRing.value
   : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value)}`);
 const previewDuration = computed(() => {
   if (!isStarRing.value) return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0);
-  return Math.max(...Object.values(starRingConfig.value.layerConfigs).filter((layer) => layer.visible && layer.motion !== "none").map((layer) => layer.duration), 0);
+  return Math.max(...Object.values(starRingConfig.value.layerConfigs)
+    .filter((layer) => layer.visible && layer.motion !== "none")
+    .map((layer) => layer.motion === "basic" ? Number(layer.basicMotionConfig?.duration ?? layer.duration) : layer.duration), 0);
 });
 
 watch(activeSection, () => {
@@ -402,7 +404,7 @@ async function handleSvgUpload(event: Event): Promise<void> {
     if (isStarRing.value) {
       const { asset, mapping } = await readStarRingSvgFile(file);
       if (asset.mode === "whole") {
-        const next = JSON.parse(JSON.stringify(starRingConfig.value)) as StarRingDecorationConfig;
+        const next = createDefaultStarRingConfig();
         applyImportedStarRingConfig(next, asset, mapping);
         starRingConfig.value = next;
         activeCustomId.value = "";
@@ -462,11 +464,12 @@ function openCurrentMapping(): void {
   mappingDialogVisible.value = true;
 }
 
-function confirmStarRingMapping(mapping: StarRingLayerMapping): void {
-  const asset = pendingStarRingAsset.value;
-  if (!asset) return;
+function confirmStarRingMapping(mapping: StarRingLayerMapping, labels: Record<string, string>): void {
+  const pendingAsset = pendingStarRingAsset.value;
+  if (!pendingAsset) return;
+  const asset = renameStarRingAssetLayers(pendingAsset, labels);
   const previous = starRingConfig.value;
-  const next = JSON.parse(JSON.stringify(previous)) as StarRingDecorationConfig;
+  const next = createDefaultStarRingConfig();
   applyImportedStarRingConfig(next, asset, mapping);
   if (remappingExistingAsset.value) {
     Object.keys(next.layerConfigs).forEach((key) => {
@@ -475,9 +478,10 @@ function confirmStarRingMapping(mapping: StarRingLayerMapping): void {
     });
   }
   starRingConfig.value = next;
-  activeCustomId.value = "";
+  pendingStarRingAsset.value = asset;
   pendingStarRingMapping.value = mapping;
   remappingExistingAsset.value = false;
+  activeCustomId.value = "";
   const matched = new Set(Object.values(mapping).flat()).size;
   ElMessage.success(`已应用分层素材，映射 ${matched} 个图层`);
   void replayPreview();
@@ -775,7 +779,7 @@ async function restoreSvgFlow(): Promise<void> {
 .real-effect-thumbnail {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 42%;
   width: 188px;
   height: 132px;
   display: grid;

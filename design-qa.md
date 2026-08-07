@@ -36,6 +36,30 @@ final result: passed
 
 ---
 
+**导入 SVG 旋转环透视修复 Design QA（2026-08-04）**
+
+- Source visual truth: `C:\Users\asus\AppData\Local\Temp\codex-clipboard-11e9f35f-d3dd-41d4-af63-062fea2f8973.png`，用于确认普通二维旋转导致椭圆竖起的问题。
+- Real imported asset: `C:\Users\asus\Desktop\星环.svg`。
+- Implementation screenshot: `C:\tmp\imported-ring-perspective-rotation.png`。
+- Viewport: `1200 × 760` CSS px，Microsoft Edge，DPR 1。
+- State: 装饰组件 / 星环粒子底座 / 导入分层 SVG / `rotating-ring` 四分之一圈位置。
+
+**Evidence**
+
+- 导入时测得 `rotating-ring` 图层透视比例，并写入素材图层配置；动画使用“透视压缩 → 平面旋转 → 逆向还原”的组合变换。
+- Edge 在 `0 / 25% / 50% / 75% / 100%` 五个进度点实测，旋转环外接框始终约为 `153.43 × 61.61px`，宽高比稳定为 `2.49`，不再翻成竖向椭圆。
+- 动画完整运行 `4.2s` 一圈后继续循环；预览和导出使用同一生成器。
+- 已增加 `prefers-reduced-motion` 降级规则。
+
+**Findings**
+
+- 未发现仍需处理的 P0/P1/P2 问题。
+- 内部技术分组、静态环、中心层和背景层保持原位；仅修正导入旋转环的变换坐标系。
+
+final result: passed
+
+---
+
 **星环粒子底座图 2 视觉校准 Design QA（2026-08-03）**
 
 - Source visual truth: `C:\Users\asus\AppData\Local\Temp\codex-clipboard-2a7b8edf-c1fc-482d-96aa-30a2acbddf80.png`。
@@ -996,3 +1020,50 @@ final result: passed
 - [x] 完成 Edge 自动遍历、截图与生产构建验证。
 
 final result: passed
+
+---
+
+**导入 SVG 图层原始命名修复 Design QA（2026-08-04）**
+
+- Source visual truth: `C:\Users\asus\AppData\Local\Temp\codex-clipboard-e252c4cd-5ce9-4de4-8b46-987fc3503256.png`。
+- Real imported asset: `C:\Users\asus\Desktop\星环.svg`。
+- Implementation screenshot: `C:\tmp\layer-name-fixed.png`。
+- Real-asset implementation screenshot: `C:\tmp\real-star-ring-layer-rename.png`。
+- Side-by-side comparison: `C:\tmp\layer-name-comparison.png`。
+- Viewport: `969 × 599` CSS px，Microsoft Edge，DPR 1；源图与实现图均为 `969 × 599`，无需密度缩放。
+- State: 装饰组件 / 星环粒子底座 / 导入分层 SVG / 图层识别与动效映射弹窗。
+
+**Full-view comparison evidence**
+
+- 弹窗布局、三栏结构、暗色内容面板、角色映射与底部操作区保持原有样式，本次没有改动其他页面结构。
+- 左侧图层树和右侧映射选项已显示 SVG 中保留的原始名称，而不是统一显示“分组 1、分组 2”。
+
+**Focused region comparison evidence**
+
+- Edge 实测导入包含四种命名来源的 SVG：`data-name="background"`、`aria-label="static-ring"`、直属 `title` 的 `rotating-ring`、直属图形节点 `id="center"`，界面依次显示 `background / static-ring / rotating-ring / center`。
+- 自动生成的 `clip0_3485_142` 被识别为无意义系统名称，仍使用“分组 5”兜底，没有把裁剪 ID 错当成用户图层名。
+- 右侧背景层、静态环层、旋转环层和中心层自动映射到对应原始名称，手动映射功能保持可用。
+- 对用户真实的 `星环.svg` 检查确认：文件没有 `id、data-name、aria-label、title` 等图层命名元数据，且仅剩 4 个匿名滤镜分组；界面会明确提示名称未保留，并提供可直接编辑的图层名称输入。
+- Edge 实测将四个匿名层重命名为 `background / static-ring / rotating-ring / center` 后，右侧角色自动匹配相同名称；应用后名称写入内联 SVG 的 `data-dm-layer-name`，保存和导出可继续保留。
+
+**Findings**
+
+- 未发现仍需处理的 P0/P1/P2 问题。
+- 字体与排版：保持现有弹窗字号、字重和层级，原始英文图层名可清晰显示。
+- 间距与布局：三栏宽度、列表行高、控件间距与源界面一致。
+- 色彩与视觉变量：未修改现有黑白灰和品牌蓝规范。
+- 图像质量：SVG 继续以内联矢量形式预览，没有栅格化或模糊。
+- 文案与内容：有命名元数据时显示 SVG 原始名称；SVG 本身无命名元数据时显示“未命名图层 N”、给出明确说明，并允许用户重命名。
+
+**Comparison history**
+
+- 修复前：解析器只读取顶层 `g` 自身的 `id`，其他常见命名位置全部丢失。
+- 修复后：按 `data-dm-role → data-name → aria-label → inkscape:label → id → title → 直属图形节点名称` 的顺序恢复图层名，并过滤 Figma 自动生成的裁剪、遮罩、渐变和图形编号。
+- 真实文件复验：补充匿名图层重命名、按标准角色名自动映射、名称写回 SVG 和后续保存导出保留能力。
+- 第二次真实文件复验：重新导出的 `星环.svg` 已包含 10 个嵌套分组和标准角色 ID；解析器只保留素材根分组直属的 `static-ring / center / rotating-ring / background`，过滤 `Vector / Union / Subtract` 等内部技术分组。
+- Figma 将中文名称以 UTF-8 字节数字实体写入 ID 的情况已自动还原，不再显示乱码；Edge 实测截图为 `C:\tmp\figma-layer-filter-fixed.png`。
+- 修复后证据：`C:\tmp\layer-name-fixed.png` 与 `C:\tmp\layer-name-comparison.png`。
+
+final result: passed
+
+---

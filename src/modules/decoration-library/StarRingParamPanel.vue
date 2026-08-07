@@ -1,75 +1,108 @@
 <template>
   <div class="star-ring-panel">
-    <div class="scope-tabs">
-      <button type="button" :class="{ active: scope === 'overall' }" @click="scope = 'overall'">整体</button>
-      <button type="button" :class="{ active: scope === 'layer' }" @click="scope = 'layer'">图层</button>
+    <section class="source-card">
+      <div><strong>{{ sourceName }}</strong><small>{{ sourceDescription }}</small></div>
+      <div class="source-actions">
+        <button v-if="modelValue.sourceMode === 'imported' && modelValue.svg?.mode === 'layered'" type="button" @click="$emit('remap')">重新映射</button>
+        <button v-if="modelValue.sourceMode === 'imported'" type="button" @click="$emit('usePreset')">恢复预设</button>
+      </div>
+    </section>
+
+    <p class="param-group-title">实际素材图层</p>
+    <div class="layer-list">
+      <div
+        v-for="layer in editableLayers"
+        :key="layer.key"
+        class="layer-row"
+        :class="{ active: activeLayerKey === layer.key, hidden: !modelValue.layerConfigs[layer.key]?.visible }"
+        :style="{ paddingLeft: `${10 + layer.depth * 12}px` }"
+        role="button"
+        tabindex="0"
+        @click="activeLayerKey = layer.key"
+        @keydown.enter.prevent="activeLayerKey = layer.key"
+        @keydown.space.prevent="activeLayerKey = layer.key"
+      >
+        <span>{{ layer.label }}</span>
+        <span class="layer-row-actions">
+          <small>{{ layerChineseName(layer.key) }}</small>
+          <button
+            type="button"
+            class="layer-visibility"
+            :class="{ off: !modelValue.layerConfigs[layer.key]?.visible }"
+            :aria-label="modelValue.layerConfigs[layer.key]?.visible ? `隐藏${layer.label}` : `显示${layer.label}`"
+            :title="modelValue.layerConfigs[layer.key]?.visible ? '隐藏图层' : '显示图层'"
+            @click.stop="toggleLayerVisibility(layer.key)"
+          >
+            <svg v-if="modelValue.layerConfigs[layer.key]?.visible" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.75"/></svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="m4 4 16 16M9.8 6.3A10.6 10.6 0 0 1 12 6c6 0 9.5 6 9.5 6a15.8 15.8 0 0 1-2.2 2.8M6.2 7.4C3.8 9.2 2.5 12 2.5 12s3.5 6 9.5 6c1 0 2-.2 2.8-.5M10.1 10.1a2.75 2.75 0 0 0 3.8 3.8"/></svg>
+          </button>
+        </span>
+      </div>
     </div>
 
-    <template v-if="scope === 'overall'">
-      <p class="param-group-title">整体设置</p>
-      <ParamNumber label="尺寸" unit="px" :value="modelValue.overall.size" :min="80" :max="360" :step="1" @update="updateOverall('size', $event)" />
-      <ParamNumber label="横向位置" unit="px" :value="modelValue.overall.offsetX" :min="-160" :max="160" :step="1" @update="updateOverall('offsetX', $event)" />
-      <ParamNumber label="纵向位置" unit="px" :value="modelValue.overall.offsetY" :min="-120" :max="120" :step="1" @update="updateOverall('offsetY', $event)" />
-      <ParamNumber label="整体透明度" :value="modelValue.overall.opacity" :min="0" :max="1" :step="0.05" @update="updateOverall('opacity', $event)" />
-      <ColorParam label="主色" :value="modelValue.overall.color" @update="updateOverall('color', $event)" />
-    </template>
+    <template v-if="activeLayer">
+      <ParamNumber
+        v-if="activeRole === 'particles'"
+        label="粒子强度"
+        unit="%"
+        :value="activeLayer.particleIntensity ?? 70"
+        :min="0"
+        :max="100"
+        :step="5"
+        @update="updateLayer('particleIntensity', $event)"
+      />
 
-    <template v-else>
-      <section class="source-card">
-        <div><strong>{{ sourceName }}</strong><small>{{ sourceDescription }}</small></div>
-        <div class="source-actions">
-          <button v-if="modelValue.sourceMode === 'imported' && modelValue.svg?.mode === 'layered'" type="button" @click="$emit('remap')">重新映射</button>
-          <button v-if="modelValue.sourceMode === 'imported'" type="button" @click="$emit('usePreset')">恢复预设</button>
-        </div>
-      </section>
-
-      <p class="param-group-title">实际素材图层</p>
-      <div class="layer-list">
-        <button
-          v-for="layer in editableLayers"
-          :key="layer.key"
-          type="button"
-          :class="{ active: activeLayerKey === layer.key, disabled: !roleForLayer(layer.key) && modelValue.svg?.mode !== 'whole' }"
-          :style="{ paddingLeft: `${10 + layer.depth * 12}px` }"
-          @click="activeLayerKey = layer.key"
-        ><span>{{ layer.label }}</span><small>{{ layerStatus(layer.key) }}</small></button>
-      </div>
-
-      <template v-if="activeLayer">
-        <div class="binding-row"><span>绑定角色</span><strong>{{ activeRoleLabel }}</strong></div>
-        <p class="param-group-title">素材样式</p>
-        <div class="param-field switch-field">
-          <label><span>显示图层</span></label>
-          <el-switch :model-value="activeLayer.visible" :disabled="!activeRole && modelValue.svg?.mode !== 'whole'" @change="updateLayer('visible', Boolean($event))" />
-        </div>
+        <p class="param-group-title">图层动效</p>
         <div class="param-field">
-          <label><span>颜色模式</span></label>
-          <el-select :model-value="activeLayer.colorMode" @change="updateLayer('colorMode', $event)">
-            <el-option label="保留原色" value="original" />
-            <el-option label="单色覆盖" value="monochrome" />
+          <label><span>动效类型</span></label>
+          <el-select :model-value="activeMotionValue" @change="updateMotionSelection">
+            <el-option label="无动效" value="none" />
+            <el-option-group v-if="componentMotionOptions.length" label="组件专属动效">
+              <el-option v-for="option in componentMotionOptions" :key="option.value" :label="option.label" :value="option.value" />
+            </el-option-group>
+            <el-option-group v-for="group in basicMotionGroups" :key="group.label" :label="group.label">
+              <el-option v-for="option in group.options" :key="option.value" :label="option.label" :value="option.value" />
+            </el-option-group>
           </el-select>
         </div>
-        <template v-if="activeLayer.colorMode === 'monochrome'">
-          <ColorParam label="填充颜色" :value="activeLayer.fillColor" @update="updateLayer('fillColor', $event)" />
-          <ColorParam label="描边颜色" :value="activeLayer.strokeColor" @update="updateLayer('strokeColor', $event)" />
-          <ParamNumber label="描边宽度" unit="px" :value="activeLayer.strokeWidth" :min="0" :max="12" :step="0.5" @update="updateLayer('strokeWidth', $event)" />
-        </template>
-        <ParamNumber label="图层透明度" :value="activeLayer.opacity" :min="0" :max="1" :step="0.05" @update="updateLayer('opacity', $event)" />
 
-        <template v-if="activeRole || modelValue.svg?.mode === 'whole'">
-          <p class="param-group-title">图层动效</p>
-          <div class="param-field">
-            <label><span>动效类型</span></label>
-            <el-select :model-value="activeLayer.motion" @change="updateLayer('motion', $event)">
-              <el-option v-for="option in motionOptions" :key="option.value" :label="option.label" :value="option.value" />
-            </el-select>
-          </div>
-          <template v-if="activeLayer.motion !== 'none'">
+        <template v-if="activeBasicTemplate">
+          <template v-for="group in activeBasicTemplate.paramGroups" :key="group.id">
+            <p class="param-group-title">{{ group.title }}</p>
+            <template v-for="param in group.params" :key="param.key">
+              <ParamNumber
+                v-if="param.type === 'number'"
+                :label="param.label"
+                :unit="param.unit"
+                :value="Number(activeBasicConfig[param.key] ?? 0)"
+                :min="param.min ?? 0"
+                :max="param.max ?? 100"
+                :step="param.step ?? 1"
+                @update="updateBasicMotionParam(param.key, $event)"
+              />
+              <ColorParam
+                v-else-if="param.type === 'color'"
+                :label="param.label"
+                :value="String(activeBasicConfig[param.key] ?? activeLayer.fillColor)"
+                @update="updateBasicMotionParam(param.key, $event)"
+              />
+              <div v-else class="param-field">
+                <label><span>{{ param.label }}</span></label>
+                <el-select :model-value="activeBasicConfig[param.key]" @change="updateBasicMotionParam(param.key, $event)">
+                  <el-option v-for="option in param.options" :key="option.value" :label="option.label" :value="option.value" />
+                </el-select>
+              </div>
+            </template>
+          </template>
+        </template>
+
+        <template v-else-if="activeLayer.motion !== 'none'">
+          <template v-if="isSpecialMotionActive">
             <ParamNumber label="动效时长" unit="s" :value="activeLayer.duration" :min="0.5" :max="20" :step="0.1" @update="updateLayer('duration', $event)" />
             <ParamNumber label="开始延迟" unit="s" :value="activeLayer.delay" :min="0" :max="5" :step="0.1" @update="updateLayer('delay', $event)" />
           </template>
-          <div v-if="activeLayer.motion === 'rotate'" class="param-field">
-            <label><span>旋转方向</span></label>
+          <div v-if="showsDirection" class="param-field">
+            <label><span>{{ activeRole === 'rotating-ring' ? '轮转方向' : '旋转方向' }}</span></label>
             <el-select :model-value="activeLayer.direction" @change="updateLayer('direction', $event)">
               <el-option label="顺时针" value="clockwise" /><el-option label="逆时针" value="counterclockwise" />
             </el-select>
@@ -80,7 +113,6 @@
             <ParamNumber label="最低透明度" :value="activeLayer.minOpacity" :min="0" :max="0.95" :step="0.05" @update="updateLayer('minOpacity', $event)" />
           </template>
         </template>
-      </template>
     </template>
   </div>
 </template>
@@ -88,55 +120,118 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, ref, watch } from "vue";
 import { ElColorPicker, ElInput, ElInputNumber, ElSlider } from "element-plus";
-import type { StarRingDecorationConfig, StarRingLayerConfig, StarRingLayerRole, StarRingMotionType, StarRingOverallConfig, StarRingSvgLayer } from "@/types/decoration";
-import { STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER } from "@/utils/starRingDecoration";
+import type { StarRingDecorationConfig, StarRingLayerConfig, StarRingLayerRole, StarRingMotionType, StarRingSvgLayer } from "@/types/decoration";
+import { STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER, STAR_RING_SYSTEM_PARTICLES_KEY } from "@/utils/starRingDecoration";
+import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
+import type { BasicMotionConfig, BasicMotionParamKey, BasicMotionTemplate, MotionCategory } from "@/types/motion";
 
 const props = defineProps<{ modelValue: StarRingDecorationConfig }>();
 const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: [] }>();
-const scope = ref<"overall" | "layer">("overall");
-const activeLayerKey = ref("preset-rotating-ring");
-const presetLayers: StarRingSvgLayer[] = STAR_RING_ROLE_ORDER.map((role) => ({ key: `preset-${role}`, id: role, label: STAR_RING_ROLE_LABELS[role], tagName: "g", parentKey: null, depth: 0 }));
+const activeLayerKey = ref("");
+const systemParticlesLayer: StarRingSvgLayer = {
+  key: STAR_RING_SYSTEM_PARTICLES_KEY,
+  id: STAR_RING_SYSTEM_PARTICLES_KEY,
+  label: "particles",
+  tagName: "effect",
+  parentKey: null,
+  depth: 0
+};
 const editableLayers = computed<StarRingSvgLayer[]>(() => {
-  if (props.modelValue.sourceMode === "preset") return presetLayers;
-  if (props.modelValue.svg?.mode === "whole") return [{ key: "dm-svg-whole", id: "whole", label: "整体素材", tagName: "svg", parentKey: null, depth: 0 }];
-  return props.modelValue.svg?.layers ?? [];
+  if (props.modelValue.svg?.mode === "whole") return [{ key: "dm-svg-whole", id: "whole", label: "整体素材", tagName: "svg", parentKey: null, depth: 0 }, systemParticlesLayer];
+  const layers = props.modelValue.svg?.layers ?? [];
+  const byKey = new Map(layers.map((layer) => [layer.key, layer]));
+  const ordered = STAR_RING_ROLE_ORDER
+    .filter((role) => role !== "particles")
+    .flatMap((role) => props.modelValue.layerMapping[role])
+    .map((key) => byKey.get(key))
+    .filter((layer): layer is StarRingSvgLayer => Boolean(layer));
+  const orderedKeys = new Set(ordered.map((layer) => layer.key));
+  return [...ordered, ...layers.filter((layer) => !orderedKeys.has(layer.key)), systemParticlesLayer];
 });
 const activeLayer = computed(() => props.modelValue.layerConfigs[activeLayerKey.value]);
 const activeRole = computed(() => roleForLayer(activeLayerKey.value));
-const activeRoleLabel = computed(() => activeRole.value ? STAR_RING_ROLE_LABELS[activeRole.value] : props.modelValue.svg?.mode === "whole" ? "整体素材" : "未绑定");
-const sourceName = computed(() => props.modelValue.sourceMode === "preset" ? "系统预设素材" : props.modelValue.svg?.fileName ?? "导入素材");
-const sourceDescription = computed(() => props.modelValue.sourceMode === "preset" ? "五个标准图层角色" : props.modelValue.svg?.mode === "whole" ? "单图形整体模式" : `${props.modelValue.svg?.layers.length ?? 0} 个可映射分组`);
-const motionOptions = computed<Array<{ label: string; value: StarRingMotionType }>>(() => {
-  const common: Array<{ label: string; value: StarRingMotionType }> = [{ label: "无动效", value: "none" }];
-  const role = activeRole.value;
-  if (props.modelValue.svg?.mode === "whole") return [...common, { label: "持续旋转", value: "rotate" }, { label: "轻微呼吸", value: "pulse" }, { label: "粒子漂浮", value: "particle-float" }];
-  if (role === "rotating-ring") return [...common, { label: "持续旋转", value: "rotate" }, { label: "轻微呼吸", value: "pulse" }];
-  if (role === "particles") return [...common, { label: "粒子漂浮", value: "particle-float" }, { label: "轻微呼吸", value: "pulse" }];
-  if (role === "center") return [...common, { label: "轻微呼吸", value: "pulse" }, { label: "持续旋转", value: "rotate" }];
-  return [...common, { label: "轻微呼吸", value: "pulse" }];
+const activeMotionValue = computed(() => {
+  if (!activeLayer.value || activeLayer.value.motion === "none") return "none";
+  if (activeLayer.value.motion === "basic" && activeLayer.value.basicMotionId) return `basic:${activeLayer.value.basicMotionId}`;
+  if (activeRole.value === "rotating-ring" && activeLayer.value.motion === "rotate") return "special:ring-highlight";
+  return `special:${activeLayer.value.motion}`;
 });
+const showsDirection = computed(() => activeMotionValue.value === "special:rotate" || activeMotionValue.value === "special:ring-highlight");
+const activeBasicTemplate = computed<BasicMotionTemplate | undefined>(() => activeLayer.value?.motion === "basic"
+  ? basicMotions.find((motion) => motion.id === activeLayer.value?.basicMotionId)
+  : undefined);
+const activeBasicConfig = computed<Partial<BasicMotionConfig>>(() => activeLayer.value?.basicMotionConfig ?? {});
+const sourceName = computed(() => props.modelValue.sourceMode === "preset" ? "星环粒子底座 SVG" : props.modelValue.svg?.fileName ?? "导入素材");
+const sourceDescription = computed(() => props.modelValue.svg?.mode === "whole" ? "整体素材 + particles" : `${props.modelValue.svg?.layers.length ?? 0} 个 SVG 图层 + particles`);
+const componentMotionOptions = computed<Array<{ label: string; value: string }>>(() => {
+  const options: Array<{ label: string; value: string }> = [];
+  const role = activeRole.value;
+  if (props.modelValue.svg?.mode === "whole") options.push({ label: "持续旋转", value: "special:rotate" });
+  if (role === "rotating-ring") options.push({ label: "环形高亮轮转", value: "special:ring-highlight" });
+  if (role === "particles") options.push({ label: "粒子漂浮", value: "special:particle-float" });
+  if (activeLayer.value?.motion === "pulse") options.push({ label: "轻微呼吸（旧版）", value: "special:pulse" });
+  return options;
+});
+const compatibleBasicMotionIds = new Set(["fade-in", "slide-up", "slide-left", "scale-in", "breath", "float", "soft-blink", "glow-pulse", "slow-rotate", "scale-tip", "highlight-glow", "alert-blink"]);
+const basicMotionGroups = computed(() => {
+  const categories: MotionCategory[] = ["入场动效", "循环动效", "强调动效", "告警动效"];
+  return categories.map((category) => ({
+    label: category,
+    options: basicMotions
+      .filter((motion) => motion.category === category && compatibleBasicMotionIds.has(motion.id))
+      .map((motion) => ({ label: motion.name, value: `basic:${motion.id}` }))
+  })).filter((group) => group.options.length);
+});
+const isSpecialMotionActive = computed(() => activeLayer.value && !["none", "basic"].includes(activeLayer.value.motion));
 
 watch(editableLayers, (layers) => { if (!layers.some((layer) => layer.key === activeLayerKey.value)) activeLayerKey.value = layers[0]?.key ?? ""; }, { immediate: true });
 function cloneConfig(): StarRingDecorationConfig { return JSON.parse(JSON.stringify(props.modelValue)) as StarRingDecorationConfig; }
 function roleForLayer(key: string): StarRingLayerRole | undefined { return STAR_RING_ROLE_ORDER.find((role) => props.modelValue.layerMapping[role].includes(key)); }
-function layerStatus(key: string): string {
+function layerChineseName(key: string): string {
   const role = roleForLayer(key);
-  if (!role && props.modelValue.svg?.mode !== "whole") return props.modelValue.layerConfigs[key]?.visible ? "结构容器" : "未绑定";
-  return props.modelValue.layerConfigs[key]?.visible ? (role ? STAR_RING_ROLE_LABELS[role] : "整体") : "已隐藏";
-}
-function updateOverall<Key extends keyof StarRingOverallConfig>(key: Key, value: StarRingOverallConfig[Key]): void {
-  const next = cloneConfig();
-  if (key === "color") {
-    const previous = next.overall.color;
-    Object.values(next.layerConfigs).forEach((layer) => { if (layer.fillColor === previous) layer.fillColor = String(value); if (layer.strokeColor === previous) layer.strokeColor = String(value); });
-  }
-  next.overall[key] = value;
-  emit("update:modelValue", next);
+  if (role) return STAR_RING_ROLE_LABELS[role];
+  return props.modelValue.svg?.mode === "whole" ? "整体素材" : "普通图层";
 }
 function updateLayer<Key extends keyof StarRingLayerConfig>(key: Key, value: StarRingLayerConfig[Key]): void {
   const next = cloneConfig();
   if (!next.layerConfigs[activeLayerKey.value]) return;
   next.layerConfigs[activeLayerKey.value][key] = value;
+  emit("update:modelValue", next);
+}
+function toggleLayerVisibility(key: string): void {
+  const next = cloneConfig();
+  const layer = next.layerConfigs[key];
+  if (!layer) return;
+  layer.visible = !layer.visible;
+  emit("update:modelValue", next);
+}
+function updateMotionSelection(value: string): void {
+  const next = cloneConfig();
+  const layer = next.layerConfigs[activeLayerKey.value];
+  if (!layer) return;
+  if (value === "none") {
+    layer.motion = "none";
+    layer.basicMotionId = undefined;
+    layer.basicMotionConfig = undefined;
+  } else if (value.startsWith("basic:")) {
+    const id = value.slice("basic:".length);
+    const template = basicMotions.find((motion) => motion.id === id);
+    if (!template) return;
+    layer.motion = "basic";
+    layer.basicMotionId = id;
+    layer.basicMotionConfig = createBasicMotionConfig(template, layer.fillColor);
+  } else {
+    layer.motion = value.slice("special:".length) as StarRingMotionType;
+    layer.basicMotionId = undefined;
+    layer.basicMotionConfig = undefined;
+  }
+  emit("update:modelValue", next);
+}
+function updateBasicMotionParam(key: BasicMotionParamKey, value: string | number): void {
+  const next = cloneConfig();
+  const layer = next.layerConfigs[activeLayerKey.value];
+  if (!layer || layer.motion !== "basic") return;
+  layer.basicMotionConfig = { ...(layer.basicMotionConfig ?? {}), [key]: value };
   emit("update:modelValue", next);
 }
 
@@ -154,5 +249,5 @@ const ColorParam = defineComponent({
 </script>
 
 <style>
-.star-ring-panel{display:grid;gap:16px}.star-ring-panel .scope-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;border-radius:6px;background:rgba(255,255,255,.035)}.star-ring-panel .scope-tabs button{height:30px;border:0;border-radius:4px;background:transparent;color:var(--dm-secondary);cursor:pointer}.star-ring-panel .scope-tabs button.active{background:rgba(255,255,255,.1);color:var(--dm-primary)}.star-ring-panel .param-group-title{margin:2px 0 -2px;color:var(--dm-primary);font-size:12px;font-weight:600}.star-ring-panel .param-field{display:grid;gap:8px}.star-ring-panel .param-field label{display:flex;justify-content:space-between;color:var(--dm-secondary);font-size:12px}.star-ring-panel .param-field label small{font-family:"Geist Mono",ui-monospace,monospace}.star-ring-panel .number-row{display:grid;grid-template-columns:minmax(0,1fr) var(--dm-param-value-width);gap:10px;align-items:center}.star-ring-panel .number-row .el-input-number{width:var(--dm-param-value-width)}.star-ring-panel .color-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}.star-ring-panel .switch-field{grid-template-columns:1fr auto;align-items:center}.star-ring-panel .source-card{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:11px;border-radius:7px;background:rgba(255,255,255,.035)}.star-ring-panel .source-card>div:first-child{min-width:0;display:grid;gap:3px}.star-ring-panel .source-card strong{overflow:hidden;color:var(--dm-primary);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .source-card small{color:var(--dm-secondary);font-size:10px}.star-ring-panel .source-actions{display:flex;gap:6px}.star-ring-panel .source-actions button{padding:0;border:0;background:transparent;color:#1683ff;font-size:10px;cursor:pointer;white-space:nowrap}.star-ring-panel .layer-list{display:grid;gap:4px}.star-ring-panel .layer-list button{display:flex;align-items:center;justify-content:space-between;min-height:36px;padding-right:9px;border:0;border-radius:5px;background:rgba(255,255,255,.025);color:var(--dm-secondary);cursor:pointer}.star-ring-panel .layer-list button.active{background:rgba(255,255,255,.09);color:var(--dm-primary)}.star-ring-panel .layer-list button.disabled{opacity:.5}.star-ring-panel .layer-list small{font-size:9px;color:var(--dm-secondary)}.star-ring-panel .binding-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:6px;background:rgba(255,255,255,.025);color:var(--dm-secondary);font-size:11px}.star-ring-panel .binding-row strong{color:var(--dm-primary);font-weight:500}
+.star-ring-panel{display:grid;gap:16px}.star-ring-panel .param-group-title{margin:2px 0 -2px;color:var(--dm-primary);font-size:12px;font-weight:600}.star-ring-panel .param-field{display:grid;gap:8px}.star-ring-panel .param-field label{display:flex;justify-content:space-between;color:var(--dm-secondary);font-size:12px}.star-ring-panel .param-field label small{font-family:"Geist Mono",ui-monospace,monospace}.star-ring-panel .number-row{display:grid;grid-template-columns:minmax(0,1fr) var(--dm-param-value-width);gap:10px;align-items:center}.star-ring-panel .number-row .el-input-number{width:var(--dm-param-value-width)}.star-ring-panel .color-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}.star-ring-panel .source-card{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:11px;border-radius:7px;background:rgba(255,255,255,.035)}.star-ring-panel .source-card>div:first-child{min-width:0;display:grid;gap:3px}.star-ring-panel .source-card strong{overflow:hidden;color:var(--dm-primary);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .source-card small{color:var(--dm-secondary);font-size:10px}.star-ring-panel .source-actions{display:flex;gap:6px}.star-ring-panel .source-actions button{padding:0;border:0;background:transparent;color:#1683ff;font-size:10px;cursor:pointer;white-space:nowrap}.star-ring-panel .naming-guide{padding:10px 11px;border-radius:7px;background:rgba(255,255,255,.025)}.star-ring-panel .naming-guide summary{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--dm-primary);font-size:11px;font-weight:600;cursor:pointer;list-style:none}.star-ring-panel .naming-guide summary::-webkit-details-marker{display:none}.star-ring-panel .naming-guide summary::after{content:"⌄";color:var(--dm-secondary);font-size:12px;transition:transform .18s}.star-ring-panel .naming-guide[open] summary::after{transform:rotate(180deg)}.star-ring-panel .naming-guide summary small{margin-left:auto;color:var(--dm-secondary);font-size:9px;font-weight:400}.star-ring-panel .naming-guide-list{display:grid;gap:5px;margin-top:10px}.star-ring-panel .naming-guide-list>div{display:grid;grid-template-columns:58px minmax(0,1fr) 48px;align-items:center;gap:6px;min-height:24px}.star-ring-panel .naming-guide-list span{color:#b8b8b8;font-size:10px}.star-ring-panel .naming-guide-list span small{margin-left:3px;color:#686868;font-size:8px}.star-ring-panel .naming-guide-list code{overflow:hidden;color:#79b8ff;font:9px/1.4 "Geist Mono",ui-monospace,monospace;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .naming-guide-list em{color:#777;font-size:9px;font-style:normal;text-align:right}.star-ring-panel .naming-guide p{margin:8px 0 0;color:#686868;font-size:9px;line-height:1.5}.star-ring-panel .layer-list{display:grid;gap:4px}.star-ring-panel .layer-row{display:flex;align-items:center;justify-content:space-between;min-height:38px;padding-right:7px;border-radius:5px;background:rgba(255,255,255,.025);color:var(--dm-secondary);cursor:pointer;outline:none}.star-ring-panel .layer-row:hover,.star-ring-panel .layer-row:focus-visible{background:rgba(255,255,255,.055);color:var(--dm-primary)}.star-ring-panel .layer-row.active{background:rgba(255,255,255,.09);color:var(--dm-primary)}.star-ring-panel .layer-row.hidden>span:first-child{opacity:.46}.star-ring-panel .layer-row-actions{display:flex;align-items:center;gap:7px}.star-ring-panel .layer-list small{font-size:9px;color:var(--dm-secondary)}.star-ring-panel .layer-visibility{display:grid;place-items:center;width:26px;height:26px;padding:0;border:0;border-radius:4px;background:transparent;color:#a8a8a8;cursor:pointer}.star-ring-panel .layer-visibility:hover{background:rgba(255,255,255,.08);color:#fff}.star-ring-panel .layer-visibility.off{color:#5e5e5e}.star-ring-panel .layer-visibility svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.star-ring-panel .binding-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:6px;background:rgba(255,255,255,.025);color:var(--dm-secondary);font-size:11px}.star-ring-panel .binding-row strong{color:var(--dm-primary);font-weight:500}
 </style>
