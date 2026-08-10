@@ -1,7 +1,8 @@
 <template>
   <div
+    ref="previewRoot"
     class="motion-preview-visual dm-motion-canvas"
-    :class="[`motion-${motionId}`, { 'is-playing': playing, 'is-paused': !playing }]"
+    :class="[`motion-${motionId}`, { 'is-playing': playing, 'is-paused': !playing, 'has-svg': Boolean(svgMarkup) }]"
     :data-motion-id="motionId"
     :data-preview-source="previewSource"
     :style="rootStyle"
@@ -50,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   BORDER_FLOW_DASH_GAP,
   BORDER_FLOW_DASH_LENGTH,
@@ -101,6 +102,8 @@ interface Props {
   flowTailWidth?: number;
   glowStrength?: number;
   svgMarkup?: string;
+  svgWidth?: number;
+  svgHeight?: number;
   svgColorMode?: "original" | "monochrome";
   svgFillColor?: string;
   svgStrokeColor?: string;
@@ -150,12 +153,35 @@ const props = withDefaults(defineProps<Props>(), {
   flowTailWidth: 0.5,
   glowStrength: 50,
   svgMarkup: "",
+  svgWidth: 240,
+  svgHeight: 150,
   svgColorMode: "original",
   svgFillColor: "#0070F3",
   svgStrokeColor: "#0070F3",
   svgStrokeWidth: 1,
   svgOpacity: 1
 });
+
+const previewRoot = ref<HTMLElement>();
+const previewViewport = ref({ width: 720, height: 420 });
+let previewResizeObserver: ResizeObserver | undefined;
+
+function updatePreviewViewport(): void {
+  const element = previewRoot.value;
+  if (!element) return;
+  previewViewport.value = {
+    width: Math.max(1, element.clientWidth),
+    height: Math.max(1, element.clientHeight)
+  };
+}
+
+onMounted(() => {
+  updatePreviewViewport();
+  previewResizeObserver = new ResizeObserver(updatePreviewViewport);
+  if (previewRoot.value) previewResizeObserver.observe(previewRoot.value);
+});
+
+onBeforeUnmount(() => previewResizeObserver?.disconnect());
 
 const previewSource = computed(() => `live-rectangle:${props.motionId}`);
 const showsBorderOrbit = computed(() => props.motionId === "border-flow");
@@ -210,6 +236,7 @@ const rootStyle = computed(() => ({
   "--preview-svg-stroke": props.svgStrokeColor,
   "--preview-svg-stroke-width": `${props.svgStrokeWidth}px`,
   "--preview-svg-opacity": props.svgOpacity,
+  "--preview-svg-aspect": `${Math.max(1, props.svgWidth)}/${Math.max(1, props.svgHeight)}`,
   "--preview-scan-speed": `${Math.max(props.scanSpeed, 0.1)}s`,
   "--preview-scan-line-width": `${Math.max(props.scanLineWidth, 1)}px`,
   "--preview-scan-length": `${Math.max(20, props.scanLength)}%`,
@@ -232,11 +259,25 @@ function borderFlowSegmentStyle(segment: BorderFlowTrailSegment): Record<string,
   };
 }
 
-const targetStyle = computed(() => ({
-  opacity: 1,
-  transform: "translate(0, 0) scale(1)",
-  filter: "none"
-}));
+const targetStyle = computed(() => {
+  const baseStyle: Record<string, string | number> = {
+    opacity: 1,
+    transform: "translate(0, 0) scale(1)",
+    filter: "none"
+  };
+  if (!props.svgMarkup) return baseStyle;
+
+  const sourceWidth = Math.max(1, props.svgWidth);
+  const sourceHeight = Math.max(1, props.svgHeight);
+  const availableWidth = Math.max(1, previewViewport.value.width * 0.82);
+  const availableHeight = Math.max(1, previewViewport.value.height * 0.72);
+  const previewScale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight);
+  return {
+    ...baseStyle,
+    width: `${sourceWidth * previewScale}px`,
+    height: `${sourceHeight * previewScale}px`
+  };
+});
 </script>
 
 <style scoped>
@@ -266,6 +307,10 @@ const targetStyle = computed(() => ({
   aspect-ratio: 8 / 5;
   transform-origin: center;
   will-change: transform, opacity, filter;
+}
+
+.has-svg .preview-target {
+  aspect-ratio: auto;
 }
 
 .preview-rectangle {

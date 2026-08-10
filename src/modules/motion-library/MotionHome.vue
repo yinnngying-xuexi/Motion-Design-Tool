@@ -99,6 +99,7 @@ import { Search } from "@element-plus/icons-vue";
 import { basicMotions } from "@/data/basicMotions";
 import { decorationEffects } from "@/data/decorationEffects";
 import { generateDecorationCss, generateDecorationMarkup } from "@/generators/decorationGenerator";
+import { createSystemSvgFlowSource } from "@/utils/svgFlow";
 import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
 import type { BasicMotionConfig } from "@/types/motion";
 
@@ -188,7 +189,13 @@ const searchableDecorationMotions: HomeMotion[] = decorationEffects.map((effect)
   iteration: "infinite",
   timingFunction: "linear",
   previewConfig: {},
-  previewHtml: `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`,
+  previewHtml: `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(
+    effect,
+    effect.defaultParams,
+    effect.generator === "svg-flow" ? createSystemSvgFlowSource(effect.id) : undefined,
+    undefined,
+    `home-${effect.id}`
+  )}`,
   previewScale: decorationPreviewScale(effect.previewType)
 }));
 

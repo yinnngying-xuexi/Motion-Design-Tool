@@ -3,6 +3,9 @@ import type { DecorationEffectTemplate, DecorationSection } from "@/types/decora
 const DECORATION_BLUE = "#0070F3";
 const DECORATION_BLUE_LIGHT = "#7AB8FF";
 const DECORATION_BLUE_DARK = "#003B82";
+const FLOW_GREEN = "#10B981";
+const FLOW_GREEN_LIGHT = "#A7F3D0";
+const FLOW_GREEN_DARK = "#064E3B";
 
 const commonParams = {
   color: { key: "color", label: "主色", type: "color" as const },
@@ -25,13 +28,24 @@ const svgFlowParams = {
       { label: "从下到上", value: "btt" }
     ]
   },
+  easing: {
+    key: "easing",
+    label: "速度变化",
+    type: "select" as const,
+    options: [
+      { label: "匀速", value: "linear" },
+      { label: "缓入", value: "ease-in" },
+      { label: "缓出", value: "ease-out" },
+      { label: "缓入缓出", value: "ease-in-out" }
+    ]
+  },
   duration: { key: "duration", label: "流动时长", type: "number" as const, min: 1, max: 16, step: 0.1, unit: "s" },
-  pause: { key: "pause", label: "间隔时间", type: "number" as const, min: 0, max: 8, step: 0.1, unit: "s" },
+  pause: { key: "pause", label: "流光间隔", type: "number" as const, min: 0, max: 8, step: 0.1, unit: "s" },
   tail: { key: "tail", label: "拖尾长度", type: "number" as const, min: 40, max: 2000, step: 10, unit: "px" },
   borderWidth: { key: "borderWidth", label: "流光线宽", type: "number" as const, min: 1, max: 6, step: 1, unit: "px" },
-  headColor: { key: "headColor", label: "头部颜色", type: "color" as const },
+  headColor: { key: "headColor", label: "流光高亮色", type: "color" as const },
   tailColor: { key: "tailColor", label: "拖尾颜色", type: "color" as const },
-  endColor: { key: "endColor", label: "尾端颜色", type: "color" as const }
+  endColor: { key: "endColor", label: "底轨颜色", type: "color" as const }
 };
 
 export const decorationSections: DecorationSection[] = ["图标底座", "线性流光"];
@@ -57,12 +71,46 @@ export const decorationEffects: DecorationEffectTemplate[] = [
   },
   {
     id: "svg-flow-tool",
-    name: "路径流光",
+    name: "路径流光01",
     section: "线性流光",
-    description: "沿默认弧线路径或导入的 SVG 路径生成连续渐变流光。",
-    scene: "大屏顶栏、标题装饰、地图连线、面板边线",
+    description: "沿标题装饰路径生成连续渐变流光，也可导入同类 SVG 替换系统案例。",
+    scene: "大屏顶部标题、底部装饰、横向标题栏",
     defaultParams: {
       direction: "ltr",
+      easing: "linear",
+      duration: 5,
+      pause: 0.8,
+      tail: 420,
+      borderWidth: 3,
+      glow: 14,
+      headColor: FLOW_GREEN_LIGHT,
+      tailColor: FLOW_GREEN,
+      endColor: FLOW_GREEN_DARK
+    },
+    editableParams: [
+      svgFlowParams.direction,
+      svgFlowParams.easing,
+      svgFlowParams.duration,
+      svgFlowParams.pause,
+      svgFlowParams.tail,
+      svgFlowParams.borderWidth,
+      commonParams.glow,
+      svgFlowParams.headColor,
+      svgFlowParams.tailColor,
+      svgFlowParams.endColor
+    ],
+    previewType: "svg-flow",
+    generator: "svg-flow"
+  },
+  {
+    id: "svg-flow-tool-02",
+    name: "路径流光02",
+    section: "线性流光",
+    description: "两侧流光沿标题装饰路径向中间聚拢，可导入同结构 SVG 替换系统案例。",
+    scene: "大屏顶部标题、底部装饰、横向标题栏",
+    defaultParams: {
+      direction: "ltr",
+      easing: "linear",
       duration: 5,
       pause: 0.8,
       tail: 420,
@@ -74,6 +122,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     },
     editableParams: [
       svgFlowParams.direction,
+      svgFlowParams.easing,
       svgFlowParams.duration,
       svgFlowParams.pause,
       svgFlowParams.tail,

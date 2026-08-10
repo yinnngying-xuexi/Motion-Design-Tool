@@ -126,7 +126,7 @@ function scanGeometry(config: BasicMotionConfig): {
   };
 }
 
-export function generateBasicMotionCss(template: BasicMotionTemplate, config: BasicMotionConfig, svgStyle?: SvgStyleConfig): string {
+export function generateBasicMotionCss(template: BasicMotionTemplate, config: BasicMotionConfig, svgStyle?: SvgStyleConfig, asset?: SvgPreviewAsset): string {
   const { cls, keyframes } = names(template);
   const speed = template.id === "alert-blink" ? 1 / Math.max(config.blinkFrequency, 0.1) : config.duration;
   const isConfiguredLoop = ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate"].includes(template.id);
@@ -150,11 +150,14 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
     ? `0 0 ${config.glowBase}px ${config.color}88`
     : borderFlow ? "inset 0 1px 0 rgba(255,255,255,.04)" : "0 14px 32px rgba(0,0,0,.42)";
   const startRippleScale = Math.min(1, config.rippleStartRadius / Math.max(config.rippleEndRadius, 1));
+  const materialWidth = asset ? Math.max(1, asset.width) : 240;
+  const materialHeight = asset ? Math.max(1, asset.height) : 150;
+  const svgBoxSize = asset ? "width:100%; height:100%;" : "width:min(78%,180px); height:min(78%,110px);";
 
   return `.${cls} {
   position:relative;
-  width:240px;
-  height:150px;
+  width:${materialWidth}px;
+  height:${materialHeight}px;
   display:grid;
   place-items:center;
   overflow:visible;
@@ -180,7 +183,7 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
 .${cls} p,.${cls} small { margin:0; color:#8F8F8F; }
 .${cls} strong { font-size:38px; }
 .${cls}__material--svg { overflow:visible; border:0; border-radius:0; background:transparent; box-shadow:none; }
-.${cls}__svg { width:min(78%,180px); height:min(78%,110px); transform:translate(${config.assetOffsetX}px,${config.assetOffsetY}px) scale(${config.assetScale}); transform-origin:center; }
+.${cls}__svg { ${svgBoxSize} transform:translate(${config.assetOffsetX}px,${config.assetOffsetY}px) scale(${config.assetScale}); transform-origin:center; }
 .${cls}__svg svg { width:100%; height:100%; display:block; overflow:visible; }
 ${generateSvgStyleCss(cls, svgStyle)}
 .${cls}__pulse-core { position:absolute; z-index:2; width:22px; height:22px; border-radius:50%; background:${config.color}; box-shadow:0 0 ${Math.max(6, config.glowPeak)}px ${config.color}; animation:${keyframes}Core ${speed}s ease-in-out infinite; }
@@ -201,13 +204,13 @@ ${generateSvgStyleCss(cls, svgStyle)}
 export function generateBasicMotionHtmlCss(
   template: BasicMotionTemplate, config: BasicMotionConfig, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig
 ): string {
-  return `${generateBasicMotionMarkup(template, asset, config)}\n\n<style>\n${generateBasicMotionCss(template, config, svgStyle)}\n</style>`;
+  return `${generateBasicMotionMarkup(template, asset, config)}\n\n<style>\n${generateBasicMotionCss(template, config, svgStyle, asset)}\n</style>`;
 }
 
 export function generateBasicMotionVue(
   template: BasicMotionTemplate, config: BasicMotionConfig, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig
 ): string {
-  return `<template>\n  ${generateBasicMotionMarkup(template, asset, config)}\n</template>\n\n<style scoped>\n${generateBasicMotionCss(template, config, svgStyle)}\n</style>`;
+  return `<template>\n  ${generateBasicMotionMarkup(template, asset, config)}\n</template>\n\n<style scoped>\n${generateBasicMotionCss(template, config, svgStyle, asset)}\n</style>`;
 }
 
 export function generateBasicMotionJson(

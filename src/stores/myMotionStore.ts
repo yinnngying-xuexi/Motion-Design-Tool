@@ -74,13 +74,16 @@ export const useMyMotionStore = defineStore("my-motion", () => {
   }
 
   function saveSvgFlow(svgFlow: SavedSvgFlowMotion, artifact: SavedMotionArtifact): void {
-    const id = `svg-flow-${svgFlow.source.fileName.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase() || "custom"}`;
+    const id = svgFlow.effectId
+      ? `decoration-${svgFlow.effectId}`
+      : `svg-flow-${svgFlow.source.fileName.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase() || "custom"}`;
+    const name = svgFlow.name ?? "路径流光";
     const motion: SavedMotion = {
       id,
-      name: "路径流光",
+      name,
       category: "强调动效",
       scene: "自定义 SVG 路径",
-      description: `路径流光：${svgFlow.source.fileName}`,
+      description: `${name}：${svgFlow.source.fileName}`,
       previewType: "scan",
       duration: svgFlow.config.duration,
       timingFunction: "linear",

@@ -87,6 +87,8 @@ export interface StarRingSvgAsset {
   fileName: string;
   markup: string;
   primaryColor: string;
+  width: number;
+  height: number;
   mode: "layered" | "whole";
   layers: StarRingSvgLayer[];
   rootKeys: string[];

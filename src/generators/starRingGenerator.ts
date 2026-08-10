@@ -218,6 +218,10 @@ export function generateStarRingMarkup(config: StarRingDecorationConfig): string
 
 export function generateStarRingCss(config: StarRingDecorationConfig): string {
   const overall = config.overall;
+  const importedWidth = config.sourceMode === "imported" ? config.svg?.width : undefined;
+  const importedHeight = config.sourceMode === "imported" ? config.svg?.height : undefined;
+  const outputWidth = Math.max(1, importedWidth ?? overall.size);
+  const outputHeight = Math.max(1, importedHeight ?? Math.round(overall.size * 0.7));
   const roleCss = Object.entries(config.layerConfigs)
     .map(([key, layer]) => {
       const isRotatingRing = config.layerMapping["rotating-ring"].includes(key);
@@ -227,7 +231,7 @@ export function generateStarRingCss(config: StarRingDecorationConfig): string {
     })
     .filter(Boolean)
     .join("\n");
-  return `.${CLASS_NAME}{--star-ring-color:${overall.color};position:relative;width:${overall.size}px;height:${Math.round(overall.size * 0.7)}px;opacity:${overall.opacity};transform:translate(${overall.offsetX}px,${overall.offsetY}px);isolation:isolate;}
+  return `.${CLASS_NAME}{--star-ring-color:${overall.color};position:relative;width:${outputWidth}px;aspect-ratio:${outputWidth}/${outputHeight};height:auto;opacity:${overall.opacity};transform:translate(${overall.offsetX}px,${overall.offsetY}px);isolation:isolate;}
 .${CLASS_NAME}__import{position:absolute;inset:0;display:grid;place-items:center;}
 .${CLASS_NAME}__import svg{display:block;width:100%;height:100%;overflow:visible;}
 .${CLASS_NAME}__layer{position:absolute;inset:0;transform-origin:center;}

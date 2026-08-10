@@ -10,6 +10,7 @@ const DECORATION_BLUE_DARK = "#003B82";
 function svgFlowConfig(params: DecorationParams): SvgFlowConfig {
   return {
     direction: (param(params, "direction", "ltr") as SvgFlowConfig["direction"]),
+    easing: (param(params, "easing", "linear") as SvgFlowConfig["easing"]),
     duration: Number(param(params, "duration", 5)),
     pause: Number(param(params, "pause", 0.8)),
     tail: Number(param(params, "tail", 420)),
@@ -39,8 +40,33 @@ function defaultSvgFlowSource(): SvgFlowSource {
   return {
     fileName: "默认弧线路径.svg",
     viewBox: "0 0 1000 180",
+    width: 1000,
+    height: 180,
     shape: '<path d="M0 116 H188 C274 116 298 34 390 34 H654 C746 34 778 146 880 146 H1000"></path>'
   };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function namespaceSvgContent(content: string, prefix: string): { content: string; ids: Map<string, string> } {
+  const ids = new Map<string, string>();
+  let index = 0;
+  content.replace(/\bid=(['"])(.*?)\1/g, (_match, _quote, id: string) => {
+    if (!ids.has(id)) ids.set(id, `${prefix}-${++index}`);
+    return _match;
+  });
+
+  let next = content;
+  ids.forEach((replacement, original) => {
+    const escaped = escapeRegExp(original);
+    next = next
+      .replace(new RegExp(`id=(['"])${escaped}\\1`, "g"), `id="${replacement}"`)
+      .replace(new RegExp(`url\\(\\s*#${escaped}\\s*\\)`, "g"), `url(#${replacement})`)
+      .replace(new RegExp(`(href|xlink:href)=(['"])#${escaped}\\2`, "g"), `$1="#${replacement}"`);
+  });
+  return { content: next, ids };
 }
 
 export function decorationClassName(template: DecorationEffectTemplate): string {
@@ -101,9 +127,12 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   if (template.generator === "svg-flow") {
     const config = svgFlowConfig(params);
     const total = Math.max(0.1, config.duration + config.pause);
+    const glowRatio = Math.max(0, Math.min(1, config.glow / 64));
+    const glowFilter = config.glow <= 0
+      ? "none"
+      : `brightness(${(1 + glowRatio * 0.72).toFixed(2)}) drop-shadow(0 0 ${Math.max(1, config.glow * 0.16).toFixed(1)}px ${config.headColor}) drop-shadow(0 0 ${Math.max(2, config.glow * 0.48).toFixed(1)}px ${config.headColor}) drop-shadow(0 0 ${Math.max(3, config.glow).toFixed(1)}px ${config.tailColor})`;
 
     return `.${cls} {
-  width: min(100%, 640px);
   opacity: 1;
 }
 
@@ -120,18 +149,24 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   stroke-width: ${config.borderWidth};
   stroke-linecap: round;
   stroke-linejoin: round;
-  mask: url(#${cls}-mask);
-  filter:
-    drop-shadow(0 0 1px ${config.headColor})
-    drop-shadow(0 0 ${Math.max(2, config.glow * 0.45)}px ${config.headColor})
-    drop-shadow(0 0 ${config.glow}px ${config.tailColor});
+  filter: ${glowFilter};
 }
 
 .${cls}__track {
   fill: none;
   stroke: ${config.endColor};
   stroke-width: ${Math.max(1, config.borderWidth * 0.5)};
-  opacity: 0.12;
+  opacity: 0.7;
+}
+
+.${cls}__tail {
+  fill: none;
+  stroke: ${config.tailColor};
+  stroke-width: ${Math.max(1, config.borderWidth * 1.75)};
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: ${(0.16 + glowRatio * 0.48).toFixed(2)};
+  filter: ${config.glow <= 0 ? "none" : `drop-shadow(0 0 ${Math.max(2, config.glow * 0.72).toFixed(1)}px ${config.tailColor})`};
 }
 
 .${cls}__meta { display: none; }
@@ -561,41 +596,81 @@ ${generateDecorationCompositionCss(asset, svgStyle)}
 </style>`;
 }
 
-export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset): string {
+export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset, instanceId = "main"): string {
   if (template.generator === "svg-flow") {
     const cls = decorationClassName(template);
     const config = svgFlowConfig(params);
     const currentSource = source ?? defaultSvgFlowSource();
-    const metrics = svgFlowMetrics(currentSource.viewBox, config);
     const total = Math.max(0.1, config.duration + config.pause);
-    const moveEnd = Math.min(99.5, (config.duration / total) * 100).toFixed(3);
-    const pad = Math.max(config.tail, config.glow * 2, 24);
-    const maskX = metrics.x - pad;
-    const maskY = metrics.y - pad;
-    const maskWidth = metrics.width + pad * 2;
-    const maskHeight = metrics.height + pad * 2;
-    const rect = metrics.axis === "x"
-      ? `x="${metrics.start}" y="${maskY}" width="${config.tail}" height="${maskHeight}"`
-      : `x="${maskX}" y="${metrics.start}" width="${maskWidth}" height="${config.tail}"`;
-
-    return `<div class="${cls}" aria-label="${currentSource.fileName}">
-  <svg class="${cls}__svg" viewBox="${currentSource.viewBox}" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <path id="${cls}-path" ${currentSource.shape.replace(/^<[^\s>]+|\/?>(?=$)/g, "").trim()}></path>
-      <linearGradient id="${cls}-mask-gradient" ${metrics.gradient}>
+    const [, , viewBoxWidth = 1000, viewBoxHeight = 180] = currentSource.viewBox.split(/[\s,]+/).map(Number);
+    const sourceWidth = Number(currentSource.width || viewBoxWidth || 1000);
+    const sourceHeight = Number(currentSource.height || viewBoxHeight || 180);
+    const legacyPathId = `${cls}-${instanceId}-legacy-path`;
+    const rawTargets = currentSource.targets?.length
+      ? currentSource.targets
+      : [{ id: legacyPathId, label: currentSource.fileName, enabled: true, direction: config.direction, delay: 0 }];
+    const rawContent = currentSource.content ?? currentSource.shape.replace(/^<([^\s>]+)/, `<$1 id="${legacyPathId}"`);
+    const namespaced = namespaceSvgContent(rawContent, `${cls}-${instanceId}-source`);
+    const hasMultipleTargets = rawTargets.length > 1;
+    const targets = rawTargets.filter((target) => target.enabled).map((target, index) => ({
+      ...target,
+      id: namespaced.ids.get(target.id) ?? target.id,
+      direction: hasMultipleTargets ? (target.direction ?? config.direction) : config.direction,
+      delay: hasMultipleTargets ? Number(target.delay ?? 0) : 0,
+      index
+    }));
+    const overlays = targets.map((target) => {
+      const pathConfig = { ...config, direction: target.direction };
+      const metrics = svgFlowMetrics(currentSource.viewBox, pathConfig);
+      const pad = Math.max(config.tail, config.glow * 2, 24);
+      const maskX = metrics.x - pad;
+      const maskY = metrics.y - pad;
+      const maskWidth = metrics.width + pad * 2;
+      const maskHeight = metrics.height + pad * 2;
+      const rect = metrics.axis === "x"
+        ? `x="${metrics.start}" y="${maskY}" width="${config.tail}" height="${maskHeight}"`
+        : `x="${maskX}" y="${metrics.start}" width="${maskWidth}" height="${config.tail}"`;
+      const maskId = `${cls}-${instanceId}-mask-${target.index}`;
+      const easingSpline = config.easing === "ease-in"
+        ? "0.42 0 1 1"
+        : config.easing === "ease-out"
+          ? "0 0 0.58 1"
+          : "0.42 0 0.58 1";
+      const hasPause = config.pause > 0.0001;
+      const animationValues = hasPause
+        ? `${metrics.start};${metrics.finish};${metrics.finish}`
+        : `${metrics.start};${metrics.finish}`;
+      const animationKeyTimes = hasPause
+        ? `0;${(config.duration / total).toFixed(3)};1`
+        : "0;1";
+      const animationTiming = config.easing === "linear"
+        ? 'calcMode="linear"'
+        : `calcMode="spline" keySplines="${hasPause ? `${easingSpline};0 0 1 1` : easingSpline}"`;
+      return {
+        defs: `<linearGradient id="${maskId}-gradient" ${metrics.gradient}>
         <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"></stop>
         <stop offset="0.36" stop-color="#FFFFFF" stop-opacity="0.2"></stop>
         <stop offset="0.74" stop-color="#FFFFFF" stop-opacity="0.78"></stop>
         <stop offset="1" stop-color="#FFFFFF"></stop>
       </linearGradient>
-      <mask id="${cls}-mask" maskUnits="userSpaceOnUse" x="${maskX}" y="${maskY}" width="${maskWidth}" height="${maskHeight}">
-        <rect ${rect} fill="url(#${cls}-mask-gradient)">
-          <animate attributeName="${metrics.axis}" values="${metrics.start};${metrics.finish};${metrics.finish}" keyTimes="0;${(config.duration / total).toFixed(3)};1" dur="${total}s" repeatCount="indefinite"></animate>
+      <mask id="${maskId}" maskUnits="userSpaceOnUse" x="${maskX}" y="${maskY}" width="${maskWidth}" height="${maskHeight}">
+        <rect ${rect} fill="url(#${maskId}-gradient)">
+          <animate attributeName="${metrics.axis}" values="${animationValues}" keyTimes="${animationKeyTimes}" ${animationTiming} dur="${total}s" begin="${target.delay}s" repeatCount="indefinite"></animate>
         </rect>
-      </mask>
+      </mask>`,
+        use: `<use href="#${target.id}" class="${cls}__track"></use>
+    <use href="#${target.id}" class="${cls}__tail" mask="url(#${maskId})"></use>
+    <use href="#${target.id}" class="${cls}__path" mask="url(#${maskId})"></use>`
+      };
+    });
+
+    return `<div class="${cls}" style="width:${sourceWidth}px;aspect-ratio:${sourceWidth}/${sourceHeight}" aria-label="${currentSource.fileName}">
+  <svg class="${cls}__svg" viewBox="${currentSource.viewBox}" fill="none" xmlns="http://www.w3.org/2000/svg">
+    ${namespaced.content}
+    <defs>
+      ${overlays.map((item) => item.defs).join("\n      ")}
     </defs>
-    <use href="#${cls}-path" class="${cls}__track"></use>
-    <use href="#${cls}-path" class="${cls}__path"></use>
+    ${overlays.map((item) => item.use).join("\n    ")}
   </svg>
 </div>`;
   }

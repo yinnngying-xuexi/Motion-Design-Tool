@@ -1,6 +1,15 @@
-import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
+import systemPathFlowMarkup from "@/assets/title-path-flow-01.svg?raw";
+import systemPathFlow02Markup from "@/assets/title-path-flow-02.svg?raw";
+import type {
+  SvgFlowConfig,
+  SvgFlowSource,
+  SvgFlowTarget,
+  SvgPreviewAsset,
+  SvgStyleConfig
+} from "@/types/svgFlow";
 
 const SHAPE_SELECTOR = "path,line,polyline,polygon,circle,ellipse,rect";
+const FLOW_PATH_NAME = /^flow-path(?:[-_](?:\d+|left|right|top|bottom))?$/i;
 
 export const SVG_FLOW_DRAFT_KEY = "visual-motion-svg-flow-draft-v2";
 export const SVG_FLOW_LEGACY_DRAFT_KEY = "visual-motion-svg-flow-draft";
@@ -9,6 +18,7 @@ export const SVG_FLOW_OPEN_KEY = "visual-motion-svg-flow-open";
 export function createDefaultSvgFlowConfig(): SvgFlowConfig {
   return {
     direction: "ltr",
+    easing: "linear",
     duration: 5,
     pause: 0.8,
     tail: 420,
@@ -17,45 +27,6 @@ export function createDefaultSvgFlowConfig(): SvgFlowConfig {
     headColor: "#7AB8FF",
     tailColor: "#0070F3",
     endColor: "#003B82"
-  };
-}
-
-export function parseSvgFlowSource(text: string, fileName: string): SvgFlowSource {
-  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
-  const svg = doc.querySelector("svg");
-
-  if (!svg || doc.querySelector("parsererror")) {
-    throw new Error("无法读取这个 SVG 文件");
-  }
-
-  svg.querySelectorAll("script,foreignObject,iframe,object,embed").forEach((node) => node.remove());
-  [svg, ...svg.querySelectorAll("*")].forEach((element) => {
-    [...element.attributes].forEach((attribute) => {
-      const value = attribute.value.trim().toLowerCase();
-      if (attribute.name.toLowerCase().startsWith("on") || value.startsWith("javascript:")) {
-        element.removeAttribute(attribute.name);
-      }
-    });
-  });
-
-  const shape = svg.querySelector(SHAPE_SELECTOR);
-  if (!shape) {
-    throw new Error("SVG 中没有可用于流光的线条元素");
-  }
-
-  const clean = document.createElementNS("http://www.w3.org/2000/svg", shape.tagName.toLowerCase());
-  ["d", "x", "y", "x1", "y1", "x2", "y2", "width", "height", "rx", "ry", "cx", "cy", "r", "points"].forEach((name) => {
-    const value = shape.getAttribute(name);
-    if (value !== null) clean.setAttribute(name, value);
-  });
-
-  const rawViewBox = svg.getAttribute("viewBox")?.trim();
-  const viewBox = rawViewBox && rawViewBox.split(/[\s,]+/).length === 4 ? rawViewBox : "0 0 1000 180";
-
-  return {
-    fileName,
-    viewBox,
-    shape: new XMLSerializer().serializeToString(clean)
   };
 }
 
@@ -76,10 +47,75 @@ function parseSafeSvg(text: string): SVGSVGElement {
       }
     });
   });
-  svg.removeAttribute("width");
-  svg.removeAttribute("height");
   svg.setAttribute("aria-hidden", "true");
   return svg;
+}
+
+function svgDimensions(svg: SVGSVGElement): { width: number; height: number } {
+  const viewBox = svg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
+  const width = Number.parseFloat(svg.getAttribute("width") ?? "") || viewBox[2] || 1000;
+  const height = Number.parseFloat(svg.getAttribute("height") ?? "") || viewBox[3] || 180;
+  return {
+    width: Math.max(1, width),
+    height: Math.max(1, height)
+  };
+}
+
+export function parseSvgFlowSource(text: string, fileName: string): SvgFlowSource {
+  const svg = parseSafeSvg(text);
+  const dimensions = svgDimensions(svg);
+  const shapes = [...svg.querySelectorAll<SVGGraphicsElement>(SHAPE_SELECTOR)]
+    .filter((shape) => !shape.closest("defs,clipPath,mask,pattern"));
+  const namedFlowShapes = shapes.filter((shape) => {
+    const name = shape.getAttribute("id") ?? shape.getAttribute("data-name") ?? "";
+    return FLOW_PATH_NAME.test(name.trim());
+  });
+  const flowShapes = namedFlowShapes.length
+    ? namedFlowShapes
+    : shapes.filter((shape) => shape.tagName.toLowerCase() === "path" && shape.getAttribute("stroke") !== "none").slice(0, 1);
+
+  if (!flowShapes.length) throw new Error("SVG 中没有可用于流光的路径，请将目标路径命名为 flow-path-01");
+
+  const targets: SvgFlowTarget[] = flowShapes.map((shape, index) => {
+    const originalName = shape.getAttribute("id")?.trim()
+      || shape.getAttribute("data-name")?.trim()
+      || `flow-path-${String(index + 1).padStart(2, "0")}`;
+    const safeId = FLOW_PATH_NAME.test(originalName)
+      ? originalName
+      : `dm-flow-path-${String(index + 1).padStart(2, "0")}`;
+    shape.setAttribute("id", safeId);
+    if (safeId !== originalName) shape.setAttribute("data-dm-original-id", originalName);
+    const normalizedName = originalName.toLowerCase();
+    const direction = normalizedName.endsWith("-right") || normalizedName.endsWith("_right")
+      ? "rtl"
+      : normalizedName.endsWith("-top") || normalizedName.endsWith("_top")
+        ? "ttb"
+        : normalizedName.endsWith("-bottom") || normalizedName.endsWith("_bottom")
+          ? "btt"
+          : "ltr";
+    return { id: safeId, label: originalName, enabled: true, direction, delay: 0 };
+  });
+
+  const rawViewBox = svg.getAttribute("viewBox")?.trim();
+  const viewBox = rawViewBox && rawViewBox.split(/[\s,]+/).length === 4 ? rawViewBox : "0 0 1000 180";
+
+  return {
+    fileName,
+    viewBox,
+    width: dimensions.width,
+    height: dimensions.height,
+    shape: new XMLSerializer().serializeToString(flowShapes[0].cloneNode(true)),
+    content: svg.innerHTML,
+    targets
+  };
+}
+
+export function createSystemSvgFlowSource(effectId = "svg-flow-tool"): SvgFlowSource {
+  const usesSecondPreset = effectId === "svg-flow-tool-02";
+  return parseSvgFlowSource(
+    usesSecondPreset ? systemPathFlow02Markup : systemPathFlowMarkup,
+    usesSecondPreset ? "标题路径流光02.svg" : "标题路径流光01.svg"
+  );
 }
 
 function detectPrimarySvgColor(svg: SVGSVGElement): string {
@@ -110,10 +146,13 @@ export function createDefaultSvgStyleConfig(primaryColor = "#0070F3"): SvgStyleC
 export async function readSvgPreviewFile(file: File): Promise<SvgPreviewAsset> {
   validateSvgFile(file);
   const svg = parseSafeSvg(await file.text());
+  const dimensions = svgDimensions(svg);
   return {
     fileName: file.name,
     markup: new XMLSerializer().serializeToString(svg),
-    primaryColor: detectPrimarySvgColor(svg)
+    primaryColor: detectPrimarySvgColor(svg),
+    width: dimensions.width,
+    height: dimensions.height
   };
 }
 

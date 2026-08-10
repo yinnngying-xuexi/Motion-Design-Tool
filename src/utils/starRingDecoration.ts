@@ -100,10 +100,15 @@ function sanitizeSvg(text: string): SVGSVGElement {
       }
     });
   });
-  svg.removeAttribute("width");
-  svg.removeAttribute("height");
   svg.setAttribute("aria-hidden", "true");
   return svg;
+}
+
+function svgDimensions(svg: SVGSVGElement): { width: number; height: number } {
+  const viewBox = svg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
+  const width = Number.parseFloat(svg.getAttribute("width") ?? "") || viewBox[2] || 188;
+  const height = Number.parseFloat(svg.getAttribute("height") ?? "") || viewBox[3] || Math.round(width * 0.7);
+  return { width: Math.max(1, width), height: Math.max(1, height) };
 }
 
 function detectPrimaryColor(svg: SVGSVGElement): string {
@@ -265,6 +270,7 @@ function emptyStarRingLayerMapping(): StarRingLayerMapping {
 
 function createStarRingAssetFromMarkup(markup: string, fileName: string, keyPrefix = "dm-svg-layer"): { asset: StarRingSvgAsset; mapping: StarRingLayerMapping } {
   const svg = sanitizeSvg(markup);
+  const dimensions = svgDimensions(svg);
   const shapeCount = svg.querySelectorAll("path,line,polyline,polygon,circle,ellipse,rect").length;
   if (!shapeCount) throw new Error("SVG 中没有可用的图形内容");
 
@@ -298,6 +304,8 @@ function createStarRingAssetFromMarkup(markup: string, fileName: string, keyPref
     fileName,
     markup: new XMLSerializer().serializeToString(svg),
     primaryColor: detectPrimaryColor(svg),
+    width: dimensions.width,
+    height: dimensions.height,
     mode,
     layers,
     rootKeys: layers.filter((layer) => !layer.parentKey).map((layer) => layer.key)

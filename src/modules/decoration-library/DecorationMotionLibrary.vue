@@ -31,8 +31,9 @@
           >
             <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
               <div
-                v-if="effect.previewType === 'particle-base'"
+                v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow'"
                 class="real-effect-thumbnail"
+                :class="{ 'path-flow-thumbnail': effect.previewType === 'svg-flow' }"
                 v-html="effectThumbnailMarkup(effect)"
               ></div>
               <span v-else></span>
@@ -110,7 +111,16 @@
             class="preview-stage dm-motion-canvas"
             :class="{ paused: !previewPlaying }"
           >
-            <div class="generated-preview" v-html="previewMarkup"></div>
+            <div
+              class="generated-preview"
+              :class="{
+                'path-flow-preview': isSvgFlow,
+                'imported-svg-preview': isStarRing && starRingConfig.sourceMode === 'imported',
+                'size-fitted-preview': Boolean(previewIntrinsicSize)
+              }"
+              :style="previewFitStyle"
+              v-html="previewMarkup"
+            ></div>
           </div>
           <PreviewPlaybackControls
             :duration="previewDuration"
@@ -139,6 +149,91 @@
           @use-preset="restoreStarRingPreset"
           @remap="openCurrentMapping"
         />
+        <template v-else-if="isSvgFlow">
+          <div class="flow-param-stack">
+            <section class="flow-param-section">
+              <h3>流动设置</h3>
+              <div v-for="paramItem in flowMotionParams" :key="paramItem.key" class="param-control">
+                <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+                <template v-if="paramItem.type === 'select'">
+                  <el-select v-model="params[paramItem.key]">
+                    <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
+                  </el-select>
+                </template>
+                <div v-else class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section class="flow-param-section">
+              <h3>光效设置</h3>
+              <div v-for="paramItem in flowLightParams" :key="paramItem.key" class="param-control">
+                <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+                <div v-if="paramItem.type === 'color'" class="color-row">
+                  <el-color-picker v-model="params[paramItem.key]" />
+                  <el-input v-model="params[paramItem.key]" />
+                </div>
+                <div v-else class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section v-if="flowTargets.length > 1" class="flow-param-section flow-path-section">
+              <div class="flow-param-section-head">
+                <h3>路径设置</h3>
+                <small>{{ flowTargets.length }} 条路径</small>
+              </div>
+              <article v-for="target in flowTargets" :key="target.id" class="flow-path-card">
+                <header>
+                  <strong>{{ target.label }}</strong>
+                  <el-switch v-model="target.enabled" />
+                </header>
+                <template v-if="target.enabled">
+                  <label class="flow-path-field">
+                    <span>流动方向</span>
+                    <el-select v-model="target.direction">
+                      <el-option v-for="option in flowDirectionOptions" :key="option.value" :label="option.label" :value="option.value" />
+                    </el-select>
+                  </label>
+                  <label class="flow-path-field">
+                    <span>开始延迟</span>
+                    <el-input-number v-model="target.delay" :min="0" :max="8" :step="0.1" :controls="false" />
+                  </label>
+                </template>
+              </article>
+            </section>
+          </div>
+        </template>
         <template v-else>
           <div class="param-stack">
             <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
@@ -214,7 +309,7 @@ import { generateStarRingCss, generateStarRingHtmlCss, generateStarRingMarkup } 
 import type { DecorationEffectTemplate, DecorationSection } from "@/types/decoration";
 import type { StarRingDecorationConfig, StarRingLayerMapping, StarRingSvgAsset } from "@/types/decoration";
 import type { SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
-import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
+import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, createSystemSvgFlowSource, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
@@ -240,11 +335,13 @@ const pendingStarRingMapping = ref<StarRingLayerMapping>(createDefaultStarRingCo
 const mappingDialogVisible = ref(false);
 const remappingExistingAsset = ref(false);
 const activeCustomId = ref("");
-const svgSource = ref<SvgFlowSource>();
+const svgSource = ref<SvgFlowSource>(createSystemSvgFlowSource(initialEffect?.id));
 const importedSvg = ref<SvgPreviewAsset>();
 const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
 const svgFileInput = ref<HTMLInputElement>();
 const previewCapture = ref<HTMLElement>();
+const previewViewport = ref({ width: 800, height: 480 });
+let previewResizeObserver: ResizeObserver | undefined;
 const motionStore = useMyMotionStore();
 const customDecorationStore = useCustomDecorationStore();
 
@@ -254,6 +351,41 @@ const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
 const isStarRing = computed(() => currentEffect.value.id === "base-particle-star-ring");
 const activeCustomComponent = computed(() => customDecorationStore.components.find((item) => item.id === activeCustomId.value));
 const displayTitle = computed(() => activeCustomComponent.value?.name ?? currentEffect.value.name);
+const flowMotionParams = computed(() => ["duration", "pause", "easing", ...(flowTargets.value.length > 1 ? [] : ["direction"])]
+  .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+  .filter((item): item is NonNullable<typeof item> => Boolean(item)));
+const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColor", "tailColor", "endColor"]
+  .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+  .filter((item): item is NonNullable<typeof item> => Boolean(item)));
+const flowTargets = computed(() => svgSource.value?.targets ?? []);
+const previewIntrinsicSize = computed(() => {
+  if (isSvgFlow.value && svgSource.value) {
+    return { width: svgSource.value.width, height: svgSource.value.height };
+  }
+  if (isStarRing.value && starRingConfig.value.svg) {
+    return { width: starRingConfig.value.svg.width, height: starRingConfig.value.svg.height };
+  }
+  return undefined;
+});
+const previewFitStyle = computed(() => {
+  const source = previewIntrinsicSize.value;
+  if (!source) return undefined;
+  const sourceWidth = Math.max(1, source.width);
+  const sourceHeight = Math.max(1, source.height);
+  const availableWidth = Math.max(1, previewViewport.value.width * 0.9);
+  const availableHeight = Math.max(1, previewViewport.value.height * 0.78);
+  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight);
+  return {
+    width: `${sourceWidth * scale}px`,
+    height: `${sourceHeight * scale}px`
+  };
+});
+const flowDirectionOptions = [
+  { label: "从左到右", value: "ltr" },
+  { label: "从右到左", value: "rtl" },
+  { label: "从上到下", value: "ttb" },
+  { label: "从下到上", value: "btt" }
+] as const;
 
 const cssCode = computed(() => isStarRing.value ? generateStarRingCss(starRingConfig.value) : generateDecorationCss(currentEffect.value, params));
 const htmlCss = computed(() => isStarRing.value
@@ -289,10 +421,34 @@ watch([previewMarkup, previewPlaying, previewSpeed], () => {
 
 watch([svgSource, params], () => {
   if (!isSvgFlow.value || !svgSource.value) return;
-  localStorage.setItem(SVG_FLOW_DRAFT_KEY, JSON.stringify({ source: svgSource.value, config: { ...params } }));
+  localStorage.setItem(SVG_FLOW_DRAFT_KEY, JSON.stringify({
+    effectId: currentEffect.value.id,
+    name: currentEffect.value.name,
+    source: svgSource.value,
+    config: { ...params }
+  }));
 }, { deep: true });
 
+watch(previewCapture, (nextElement, previousElement) => {
+  if (previousElement) previewResizeObserver?.unobserve(previousElement);
+  if (!nextElement) return;
+  previewResizeObserver?.observe(nextElement);
+  previewViewport.value = {
+    width: Math.max(1, nextElement.clientWidth),
+    height: Math.max(1, nextElement.clientHeight)
+  };
+}, { flush: "post" });
+
 onMounted(() => {
+  previewResizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) return;
+    previewViewport.value = {
+      width: Math.max(1, entry.contentRect.width),
+      height: Math.max(1, entry.contentRect.height)
+    };
+  });
+  if (previewCapture.value) previewResizeObserver.observe(previewCapture.value);
   localStorage.removeItem(SVG_FLOW_LEGACY_DRAFT_KEY);
   motionStore.loadFromLocal();
   customDecorationStore.load();
@@ -303,6 +459,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  previewResizeObserver?.disconnect();
   window.removeEventListener("datamotion:import-svg", triggerSvgImport);
   window.removeEventListener("datamotion:save", saveFromToolbar);
   window.removeEventListener("datamotion:export", downloadHtml);
@@ -328,6 +485,10 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
     const config = createDefaultStarRingConfig();
     return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
   }
+  if (effect.generator === "svg-flow") {
+    const source = createSystemSvgFlowSource(effect.id);
+    return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams, source, undefined, "thumb")}`;
+  }
   return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`;
 }
 
@@ -342,6 +503,14 @@ function resetParams(): void {
     }
     activeCustomId.value = "";
     importedSvg.value = undefined;
+    return;
+  }
+  if (isSvgFlow.value) {
+    Object.keys(params).forEach((key) => delete params[key]);
+    Object.assign(params, currentEffect.value.defaultParams);
+    svgSource.value = createSystemSvgFlowSource(currentEffect.value.id);
+    importedSvg.value = undefined;
+    void replayPreview();
     return;
   }
   Object.keys(params).forEach((key) => delete params[key]);
@@ -417,10 +586,8 @@ async function handleSvgUpload(event: Event): Promise<void> {
       }
       importedSvg.value = undefined;
     } else if (isSvgFlow.value) {
-      const [flowSource, previewAsset] = await Promise.all([readSvgFlowFile(file), readSvgPreviewFile(file)]);
-      svgSource.value = flowSource;
-      importedSvg.value = previewAsset;
-      Object.assign(svgStyle, createDefaultSvgStyleConfig(previewAsset.primaryColor));
+      svgSource.value = await readSvgFlowFile(file);
+      importedSvg.value = undefined;
       ElMessage.success("SVG 路径已读取");
     } else {
       const previewAsset = await readSvgPreviewFile(file);
@@ -533,12 +700,14 @@ async function saveSvgFlow(): Promise<void> {
   if (!svgSource.value) return;
   try {
     const artifact = await createMotionArtifact({
-      id: "svg-flow-tool",
-      name: "路径流光",
+      id: currentEffect.value.id,
+      name: currentEffect.value.name,
       htmlCss: htmlCss.value,
       previewNode: previewCapture.value
     });
     motionStore.saveSvgFlow({
+      effectId: currentEffect.value.id,
+      name: currentEffect.value.name,
       source: svgSource.value,
       config: {
         ...createDefaultSvgFlowConfig(),
@@ -552,13 +721,21 @@ async function saveSvgFlow(): Promise<void> {
 }
 
 function downloadHtml(): void {
+  const exportSize = isSvgFlow.value
+    ? { width: svgSource.value?.width ?? 1920, height: svgSource.value?.height ?? 96 }
+    : isStarRing.value && starRingConfig.value.sourceMode === "imported" && starRingConfig.value.svg
+      ? { width: starRingConfig.value.svg.width, height: starRingConfig.value.svg.height }
+      : undefined;
+  const bodyStyle = exportSize
+    ? `margin:0;width:${exportSize.width}px;height:${exportSize.height}px;background:#000;overflow:hidden;`
+    : "margin:0;padding:24px;background:#000;";
   const documentCode = `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${displayTitle.value}</title>
-<style>body { margin: 0; padding: 24px; background: #000; }</style>
+<style>html,body{${bodyStyle}}</style>
 </head>
 <body>
 ${htmlCss.value}
@@ -578,11 +755,17 @@ async function restoreSvgFlow(): Promise<void> {
   const raw = localStorage.getItem(SVG_FLOW_OPEN_KEY) ?? localStorage.getItem(SVG_FLOW_DRAFT_KEY);
   if (!raw) return;
   try {
-    const saved = JSON.parse(raw) as { source?: SvgFlowSource; config?: Record<string, string | number> };
+    const saved = JSON.parse(raw) as {
+      effectId?: string;
+      source?: SvgFlowSource;
+      config?: Record<string, string | number>;
+    };
     if (!saved.source || !saved.config) return;
     activeSection.value = "线性流光";
     await nextTick();
-    activeEffectId.value = "svg-flow-tool";
+    activeEffectId.value = decorationEffects.some((effect) => effect.id === saved.effectId)
+      ? saved.effectId!
+      : "svg-flow-tool";
     await nextTick();
     svgSource.value = saved.source;
     Object.assign(params, createDefaultSvgFlowConfig(), saved.config);
@@ -787,6 +970,13 @@ async function restoreSvgFlow(): Promise<void> {
   transform: translate(-50%, -50%) scale(0.24);
   transform-origin: center;
   pointer-events: none;
+}
+
+.real-effect-thumbnail.path-flow-thumbnail {
+  top: 50%;
+  width: 1920px;
+  height: 96px;
+  transform: translate(-50%, -50%) scale(0.028);
 }
 
 .effect-thumb span {
@@ -1163,6 +1353,32 @@ async function restoreSvgFlow(): Promise<void> {
   min-height: 0;
 }
 
+.generated-preview.path-flow-preview {
+  width: 100%;
+  min-width: 0;
+}
+
+.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-tool),
+.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-tool-02) {
+  width: 100% !important;
+  max-width: none;
+}
+
+.generated-preview.imported-svg-preview {
+  width: 100%;
+  min-width: 0;
+}
+
+.generated-preview.imported-svg-preview :deep(.dm-star-ring) {
+  width: 100% !important;
+  max-width: none;
+  max-height: none;
+}
+
+.generated-preview.size-fitted-preview {
+  min-width: 0;
+}
+
 .effect-meta {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1195,6 +1411,72 @@ async function restoreSvgFlow(): Promise<void> {
 .param-stack {
   display: grid;
   gap: 14px;
+}
+
+.flow-param-stack {
+  display: grid;
+  gap: 22px;
+}
+
+.flow-param-section {
+  display: grid;
+  gap: 14px;
+}
+
+.flow-param-section + .flow-param-section {
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.flow-param-section h3 {
+  margin: 0;
+  color: var(--dm-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.flow-param-section-head,
+.flow-path-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flow-param-section-head small {
+  color: var(--dm-secondary);
+  font-size: 11px;
+}
+
+.flow-path-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.flow-path-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dm-primary);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-path-field {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--dm-secondary);
+  font-size: 11px;
+}
+
+.flow-path-field :deep(.el-input-number) {
+  width: 100%;
 }
 
 .param-control {

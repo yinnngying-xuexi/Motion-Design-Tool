@@ -152,6 +152,8 @@
               :flow-head-width="motionConfig.flowHeadWidth"
               :flow-tail-width="motionConfig.flowTailWidth"
               :svg-markup="svgAsset?.markup"
+              :svg-width="svgAsset?.width"
+              :svg-height="svgAsset?.height"
               :svg-color-mode="svgStyle.colorMode"
               :svg-fill-color="svgStyle.fillColor"
               :svg-stroke-color="svgStyle.strokeColor"
@@ -584,7 +586,10 @@ async function copyCode(): Promise<void> {
 }
 
 function downloadHtml(): void {
-  const code = `<!doctype html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${selectedMotion.value.name}</title>\n<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000}</style>\n</head>\n<body>\n${htmlCssCode.value}\n</body>\n</html>`;
+  const pageStyle = svgAsset.value
+    ? `html,body{margin:0;width:${svgAsset.value.width}px;height:${svgAsset.value.height}px;display:grid;place-items:center;overflow:hidden;background:#000}`
+    : "body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000}";
+  const code = `<!doctype html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${selectedMotion.value.name}</title>\n<style>${pageStyle}</style>\n</head>\n<body>\n${htmlCssCode.value}\n</body>\n</html>`;
   const url = URL.createObjectURL(new Blob([code], { type: "text/html;charset=utf-8" }));
   const anchor = document.createElement("a");
   anchor.href = url;
