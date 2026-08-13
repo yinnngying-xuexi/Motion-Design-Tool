@@ -7,6 +7,8 @@ import type {
 } from "@/types/decoration";
 import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import starRingSvgMarkup from "@/assets/star-ring.svg?raw";
+import subtitleSweepSvgMarkup from "@/assets/subtitle-orbit-sweep-01.svg?raw";
+import { createDefaultDecorationParticleConfig } from "@/utils/decorationParticles";
 
 export const STAR_RING_ROLE_LABELS: Record<StarRingLayerRole, string> = {
   background: "背景层",
@@ -17,7 +19,6 @@ export const STAR_RING_ROLE_LABELS: Record<StarRingLayerRole, string> = {
 };
 
 export const STAR_RING_ROLE_ORDER = Object.keys(STAR_RING_ROLE_LABELS) as StarRingLayerRole[];
-export const STAR_RING_SYSTEM_PARTICLES_KEY = "system-particles";
 
 const ROLE_ALIASES: Record<StarRingLayerRole, string[]> = {
   background: ["background", "bg", "base", "背景", "底座"],
@@ -67,6 +68,7 @@ export function createStarRingLayerConfig(role?: StarRingLayerRole | "whole", ov
 export function createDefaultStarRingConfig(): StarRingDecorationConfig {
   const config: StarRingDecorationConfig = {
     version: 1,
+    kind: "star-ring",
     sourceMode: "preset",
     overall: {
       size: 188,
@@ -76,10 +78,43 @@ export function createDefaultStarRingConfig(): StarRingDecorationConfig {
       color: "#0070F3"
     },
     layerMapping: emptyStarRingLayerMapping(),
-    layerConfigs: {}
+    layerConfigs: {},
+    particleEffect: createDefaultDecorationParticleConfig(true, "#0070F3")
   };
   const { asset, mapping } = createStarRingAssetFromMarkup(starRingSvgMarkup, "星环粒子底座.svg", "preset-svg-layer");
   applyStarRingAssetConfig(config, asset, mapping, "preset");
+  return config;
+}
+
+export function createDefaultLayeredDecorationConfig(preset: "star-ring" | "subtitle-sweep" = "star-ring"): StarRingDecorationConfig {
+  if (preset === "star-ring") return createDefaultStarRingConfig();
+  const config: StarRingDecorationConfig = {
+    version: 1,
+    kind: "layered-decoration",
+    sourceMode: "preset",
+    overall: { size: 410, offsetX: 0, offsetY: 0, opacity: 1, color: "#4DC9FF" },
+    layerMapping: emptyStarRingLayerMapping(),
+    layerConfigs: {},
+    particleEffect: createDefaultDecorationParticleConfig(false, "#4DC9FF")
+  };
+  const source = sanitizeSvg(subtitleSweepSvgMarkup);
+  const sourceRoot = source.querySelector<SVGGElement>(":scope > g") ?? source;
+  [...sourceRoot.children].find((element) => element.getAttribute("id") === "5")?.remove();
+  [...sourceRoot.children].find((element) => element.getAttribute("id") === "7")?.remove();
+  const presetNames: Record<string, string> = { "4": "background" };
+  [...sourceRoot.children].forEach((element) => {
+    const original = cleanLayerName(element.getAttribute("id"));
+    const decoded = presetNames[original]
+      ?? (element.tagName.toLowerCase() === "g" ? "circle-decoration" : undefined);
+    if (decoded) element.setAttribute("data-dm-layer-name", decoded);
+  });
+  const { asset, mapping } = createStarRingAssetFromMarkup(new XMLSerializer().serializeToString(source), "小标题.svg", "dm-subtitle-layer");
+  applyStarRingAssetConfig(config, asset, mapping, "preset");
+  Object.values(config.layerConfigs).forEach((layer) => {
+    layer.motion = "none";
+    layer.basicMotionId = undefined;
+    layer.basicMotionConfig = undefined;
+  });
   return config;
 }
 
@@ -136,16 +171,22 @@ const GENERATED_LAYER_NAME_PATTERN = /^(?:clip(?:path)?|mask|filter|paint|linear
 const NAMED_SHAPE_SELECTOR = ":scope > path, :scope > line, :scope > polyline, :scope > polygon, :scope > circle, :scope > ellipse, :scope > rect";
 
 function cleanLayerName(value: string | null | undefined): string {
-  const cleaned = (value ?? "").trim().replace(/\s+/g, " ");
-  if (!cleaned) return "";
-  const codes = [...cleaned].map((character) => character.charCodeAt(0));
+  const source = (value ?? "").trim();
+  if (!source) return "";
+  const windows1252Bytes: Record<string, number> = {
+    "€": 0x80, "‚": 0x82, "ƒ": 0x83, "„": 0x84, "…": 0x85, "†": 0x86, "‡": 0x87,
+    "ˆ": 0x88, "‰": 0x89, "Š": 0x8a, "‹": 0x8b, "Œ": 0x8c, "Ž": 0x8e, "‘": 0x91,
+    "’": 0x92, "“": 0x93, "”": 0x94, "•": 0x95, "–": 0x96, "—": 0x97, "˜": 0x98,
+    "™": 0x99, "š": 0x9a, "›": 0x9b, "œ": 0x9c, "ž": 0x9e, "Ÿ": 0x9f
+  };
+  const codes = [...source].map((character) => windows1252Bytes[character] ?? character.charCodeAt(0));
   const mayBeFigmaUtf8Bytes = codes.some((code) => code > 127) && codes.every((code) => code <= 255);
-  if (!mayBeFigmaUtf8Bytes) return cleaned;
+  if (!mayBeFigmaUtf8Bytes) return source.replace(/\s+/g, " ");
   try {
     const decoded = new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(codes));
-    return /[\u3400-\u9fff]/.test(decoded) ? decoded : cleaned;
+    return /[\u3400-\u9fff]/.test(decoded) ? decoded.replace(/\s+/g, " ") : source.replace(/\s+/g, " ");
   } catch {
-    return cleaned;
+    return source.replace(/\s+/g, " ");
   }
 }
 
@@ -236,6 +277,7 @@ function selectImportedLayerElements(svg: SVGSVGElement): Element[] {
   const rootGroups = [...svg.querySelectorAll<SVGGElement>(":scope > g")];
   if (rootGroups.length === 1) {
     const directChildLayers = directNamedLayerElements(rootGroups[0]);
+    if (directChildLayers.length > 1) return directChildLayers;
     const matchedRoleCount = directChildLayers.filter((element) => matchesStarRingRole(resolveImportedLayerName(element))).length;
     if (matchedRoleCount >= 2) return directChildLayers;
   }
@@ -342,6 +384,49 @@ export async function readStarRingSvgFile(file: File): Promise<{ asset: StarRing
   return createStarRingAssetFromMarkup(await file.text(), file.name);
 }
 
+export async function readLayeredDecorationSvgFile(file: File): Promise<StarRingSvgAsset> {
+  if (!file.name.toLowerCase().endsWith(".svg") || file.type && file.type !== "image/svg+xml") throw new Error("只允许上传 SVG 文件");
+  if (file.size > 2 * 1024 * 1024) throw new Error("SVG 文件不能超过 2MB");
+  return createStarRingAssetFromMarkup(await file.text(), file.name, "dm-decoration-layer").asset;
+}
+
+export function applyImportedLayeredDecorationConfig(config: StarRingDecorationConfig, asset: StarRingSvgAsset): void {
+  const normalizedSweepNames = new Set(["光", "light", "sweep", "sweeplight", "移动光效"].map(normalizeLayerName));
+  const sourceSvg = new DOMParser().parseFromString(asset.markup, "image/svg+xml").querySelector("svg");
+  const removableKeys = asset.layers
+    .filter((layer) => {
+      const node = sourceSvg?.querySelector(`[data-dm-node-key="${layer.key}"]`);
+      const names = [layer.id, layer.label, ...(node ? [node, ...node.querySelectorAll("*")].flatMap((element) => [
+        element.getAttribute("data-dm-layer-name"),
+        element.getAttribute("data-name"),
+        element.getAttribute("id")
+      ]) : [])]
+        .map(cleanLayerName)
+        .map(normalizeLayerName);
+      return names.some((name) => normalizedSweepNames.has(name));
+    })
+    .map((layer) => layer.key);
+  const sourceAsset = removableKeys.length > 0 && removableKeys.length < asset.layers.length
+    ? (() => {
+        const next = JSON.parse(JSON.stringify(asset)) as StarRingSvgAsset;
+        const svg = new DOMParser().parseFromString(next.markup, "image/svg+xml").querySelector("svg");
+        removableKeys.forEach((key) => svg?.querySelector(`[data-dm-node-key="${key}"]`)?.remove());
+        next.layers = next.layers.filter((layer) => !removableKeys.includes(layer.key));
+        next.rootKeys = next.rootKeys.filter((key) => !removableKeys.includes(key));
+        if (svg) next.markup = new XMLSerializer().serializeToString(svg);
+        return next;
+      })()
+    : asset;
+  const mapping = emptyStarRingLayerMapping();
+  applyStarRingAssetConfig(config, sourceAsset, mapping, "imported");
+  config.kind = "layered-decoration";
+  Object.values(config.layerConfigs).forEach((layer) => {
+    layer.motion = "none";
+    layer.basicMotionId = undefined;
+    layer.basicMotionConfig = undefined;
+  });
+}
+
 export function renameStarRingAssetLayers(asset: StarRingSvgAsset, labels: Record<string, string>): StarRingSvgAsset {
   const next = JSON.parse(JSON.stringify(asset)) as StarRingSvgAsset;
   const svg = new DOMParser().parseFromString(next.markup, "image/svg+xml").querySelector("svg");
@@ -433,10 +518,7 @@ function applyStarRingAssetConfig(config: StarRingDecorationConfig, asset: StarR
   const preparedAsset = prepareRingHighlightSegments(asset, mapping);
   config.sourceMode = sourceMode;
   config.svg = preparedAsset;
-  config.layerMapping = {
-    ...mapping,
-    particles: [...mapping.particles, STAR_RING_SYSTEM_PARTICLES_KEY]
-  };
+  config.layerMapping = { ...mapping, particles: [...mapping.particles] };
   config.overall.color = preparedAsset.primaryColor;
   config.layerConfigs = {};
   if (preparedAsset.mode === "whole") {
@@ -444,7 +526,6 @@ function applyStarRingAssetConfig(config: StarRingDecorationConfig, asset: StarR
       fillColor: preparedAsset.primaryColor,
       strokeColor: preparedAsset.primaryColor
     });
-    config.layerConfigs[STAR_RING_SYSTEM_PARTICLES_KEY] = createStarRingLayerConfig("particles");
     return;
   }
   preparedAsset.layers.forEach((layer) => {
@@ -455,7 +536,6 @@ function applyStarRingAssetConfig(config: StarRingDecorationConfig, asset: StarR
       strokeColor: preparedAsset.primaryColor
     });
   });
-  config.layerConfigs[STAR_RING_SYSTEM_PARTICLES_KEY] = createStarRingLayerConfig("particles");
 }
 
 export function applyImportedStarRingConfig(config: StarRingDecorationConfig, asset: StarRingSvgAsset, mapping: StarRingLayerMapping): void {

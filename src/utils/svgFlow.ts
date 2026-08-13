@@ -1,5 +1,6 @@
 import systemPathFlowMarkup from "@/assets/title-path-flow-01.svg?raw";
 import systemPathFlow02Markup from "@/assets/title-path-flow-02.svg?raw";
+import systemDoubleGuideFlowMarkup from "@/assets/title-double-guide-flow.svg?raw";
 import type {
   SvgFlowConfig,
   SvgFlowSource,
@@ -110,12 +111,62 @@ export function parseSvgFlowSource(text: string, fileName: string): SvgFlowSourc
   };
 }
 
+export function parseSvgBackgroundSource(text: string, fileName: string): SvgFlowSource {
+  const svg = parseSafeSvg(text);
+  const dimensions = svgDimensions(svg);
+  const rawViewBox = svg.getAttribute("viewBox")?.trim();
+  const viewBox = rawViewBox && rawViewBox.split(/[\s,]+/).length === 4
+    ? rawViewBox
+    : `0 0 ${dimensions.width} ${dimensions.height}`;
+  const background = [...svg.querySelectorAll<SVGElement>("[id],[data-name]")].find((element) => {
+    const name = element.getAttribute("id") ?? element.getAttribute("data-name") ?? "";
+    return name.trim().toLowerCase() === "background";
+  });
+  const serializer = new XMLSerializer();
+  const edgeIds = background
+    ? [...background.querySelectorAll<SVGRectElement>("rect")]
+      .filter((rect) => {
+        const rectY = Number.parseFloat(rect.getAttribute("y") ?? "0");
+        const rectHeight = Number.parseFloat(rect.getAttribute("height") ?? "0");
+        return rectHeight > 0 && rectHeight <= 8
+          && (rectY <= 3 || rectY + rectHeight >= dimensions.height - 3);
+      })
+      .map((rect, index) => {
+        const id = rect.getAttribute("id")?.trim() || `dm-background-edge-${index + 1}`;
+        rect.setAttribute("id", id);
+        return id;
+      })
+    : [];
+  const definitions = [...svg.querySelectorAll("defs")]
+    .filter((defs) => !background?.contains(defs))
+    .map((defs) => serializer.serializeToString(defs))
+    .join("");
+  const content = background
+    ? `${serializer.serializeToString(background)}${definitions}`
+    : svg.innerHTML;
+
+  return {
+    fileName,
+    viewBox,
+    width: dimensions.width,
+    height: dimensions.height,
+    shape: content,
+    content,
+    targets: [],
+    roles: { lightIds: [], edgeIds }
+  };
+}
+
 export function createSystemSvgFlowSource(effectId = "svg-flow-tool"): SvgFlowSource {
-  const usesSecondPreset = effectId === "svg-flow-tool-02";
-  return parseSvgFlowSource(
-    usesSecondPreset ? systemPathFlow02Markup : systemPathFlowMarkup,
-    usesSecondPreset ? "标题路径流光02.svg" : "标题路径流光01.svg"
-  );
+  const presets: Record<string, { markup: string; fileName: string }> = {
+    "svg-flow-tool": { markup: systemPathFlowMarkup, fileName: "单边流光.svg" },
+    "svg-flow-tool-02": { markup: systemPathFlow02Markup, fileName: "双边流光.svg" },
+    "svg-flow-double-guide": { markup: systemDoubleGuideFlowMarkup, fileName: "水波纹流光.svg" }
+  };
+  const preset = presets[effectId] ?? presets["svg-flow-tool"];
+  return effectId === "svg-flow-double-guide"
+    ? parseSvgBackgroundSource(preset.markup, preset.fileName)
+    : parseSvgFlowSource(preset.markup, preset.fileName);
 }
 
 function detectPrimarySvgColor(svg: SVGSVGElement): string {
@@ -166,4 +217,9 @@ function validateSvgFile(file: File): void {
 export async function readSvgFlowFile(file: File): Promise<SvgFlowSource> {
   validateSvgFile(file);
   return parseSvgFlowSource(await file.text(), file.name);
+}
+
+export async function readSvgBackgroundFile(file: File): Promise<SvgFlowSource> {
+  validateSvgFile(file);
+  return parseSvgBackgroundSource(await file.text(), file.name);
 }

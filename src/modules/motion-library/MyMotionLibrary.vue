@@ -6,7 +6,7 @@
     </header>
 
     <el-empty v-if="!store.savedMotions.length" description="还没有保存的动效">
-      <template #description><p>在基础动效库或装饰动效库中点击“保存到我的动效”。</p></template>
+      <template #description><p>在基础动效库或装饰组件中点击“保存到我的动效”。</p></template>
     </el-empty>
 
     <el-scrollbar v-else class="saved-scroll">

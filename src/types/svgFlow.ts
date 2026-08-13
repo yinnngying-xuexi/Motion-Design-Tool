@@ -17,6 +17,10 @@ export interface SvgFlowSource {
   shape: string;
   content?: string;
   targets?: SvgFlowTarget[];
+  roles?: {
+    lightIds: string[];
+    edgeIds: string[];
+  };
 }
 
 export interface SvgPreviewAsset {
@@ -55,4 +59,5 @@ export interface SavedSvgFlowMotion {
   name?: string;
   source: SvgFlowSource;
   config: SvgFlowConfig;
+  particleEffect?: import("@/types/decoration").DecorationParticleConfig;
 }

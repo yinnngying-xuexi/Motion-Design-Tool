@@ -3,7 +3,7 @@
     <section class="source-card">
       <div><strong>{{ sourceName }}</strong><small>{{ sourceDescription }}</small></div>
       <div class="source-actions">
-        <button v-if="modelValue.sourceMode === 'imported' && modelValue.svg?.mode === 'layered'" type="button" @click="$emit('remap')">重新映射</button>
+        <button v-if="modelValue.kind !== 'layered-decoration' && modelValue.sourceMode === 'imported' && modelValue.svg?.mode === 'layered'" type="button" @click="$emit('remap')">重新映射</button>
         <button v-if="modelValue.sourceMode === 'imported'" type="button" @click="$emit('usePreset')">恢复预设</button>
       </div>
     </section>
@@ -41,17 +41,6 @@
     </div>
 
     <template v-if="activeLayer">
-      <ParamNumber
-        v-if="activeRole === 'particles'"
-        label="粒子强度"
-        unit="%"
-        :value="activeLayer.particleIntensity ?? 70"
-        :min="0"
-        :max="100"
-        :step="5"
-        @update="updateLayer('particleIntensity', $event)"
-      />
-
         <p class="param-group-title">图层动效</p>
         <div class="param-field">
           <label><span>动效类型</span></label>
@@ -121,23 +110,15 @@
 import { computed, defineComponent, h, ref, watch } from "vue";
 import { ElColorPicker, ElInput, ElInputNumber, ElSlider } from "element-plus";
 import type { StarRingDecorationConfig, StarRingLayerConfig, StarRingLayerRole, StarRingMotionType, StarRingSvgLayer } from "@/types/decoration";
-import { STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER, STAR_RING_SYSTEM_PARTICLES_KEY } from "@/utils/starRingDecoration";
+import { STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER } from "@/utils/starRingDecoration";
 import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import type { BasicMotionConfig, BasicMotionParamKey, BasicMotionTemplate, MotionCategory } from "@/types/motion";
 
 const props = defineProps<{ modelValue: StarRingDecorationConfig }>();
 const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: [] }>();
 const activeLayerKey = ref("");
-const systemParticlesLayer: StarRingSvgLayer = {
-  key: STAR_RING_SYSTEM_PARTICLES_KEY,
-  id: STAR_RING_SYSTEM_PARTICLES_KEY,
-  label: "particles",
-  tagName: "effect",
-  parentKey: null,
-  depth: 0
-};
 const editableLayers = computed<StarRingSvgLayer[]>(() => {
-  if (props.modelValue.svg?.mode === "whole") return [{ key: "dm-svg-whole", id: "whole", label: "整体素材", tagName: "svg", parentKey: null, depth: 0 }, systemParticlesLayer];
+  if (props.modelValue.svg?.mode === "whole") return [{ key: "dm-svg-whole", id: "whole", label: "整体素材", tagName: "svg", parentKey: null, depth: 0 }];
   const layers = props.modelValue.svg?.layers ?? [];
   const byKey = new Map(layers.map((layer) => [layer.key, layer]));
   const ordered = STAR_RING_ROLE_ORDER
@@ -146,7 +127,7 @@ const editableLayers = computed<StarRingSvgLayer[]>(() => {
     .map((key) => byKey.get(key))
     .filter((layer): layer is StarRingSvgLayer => Boolean(layer));
   const orderedKeys = new Set(ordered.map((layer) => layer.key));
-  return [...ordered, ...layers.filter((layer) => !orderedKeys.has(layer.key)), systemParticlesLayer];
+  return [...ordered, ...layers.filter((layer) => !orderedKeys.has(layer.key))];
 });
 const activeLayer = computed(() => props.modelValue.layerConfigs[activeLayerKey.value]);
 const activeRole = computed(() => roleForLayer(activeLayerKey.value));
@@ -161,10 +142,13 @@ const activeBasicTemplate = computed<BasicMotionTemplate | undefined>(() => acti
   ? basicMotions.find((motion) => motion.id === activeLayer.value?.basicMotionId)
   : undefined);
 const activeBasicConfig = computed<Partial<BasicMotionConfig>>(() => activeLayer.value?.basicMotionConfig ?? {});
-const sourceName = computed(() => props.modelValue.sourceMode === "preset" ? "星环粒子底座 SVG" : props.modelValue.svg?.fileName ?? "导入素材");
-const sourceDescription = computed(() => props.modelValue.svg?.mode === "whole" ? "整体素材 + particles" : `${props.modelValue.svg?.layers.length ?? 0} 个 SVG 图层 + particles`);
+const sourceName = computed(() => props.modelValue.sourceMode === "preset"
+  ? props.modelValue.kind === "layered-decoration" ? "系统预设 SVG" : "星环粒子底座 SVG"
+  : props.modelValue.svg?.fileName ?? "导入素材");
+const sourceDescription = computed(() => props.modelValue.svg?.mode === "whole" ? "整体素材" : `${props.modelValue.svg?.layers.length ?? 0} 个 SVG 图层`);
 const componentMotionOptions = computed<Array<{ label: string; value: string }>>(() => {
   const options: Array<{ label: string; value: string }> = [];
+  if (props.modelValue.kind === "layered-decoration") return options;
   const role = activeRole.value;
   if (props.modelValue.svg?.mode === "whole") options.push({ label: "持续旋转", value: "special:rotate" });
   if (role === "rotating-ring") options.push({ label: "环形高亮轮转", value: "special:ring-highlight" });
@@ -188,6 +172,7 @@ watch(editableLayers, (layers) => { if (!layers.some((layer) => layer.key === ac
 function cloneConfig(): StarRingDecorationConfig { return JSON.parse(JSON.stringify(props.modelValue)) as StarRingDecorationConfig; }
 function roleForLayer(key: string): StarRingLayerRole | undefined { return STAR_RING_ROLE_ORDER.find((role) => props.modelValue.layerMapping[role].includes(key)); }
 function layerChineseName(key: string): string {
+  if (props.modelValue.kind === "layered-decoration") return "素材图层";
   const role = roleForLayer(key);
   if (role) return STAR_RING_ROLE_LABELS[role];
   return props.modelValue.svg?.mode === "whole" ? "整体素材" : "普通图层";

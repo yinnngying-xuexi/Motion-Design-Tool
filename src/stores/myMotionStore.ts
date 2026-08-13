@@ -48,7 +48,9 @@ export const useMyMotionStore = defineStore("my-motion", () => {
       description: template.description,
       previewType: ["linear-flow", "comet-flow", "svg-flow", "scan"].includes(template.previewType) ? "scan" : "glow",
       duration: starRing
-        ? Math.max(...Object.values(starRing.layerConfigs).filter((layer) => layer.visible && layer.motion !== "none").map((layer) => layer.duration), 0)
+        ? starRing.kind === "layered-decoration"
+          ? Number(params.duration ?? 2.8)
+          : Math.max(...Object.values(starRing.layerConfigs).filter((layer) => layer.visible && layer.motion !== "none").map((layer) => layer.duration), 0)
         : Number(params.duration ?? 2.4),
       timingFunction: "linear",
       iteration: "infinite",

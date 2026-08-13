@@ -1,5 +1,7 @@
-import type { DecorationEffectTemplate } from "@/types/decoration";
+import type { DecorationEffectTemplate, DecorationParticleConfig } from "@/types/decoration";
 import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
+import { generateDecorationParticleCss, generateDecorationParticleMarkup } from "@/generators/decorationParticleGenerator";
+import { generateBackgroundSweepCss, generateBackgroundSweepMarkup } from "@/generators/backgroundSweepGenerator";
 
 export type DecorationParams = Record<string, string | number>;
 
@@ -81,6 +83,15 @@ function param(params: DecorationParams, key: string, fallback: string | number)
   return params[key] ?? fallback;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function particleRingSegments(className: string, count = 10): string {
   const center = 100;
   const outerRadius = 88;
@@ -124,6 +135,93 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   const glow = param(params, "glow", 18);
   const borderWidth = param(params, "borderWidth", 1);
 
+  if (template.generator === "loading-ring") {
+    const arcLength = Number(param(params, "arcLength", 32));
+    const ringWidth = Number(borderWidth);
+    const direction = param(params, "direction", "clockwise") === "counterclockwise" ? "reverse" : "normal";
+    const trackColor = param(params, "trackColor", "#26303B");
+    return `.${cls}{position:relative;width:${size}px;height:${size}px;border:${ringWidth}px solid ${trackColor};border-radius:50%;box-sizing:border-box;opacity:${opacity}}
+.${cls}__arc{position:absolute;inset:-${ringWidth}px;border-radius:50%;background:conic-gradient(from -90deg,${color} 0deg,${DECORATION_BLUE_LIGHT} ${(arcLength * 2.6).toFixed(1)}deg,transparent ${(arcLength * 3.6).toFixed(1)}deg);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - ${ringWidth}px),#000 calc(100% - ${ringWidth - 0.5}px));mask:radial-gradient(farthest-side,transparent calc(100% - ${ringWidth}px),#000 calc(100% - ${ringWidth - 0.5}px));filter:drop-shadow(0 0 ${Math.max(2, ringWidth * 1.4)}px ${color});animation:${kf} ${duration}s linear infinite;animation-direction:${direction}}
+@keyframes ${kf}{to{transform:rotate(360deg)}}`;
+  }
+
+  if (template.generator === "loading-dots") {
+    const dotCount = Math.round(Number(param(params, "dotCount", 3)));
+    const dotSize = Number(param(params, "dotSize", 8));
+    const gap = Number(param(params, "gap", 10));
+    const minOpacity = Number(param(params, "minOpacity", 0.24));
+    return `.${cls}{display:flex;align-items:center;justify-content:center;gap:${gap}px;opacity:${opacity}}
+.${cls} i{display:block;width:${dotSize}px;height:${dotSize}px;border-radius:50%;background:${color};opacity:${minOpacity};box-shadow:0 0 ${Math.max(3, dotSize)}px color-mix(in srgb,${color} 55%,transparent);animation:${kf} ${duration}s ease-in-out infinite;animation-delay:calc(var(--dot-index) * ${Math.max(0.08, Number(duration) / (dotCount * 3)).toFixed(2)}s)}
+.${cls} i:nth-child(n+${dotCount + 1}){display:none}
+@keyframes ${kf}{0%,60%,100%{transform:scale(.72);opacity:${minOpacity}}30%{transform:scale(1.18);opacity:1;box-shadow:0 0 ${Math.max(6, dotSize * 1.8)}px ${color}}}`;
+  }
+
+  if (template.generator === "loading-line") {
+    const trackWidth = Number(param(params, "trackWidth", 280));
+    const trackColor = param(params, "trackColor", "#26303B");
+    const tailLength = Number(param(params, "tailLength", 30));
+    const radius = Number(param(params, "radius", 3));
+    const progress = Number(param(params, "progress", 48));
+    const progressMode = param(params, "lineMode", "indeterminate") === "progress";
+    return `.${cls}{position:relative;width:${trackWidth}px;height:${borderWidth}px;border-radius:${radius}px;background:${trackColor};overflow:hidden;opacity:${opacity}}
+.${cls}__flow{position:absolute;inset:0 auto 0 0;width:${progressMode ? progress : tailLength}%;border-radius:inherit;background:linear-gradient(90deg,transparent 0%,color-mix(in srgb,${color} 42%,transparent) 35%,${color} 82%,${DECORATION_BLUE_LIGHT} 100%);box-shadow:0 0 ${Math.max(4, Number(borderWidth) * 3)}px ${color};${progressMode ? "" : `animation:${kf} ${duration}s ease-in-out infinite`}}
+@keyframes ${kf}{0%{left:-${tailLength}%;opacity:0}12%{opacity:1}88%{opacity:1}100%{left:100%;opacity:0}}`;
+  }
+
+  if (template.generator === "loading-icon-pulse") {
+    const minScale = Number(param(params, "minScale", 0.92));
+    const haloRange = Number(param(params, "haloRange", 18));
+    const haloIntensity = Number(param(params, "haloIntensity", 55)) / 100;
+    const haloVisible = param(params, "haloEnabled", "on") === "on";
+    return `.${cls}{position:relative;width:${size}px;height:${size}px;display:grid;place-items:center;isolation:isolate;opacity:${opacity}}
+.${cls}__halo{position:absolute;inset:14%;border:1px solid ${color};border-radius:50%;opacity:${haloVisible ? haloIntensity : 0};box-shadow:0 0 ${haloRange}px ${color},inset 0 0 ${Math.max(4, haloRange * 0.55)}px color-mix(in srgb,${color} 60%,transparent);animation:${kf}Halo ${duration}s ease-out infinite}
+.${cls}__icon{position:relative;z-index:1;width:56%;height:56%;display:grid;place-items:center;filter:drop-shadow(0 0 ${Math.max(4, haloRange * 0.45)}px color-mix(in srgb,${color} 72%,transparent));animation:${kf} ${duration}s ease-in-out infinite}
+.${cls}__icon svg{display:block;width:100%;height:100%;overflow:visible}
+@keyframes ${kf}{0%,100%{transform:scale(${minScale});opacity:.72}50%{transform:scale(1);opacity:1}}
+@keyframes ${kf}Halo{0%{transform:scale(.72);opacity:0}35%{opacity:${haloVisible ? haloIntensity : 0}}100%{transform:scale(1.42);opacity:0}}`;
+  }
+
+  if (template.generator === "loading-tech-ring") {
+    const ringSize = Number(size);
+    const innerSize = Math.min(ringSize - 4, Number(param(params, "innerSize", ringSize * 0.8)));
+    const outerWidth = Number(param(params, "outerWidth", 1));
+    const innerWidth = Number(param(params, "innerWidth", 1));
+    const outerGlowStrength = Number(param(params, "outerGlow", 72)) / 100;
+    const innerGlowStrength = Number(param(params, "innerGlow", 52)) / 100;
+    const outerHighlight = Math.max(2, ringSize * 0.025);
+    const outerGlow = Math.max(5, ringSize * 0.075) * outerGlowStrength;
+    const innerGlow = Math.max(4, innerSize * 0.065) * innerGlowStrength;
+    const direction = param(params, "direction", "clockwise") === "counterclockwise" ? "-360deg" : "360deg";
+    return `.${cls}{position:relative;width:${ringSize}px;height:${ringSize}px;border-radius:50%;display:grid;place-items:center;opacity:${opacity};isolation:isolate}
+.${cls}__orbit{position:absolute;inset:0;border-radius:50%;border:${outerWidth}px solid color-mix(in srgb,${color} 18%,transparent);background:radial-gradient(circle,transparent 55%,color-mix(in srgb,${color} 5%,transparent) 72%,transparent 74%);box-shadow:${outerHighlight.toFixed(1)}px 0 ${Math.max(1, outerWidth * 0.7).toFixed(1)}px -1px ${color},${outerGlow.toFixed(1)}px 0 ${outerGlow.toFixed(1)}px color-mix(in srgb,${color} 58%,transparent),inset -${outerGlow.toFixed(1)}px 0 ${outerGlow.toFixed(1)}px -${(outerGlow * 0.45).toFixed(1)}px color-mix(in srgb,${color} 50%,transparent);animation:${kf} ${duration}s linear infinite;box-sizing:border-box}
+.${cls}__inner{position:absolute;left:50%;top:50%;width:${innerSize}px;height:${innerSize}px;transform:translate(-50%,-50%);border-radius:50%;border:${innerWidth}px solid color-mix(in srgb,${color} 16%,transparent);box-shadow:${Math.max(1.5, outerHighlight * 0.7).toFixed(1)}px 0 ${Math.max(1, innerWidth * 0.7).toFixed(1)}px -1px ${color},${innerGlow.toFixed(1)}px 0 ${innerGlow.toFixed(1)}px color-mix(in srgb,${color} 56%,transparent),inset -${innerGlow.toFixed(1)}px 0 ${innerGlow.toFixed(1)}px -${(innerGlow * 0.4).toFixed(1)}px color-mix(in srgb,${color} 48%,transparent);box-sizing:border-box}
+.${cls}__label{position:relative;z-index:2;max-width:${Math.max(20, innerSize - 18)}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:color-mix(in srgb,${color} 78%,white);font:500 ${Math.max(10, Math.min(18, innerSize * 0.14)).toFixed(1)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.08em;text-shadow:0 0 ${Math.max(3, innerGlow * 0.7).toFixed(1)}px color-mix(in srgb,${color} 64%,transparent)}
+@keyframes ${kf}{from{transform:rotate(0deg)}to{transform:rotate(${direction})}}`;
+  }
+
+  if (template.generator === "loading-irregular-ring") {
+    const ringSize = Number(size);
+    const ringWidth = Number(borderWidth);
+    const glowStrength = Number(param(params, "glowIntensity", 68)) / 100;
+    const glowRadius = Math.max(2, ringSize * 0.075 * glowStrength);
+    const softGlow = Math.max(1, glowRadius * 0.42);
+    return `.${cls}{position:relative;width:${ringSize}px;height:${ringSize}px;display:grid;place-items:center;opacity:${opacity};isolation:isolate}
+.${cls}__svg{display:block;width:100%;height:100%;overflow:visible}
+.${cls}__ring{fill:none;stroke:${color};stroke-width:${ringWidth};stroke-linecap:round;stroke-linejoin:round;transform-box:fill-box;transform-origin:center;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 ${softGlow.toFixed(1)}px color-mix(in srgb,${color} 78%,transparent)) drop-shadow(0 0 ${glowRadius.toFixed(1)}px color-mix(in srgb,${color} 54%,transparent))}
+.${cls}__ring--outer{stroke-opacity:.9;stroke-dasharray:190 34 82 18;animation:${kf}Outer ${duration}s linear infinite}
+.${cls}__ring--middle{stroke-opacity:.68;stroke-width:${Math.max(1, ringWidth * 0.72).toFixed(2)};stroke-dasharray:118 26 54 16;animation:${kf}Middle ${(Number(duration) * 0.74).toFixed(2)}s linear infinite reverse}
+.${cls}__ring--inner{stroke-opacity:.48;stroke-width:${Math.max(1, ringWidth * 0.5).toFixed(2)};stroke-dasharray:74 18 38 12;animation:${kf}Inner ${(Number(duration) * 1.22).toFixed(2)}s ease-in-out infinite}
+.${cls}__core{fill:${color};opacity:.92;filter:drop-shadow(0 0 ${Math.max(3, glowRadius * 0.75).toFixed(1)}px ${color});animation:${kf}Core ${(Number(duration) * 0.82).toFixed(2)}s ease-in-out infinite}
+@keyframes ${kf}Outer{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes ${kf}Middle{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes ${kf}Inner{0%{transform:rotate(0deg) scale(.97)}50%{transform:rotate(-170deg) scale(1.03)}100%{transform:rotate(-360deg) scale(.97)}}
+@keyframes ${kf}Core{0%,100%{transform:scale(.72);opacity:.5}50%{transform:scale(1);opacity:1}}`;
+  }
+
+  if (template.id === "svg-flow-double-guide") {
+    return generateBackgroundSweepCss(cls);
+  }
+
   if (template.generator === "svg-flow") {
     const config = svgFlowConfig(params);
     const total = Math.max(0.1, config.duration + config.pause);
@@ -133,6 +231,8 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
       : `brightness(${(1 + glowRatio * 0.72).toFixed(2)}) drop-shadow(0 0 ${Math.max(1, config.glow * 0.16).toFixed(1)}px ${config.headColor}) drop-shadow(0 0 ${Math.max(2, config.glow * 0.48).toFixed(1)}px ${config.headColor}) drop-shadow(0 0 ${Math.max(3, config.glow).toFixed(1)}px ${config.tailColor})`;
 
     return `.${cls} {
+  position: relative;
+  isolation: isolate;
   opacity: 1;
 }
 
@@ -141,6 +241,8 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   width: 100%;
   height: auto;
   overflow: visible;
+  position: relative;
+  z-index: 1;
 }
 
 .${cls}__path {
@@ -567,15 +669,18 @@ export function generateDecorationCompositionCss(asset?: SvgPreviewAsset, style?
     strokeWidth: 1,
     opacity: 1
   };
+  const svgTargets = ":is(.decoration-composition__svg,.loading-imported-svg)";
   const monochromeCss = current.colorMode === "monochrome"
-    ? `.decoration-composition__svg :is(path,rect,circle,ellipse,polygon,polyline,line) { stroke:${current.strokeColor} !important; stroke-width:${current.strokeWidth}px !important; }
-.decoration-composition__svg :is(path,rect,circle,ellipse,polygon):not([fill="none"]) { fill:${current.fillColor} !important; }
-.decoration-composition__svg :is([fill="none"],line,polyline) { fill:none !important; }`
-    : `.decoration-composition__svg [stroke]:not([stroke="none"]) { stroke-width:${current.strokeWidth}px !important; }`;
+    ? `${svgTargets} :is(path,rect,circle,ellipse,polygon,polyline,line) { stroke:${current.strokeColor} !important; stroke-width:${current.strokeWidth}px !important; }
+${svgTargets} :is(path,rect,circle,ellipse,polygon):not([fill="none"]) { fill:${current.fillColor} !important; }
+${svgTargets} :is([fill="none"],line,polyline) { fill:none !important; }`
+    : `${svgTargets} [stroke]:not([stroke="none"]) { stroke-width:${current.strokeWidth}px !important; }`;
   return `.decoration-composition { position: relative; display: grid; place-items: center; isolation: isolate; }
 .decoration-composition__effect { position: relative; z-index: 1; }
 .decoration-composition__svg { position: absolute; z-index: 2; width: 88px; height: 88px; display: grid; place-items: center; opacity:${current.opacity}; pointer-events: none; }
 .decoration-composition__svg svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.loading-imported-svg{width:100%;height:100%;display:grid;place-items:center;opacity:${current.opacity}}
+.loading-imported-svg svg{width:100%;height:100%;display:block;overflow:visible}
 ${monochromeCss}`;
 }
 
@@ -587,16 +692,61 @@ function composeDecoration(markup: string, asset?: SvgPreviewAsset): string {
 </div>`;
 }
 
-export function generateDecorationHtmlCss(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig): string {
-  return `${generateDecorationMarkup(template, params, source, asset)}
+export function generateDecorationHtmlCss(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig, particleEffect?: DecorationParticleConfig): string {
+  return `${generateDecorationMarkup(template, params, source, asset, "main", particleEffect)}
 
 <style>
 ${generateDecorationCss(template, params)}
 ${generateDecorationCompositionCss(asset, svgStyle)}
+${particleEffect?.enabled ? generateDecorationParticleCss() : ""}
 </style>`;
 }
 
-export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset, instanceId = "main"): string {
+export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset, instanceId = "main", particleEffect?: DecorationParticleConfig): string {
+  if (template.generator === "loading-ring") {
+    return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中"><span class="${decorationClassName(template)}__arc"></span></div>`;
+  }
+
+  if (template.generator === "loading-dots") {
+    const dots = Array.from({ length: 5 }, (_, index) => `<i style="--dot-index:${index}"></i>`).join("");
+    return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中">${dots}</div>`;
+  }
+
+  if (template.generator === "loading-line") {
+    return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中"><span class="${decorationClassName(template)}__flow"></span></div>`;
+  }
+
+  if (template.generator === "loading-icon-pulse") {
+    const iconMarkup = asset?.markup ?? `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="24" r="15" fill="${param(params, "color", DECORATION_BLUE)}" fill-opacity=".18"></circle><path d="M24 11.5 35.2 18v12L24 36.5 12.8 30V18L24 11.5Z" stroke="${param(params, "color", DECORATION_BLUE)}" stroke-width="2"></path><circle cx="24" cy="24" r="4.5" fill="${DECORATION_BLUE_LIGHT}"></circle></svg>`;
+    const assetClass = asset ? " loading-imported-svg" : "";
+    return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中"><span class="${decorationClassName(template)}__halo"></span><span class="${decorationClassName(template)}__icon${assetClass}">${iconMarkup}</span></div>`;
+  }
+
+  if (template.generator === "loading-tech-ring") {
+    const centerText = escapeHtml(String(param(params, "centerText", "Loading")));
+    return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中"><span class="${decorationClassName(template)}__orbit"><span class="${decorationClassName(template)}__inner"></span></span><span class="${decorationClassName(template)}__label">${centerText}</span></div>`;
+  }
+
+  if (template.generator === "loading-irregular-ring") {
+    const cls = decorationClassName(template);
+    return `<div class="${cls}" role="status" aria-label="加载中"><svg class="${cls}__svg" viewBox="0 0 160 160" aria-hidden="true"><path class="${cls}__ring ${cls}__ring--outer" d="M80 10C111 8 147 29 150 65C154 104 128 144 91 150C51 156 14 127 10 90C6 55 29 16 66 11C71 10 76 10 80 10Z"></path><path class="${cls}__ring ${cls}__ring--middle" d="M84 24C112 23 137 44 137 72C138 102 119 130 88 136C58 142 29 119 24 91C19 62 38 32 66 26C72 25 78 24 84 24Z"></path><path class="${cls}__ring ${cls}__ring--inner" d="M78 40C101 36 121 54 121 77C122 101 104 121 80 121C55 121 38 102 40 78C41 57 58 43 78 40Z"></path><circle class="${cls}__core" cx="80" cy="80" r="3.5"></circle></svg></div>`;
+  }
+
+  if (template.id === "svg-flow-double-guide") {
+    return generateBackgroundSweepMarkup(
+      decorationClassName(template),
+      svgFlowConfig(params),
+      source ?? defaultSvgFlowSource(),
+      instanceId,
+      Number(param(params, "lightIntensity", 85)),
+      Number(param(params, "flowAmplitude", 4.5)),
+      Number(param(params, "flowFocusPosition", 14)),
+      Number(param(params, "flowLeftEndWidth", 85)),
+      Number(param(params, "flowRightEndWidth", 25)),
+      particleEffect
+    );
+  }
+
   if (template.generator === "svg-flow") {
     const cls = decorationClassName(template);
     const config = svgFlowConfig(params);
@@ -672,6 +822,7 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
     </defs>
     ${overlays.map((item) => item.use).join("\n    ")}
   </svg>
+  ${generateDecorationParticleMarkup(particleEffect, config.tailColor)}
 </div>`;
   }
 

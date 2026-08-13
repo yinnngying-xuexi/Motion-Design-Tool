@@ -1,13 +1,14 @@
 import type { BasicMotionConfig } from "@/types/motion";
 
-export type DecorationSection = "图标底座" | "线性流光";
+export type DecorationSection = "标题装饰" | "图表装饰" | "图标/点位" | "面板装饰" | "loading";
+export type DecorationSubsection = "顶部标题" | "小标题" | "图标底座" | "通用 Loading";
 
-export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "scan" | "border-glow";
+export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "layered-sweep" | "scan" | "border-glow" | "loading";
 
 export interface DecorationParam {
   key: string;
   label: string;
-  type: "number" | "color" | "select";
+  type: "number" | "color" | "select" | "text";
   min?: number;
   max?: number;
   step?: number;
@@ -19,12 +20,33 @@ export interface DecorationEffectTemplate {
   id: string;
   name: string;
   section: DecorationSection;
+  subsection: DecorationSubsection;
   description: string;
   scene: string;
   defaultParams: Record<string, string | number>;
   editableParams: DecorationParam[];
   previewType: DecorationPreviewType;
-  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "scan" | "border-glow";
+  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring";
+}
+
+export type DecorationParticleStyle = "float" | "twinkle" | "spread";
+export type DecorationParticleColorMode = "inherit" | "custom";
+export type DecorationParticleLayer = "back" | "front";
+
+export interface DecorationParticleConfig {
+  enabled: boolean;
+  style: DecorationParticleStyle;
+  count: number;
+  size: number;
+  intensity: number;
+  colorMode: DecorationParticleColorMode;
+  color: string;
+  speed: number;
+  areaWidth: number;
+  areaHeight: number;
+  offsetX: number;
+  offsetY: number;
+  layer: DecorationParticleLayer;
 }
 
 export interface CssVariableParam {
@@ -99,10 +121,12 @@ export type StarRingLayerConfigs = Record<string, StarRingLayerConfig>;
 
 export interface StarRingDecorationConfig {
   version: 1;
+  kind?: "star-ring" | "layered-decoration";
   sourceMode: "preset" | "imported";
   overall: StarRingOverallConfig;
   layerMapping: StarRingLayerMapping;
   layerConfigs: StarRingLayerConfigs;
+  particleEffect?: DecorationParticleConfig;
   svg?: StarRingSvgAsset;
 }
 

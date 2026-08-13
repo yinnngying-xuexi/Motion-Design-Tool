@@ -3,7 +3,7 @@
     <aside class="decoration-list panel">
       <header class="section-head">
         <div>
-          <h2>装饰动效</h2>
+          <h2>装饰组件</h2>
         </div>
         <small>{{ sectionEffects.length }} / {{ decorationEffects.length }}</small>
       </header>
@@ -14,6 +14,7 @@
           :key="section"
           type="button"
           :class="{ active: activeSection === section }"
+          :disabled="!hasSectionEffects(section)"
           @click="activeSection = section"
         >
           {{ section }}
@@ -22,28 +23,37 @@
 
       <el-scrollbar class="effect-scroll">
         <div class="effect-stack">
-          <article
-            v-for="effect in sectionEffects"
-            :key="effect.id"
-            class="effect-card"
-            :class="{ active: currentEffect.id === effect.id }"
-            @click="selectEffect(effect.id)"
-          >
-            <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
-              <div
-                v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow'"
-                class="real-effect-thumbnail"
-                :class="{ 'path-flow-thumbnail': effect.previewType === 'svg-flow' }"
-                v-html="effectThumbnailMarkup(effect)"
-              ></div>
-              <span v-else></span>
+          <template v-for="group in sectionGroups" :key="group.name">
+            <div class="subsection-title">
+              <span>{{ group.name }}</span>
+              <small>{{ group.effects.length }}</small>
             </div>
-            <div class="effect-card-copy">
-              <strong>{{ effect.name }}</strong>
-              <p>{{ effect.defaultParams.duration }}s · {{ effect.scene }}</p>
-            </div>
-          </article>
-          <template v-if="activeSection === '图标底座' && customDecorationStore.components.length">
+            <article
+              v-for="effect in group.effects"
+              :key="effect.id"
+              class="effect-card"
+              :class="{ active: currentEffect.id === effect.id }"
+              @click="selectEffect(effect.id)"
+            >
+              <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
+                <div
+                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow' || effect.previewType === 'loading'"
+                  class="real-effect-thumbnail"
+                  :class="{
+                    'path-flow-thumbnail': effect.previewType === 'svg-flow',
+                    'loading-thumbnail': effect.previewType === 'loading'
+                  }"
+                  v-html="effectThumbnailMarkup(effect)"
+                ></div>
+                <span v-else></span>
+              </div>
+              <div class="effect-card-copy">
+                <strong>{{ effect.name }}</strong>
+                <p>{{ effect.defaultParams.duration }}s · {{ effect.scene }}</p>
+              </div>
+            </article>
+          </template>
+          <template v-if="activeSection === '图标/点位' && customDecorationStore.components.length">
             <div class="custom-list-title"><span>自定义组件</span><small>{{ customDecorationStore.components.length }}</small></div>
             <article
               v-for="component in customDecorationStore.components"
@@ -93,7 +103,7 @@
           </button>
         </div>
         <div class="decoration-workspace-actions">
-          <el-button size="small" @click="triggerSvgImport">
+          <el-button v-if="supportsImportedSvg" size="small" @click="triggerSvgImport">
             <el-icon><Download /></el-icon>
             导入 SVG
           </el-button>
@@ -142,12 +152,33 @@
       </header>
 
       <el-scrollbar class="param-scroll">
+        <template v-if="isSubtitleSweep">
+          <section class="flow-param-section subtitle-sweep-params">
+            <h3>移动光效</h3>
+            <p class="flow-param-note">导入 SVG 后自动生成，不要求素材包含“光”图层。</p>
+            <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
+              <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+              <div v-if="paramItem.type === 'color'" class="color-row">
+                <el-color-picker v-model="params[paramItem.key]" />
+                <el-input v-model="params[paramItem.key]" />
+              </div>
+              <template v-else-if="paramItem.type === 'select'">
+                <el-select v-model="params[paramItem.key]">
+                  <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
+                </el-select>
+              </template>
+              <div v-else class="number-row">
+                <el-slider :model-value="Number(params[paramItem.key])" :min="paramItem.min" :max="paramItem.max" :step="paramItem.step" @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event" />
+                <el-input-number :model-value="Number(params[paramItem.key])" :min="paramItem.min" :max="paramItem.max" :step="paramItem.step" :controls="false" @change="params[paramItem.key] = Number($event ?? params[paramItem.key])" />
+              </div>
+            </div>
+          </section>
+        </template>
         <StarRingParamPanel
-          v-if="isStarRing"
-          :model-value="starRingConfig"
-          @update:model-value="updateStarRingConfig"
-          @use-preset="restoreStarRingPreset"
-          @remap="openCurrentMapping"
+          v-if="isLayeredDecoration"
+          :model-value="activeLayeredConfig"
+          @update:model-value="updateLayeredConfig"
+          @use-preset="restoreLayeredPreset"
         />
         <template v-else-if="isSvgFlow">
           <div class="flow-param-stack">
@@ -208,6 +239,31 @@
               </div>
             </section>
 
+            <section v-if="flowShapeParams.length" class="flow-param-section">
+              <h3>形态设置</h3>
+              <p v-if="isBackgroundSweep" class="flow-param-note">宽幅位置 0% 为最左侧；端点宽度 100% 与最宽处相同。</p>
+              <div v-for="paramItem in flowShapeParams" :key="paramItem.key" class="param-control">
+                <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+                <div class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+
             <section v-if="flowTargets.length > 1" class="flow-param-section flow-path-section">
               <div class="flow-param-section-head">
                 <h3>路径设置</h3>
@@ -234,7 +290,7 @@
             </section>
           </div>
         </template>
-        <template v-else>
+        <template v-else-if="!isLayeredDecoration">
           <div class="param-stack">
             <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
             <label>
@@ -251,6 +307,9 @@
               <el-select v-model="params[paramItem.key]">
                 <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
+            </template>
+            <template v-else-if="paramItem.type === 'text'">
+              <el-input v-model="params[paramItem.key]" maxlength="24" />
             </template>
             <template v-else>
               <div class="number-row">
@@ -280,11 +339,16 @@
             @update:model-value="updateSvgStyle"
           />
         </template>
+        <DecorationParticlePanel
+          v-if="supportsParticleEffect"
+          :model-value="activeParticleEffect"
+          @update:model-value="updateParticleEffect"
+        />
       </el-scrollbar>
     </aside>
 
     <StarRingMappingDialog
-      v-if="pendingStarRingAsset"
+      v-if="pendingStarRingAsset && isStarRing"
       v-model="mappingDialogVisible"
       :asset="pendingStarRingAsset"
       :mapping="pendingStarRingMapping"
@@ -306,10 +370,12 @@ import {
   generateDecorationMarkup
 } from "@/generators/decorationGenerator";
 import { generateStarRingCss, generateStarRingHtmlCss, generateStarRingMarkup } from "@/generators/starRingGenerator";
-import type { DecorationEffectTemplate, DecorationSection } from "@/types/decoration";
+import { generateSubtitleSweepCss, generateSubtitleSweepHtmlCss, generateSubtitleSweepMarkup, type SubtitleSweepParams } from "@/generators/subtitleSweepGenerator";
+import { generateDecorationParticleCss } from "@/generators/decorationParticleGenerator";
+import type { DecorationEffectTemplate, DecorationParticleConfig, DecorationSection } from "@/types/decoration";
 import type { StarRingDecorationConfig, StarRingLayerMapping, StarRingSvgAsset } from "@/types/decoration";
 import type { SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
-import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, createSystemSvgFlowSource, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
+import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, createSystemSvgFlowSource, readSvgBackgroundFile, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
@@ -317,12 +383,14 @@ import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlayback
 import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
 import StarRingParamPanel from "@/modules/decoration-library/StarRingParamPanel.vue";
 import StarRingMappingDialog from "@/modules/decoration-library/StarRingMappingDialog.vue";
-import { applyImportedStarRingConfig, createDefaultStarRingConfig, readStarRingSvgFile, renameStarRingAssetLayers } from "@/utils/starRingDecoration";
+import DecorationParticlePanel from "@/modules/decoration-library/DecorationParticlePanel.vue";
+import { applyImportedLayeredDecorationConfig, applyImportedStarRingConfig, createDefaultLayeredDecorationConfig, createDefaultStarRingConfig, readLayeredDecorationSvgFile, readStarRingSvgFile, renameStarRingAssetLayers } from "@/utils/starRingDecoration";
+import { createDefaultDecorationParticleConfig, normalizeDecorationParticleConfig } from "@/utils/decorationParticles";
 import { useCustomDecorationStore } from "@/stores/customDecorationStore";
 
 const props = defineProps<{ initialEffectId?: string }>();
 const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
-const activeSection = ref<DecorationSection>(initialEffect?.section ?? "图标底座");
+const activeSection = ref<DecorationSection>(initialEffect?.section ?? decorationEffects[0].section);
 const activeEffectId = ref(initialEffect?.id ?? decorationEffects[0].id);
 const activeWorkspaceView = ref<"preview" | "code">("preview");
 const previewKey = ref(0);
@@ -330,6 +398,7 @@ const previewPlaying = ref(true);
 const previewSpeed = ref(1);
 const params = reactive<Record<string, string | number>>({});
 const starRingConfig = ref<StarRingDecorationConfig>(createDefaultStarRingConfig());
+const subtitleSweepConfig = ref<StarRingDecorationConfig>(createDefaultLayeredDecorationConfig("subtitle-sweep"));
 const pendingStarRingAsset = ref<StarRingSvgAsset>();
 const pendingStarRingMapping = ref<StarRingLayerMapping>(createDefaultStarRingConfig().layerMapping);
 const mappingDialogVisible = ref(false);
@@ -338,6 +407,7 @@ const activeCustomId = ref("");
 const svgSource = ref<SvgFlowSource>(createSystemSvgFlowSource(initialEffect?.id));
 const importedSvg = ref<SvgPreviewAsset>();
 const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
+const particleEffect = ref<DecorationParticleConfig>(createDefaultDecorationParticleConfig());
 const svgFileInput = ref<HTMLInputElement>();
 const previewCapture = ref<HTMLElement>();
 const previewViewport = ref({ width: 800, height: 480 });
@@ -346,15 +416,36 @@ const motionStore = useMyMotionStore();
 const customDecorationStore = useCustomDecorationStore();
 
 const sectionEffects = computed(() => decorationEffects.filter((effect) => effect.section === activeSection.value));
+const sectionGroups = computed(() => {
+  const groups = new Map<string, DecorationEffectTemplate[]>();
+  sectionEffects.value.forEach((effect) => {
+    const effects = groups.get(effect.subsection) ?? [];
+    effects.push(effect);
+    groups.set(effect.subsection, effects);
+  });
+  return [...groups].map(([name, effects]) => ({ name, effects }));
+});
 const currentEffect = computed(() => decorationEffects.find((effect) => effect.id === activeEffectId.value) ?? sectionEffects.value[0] ?? decorationEffects[0]);
 const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
+const isBackgroundSweep = computed(() => currentEffect.value.id === "svg-flow-double-guide");
 const isStarRing = computed(() => currentEffect.value.id === "base-particle-star-ring");
+const isSubtitleSweep = computed(() => currentEffect.value.id === "subtitle-orbit-sweep-01");
+const supportsImportedSvg = computed(() => isStarRing.value || isSubtitleSweep.value || isSvgFlow.value || currentEffect.value.generator === "loading-icon-pulse");
+const supportsParticleEffect = computed(() => currentEffect.value.section !== "loading");
+const isLayeredDecoration = computed(() => isStarRing.value || isSubtitleSweep.value);
+const activeLayeredConfig = computed(() => isSubtitleSweep.value ? subtitleSweepConfig.value : starRingConfig.value);
+const activeParticleEffect = computed(() => isStarRing.value
+  ? normalizeDecorationParticleConfig(starRingConfig.value.particleEffect, true, starRingConfig.value.overall.color)
+  : particleEffect.value);
 const activeCustomComponent = computed(() => customDecorationStore.components.find((item) => item.id === activeCustomId.value));
 const displayTitle = computed(() => activeCustomComponent.value?.name ?? currentEffect.value.name);
 const flowMotionParams = computed(() => ["duration", "pause", "easing", ...(flowTargets.value.length > 1 ? [] : ["direction"])]
   .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
   .filter((item): item is NonNullable<typeof item> => Boolean(item)));
-const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColor", "tailColor", "endColor"]
+const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColor", "tailColor", "endColor", "lightIntensity"]
+  .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+  .filter((item): item is NonNullable<typeof item> => Boolean(item)));
+const flowShapeParams = computed(() => ["flowAmplitude", "flowFocusPosition", "flowLeftEndWidth", "flowRightEndWidth"]
   .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
   .filter((item): item is NonNullable<typeof item> => Boolean(item)));
 const flowTargets = computed(() => svgSource.value?.targets ?? []);
@@ -365,6 +456,9 @@ const previewIntrinsicSize = computed(() => {
   if (isStarRing.value && starRingConfig.value.svg) {
     return { width: starRingConfig.value.svg.width, height: starRingConfig.value.svg.height };
   }
+  if (isSubtitleSweep.value && subtitleSweepConfig.value.svg) {
+    return { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height };
+  }
   return undefined;
 });
 const previewFitStyle = computed(() => {
@@ -372,9 +466,13 @@ const previewFitStyle = computed(() => {
   if (!source) return undefined;
   const sourceWidth = Math.max(1, source.width);
   const sourceHeight = Math.max(1, source.height);
-  const availableWidth = Math.max(1, previewViewport.value.width * 0.9);
+  // 编辑器只负责完整展示素材，交付尺寸仍由 sourceWidth/sourceHeight 保留。
+  // 横向标题类 SVG 留出更多画布边距，避免 1920px 素材在预览中显得被放大或截断。
+  const previewWidthRatio = isSvgFlow.value ? 0.74 : 0.9;
+  const availableWidth = Math.max(1, previewViewport.value.width * previewWidthRatio);
   const availableHeight = Math.max(1, previewViewport.value.height * 0.78);
-  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight);
+  const importedStarRingScale = isStarRing.value && starRingConfig.value.sourceMode === "imported" ? 0.82 : 1;
+  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight) * importedStarRingScale;
   return {
     width: `${sourceWidth * scale}px`,
     height: `${sourceHeight * scale}px`
@@ -387,15 +485,25 @@ const flowDirectionOptions = [
   { label: "从下到上", value: "btt" }
 ] as const;
 
-const cssCode = computed(() => isStarRing.value ? generateStarRingCss(starRingConfig.value) : generateDecorationCss(currentEffect.value, params));
-const htmlCss = computed(() => isStarRing.value
-  ? generateStarRingHtmlCss(starRingConfig.value)
-  : generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle));
-const previewMarkup = computed(() => isStarRing.value
-  ? `<style>${cssCode.value}</style>${generateStarRingMarkup(starRingConfig.value)}`
-  : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value)}`);
+function hasSectionEffects(section: DecorationSection): boolean {
+  return decorationEffects.some((effect) => effect.section === section);
+}
+
+const cssCode = computed(() => isSubtitleSweep.value
+  ? generateSubtitleSweepCss(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)
+  : isStarRing.value ? generateStarRingCss(starRingConfig.value)
+  : `${generateDecorationCss(currentEffect.value, params)}${activeParticleEffect.value.enabled ? `\n${generateDecorationParticleCss()}` : ""}`);
+const htmlCss = computed(() => isSubtitleSweep.value
+  ? generateSubtitleSweepHtmlCss(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)
+  : isStarRing.value ? generateStarRingHtmlCss(starRingConfig.value)
+  : generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle, activeParticleEffect.value));
+const previewMarkup = computed(() => isSubtitleSweep.value
+  ? `<style>${cssCode.value}</style>${generateSubtitleSweepMarkup(subtitleSweepConfig.value)}`
+  : isStarRing.value ? `<style>${cssCode.value}</style>${generateStarRingMarkup(starRingConfig.value)}`
+  : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value, "main", activeParticleEffect.value)}`);
 const previewDuration = computed(() => {
-  if (!isStarRing.value) return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0);
+  if (!isStarRing.value && !isSubtitleSweep.value) return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0);
+  if (isSubtitleSweep.value) return Number(params.duration ?? 2.8);
   return Math.max(...Object.values(starRingConfig.value.layerConfigs)
     .filter((layer) => layer.visible && layer.motion !== "none")
     .map((layer) => layer.motion === "basic" ? Number(layer.basicMotionConfig?.duration ?? layer.duration) : layer.duration), 0);
@@ -419,13 +527,14 @@ watch([previewMarkup, previewPlaying, previewSpeed], () => {
   void nextTick(applyPlaybackState);
 });
 
-watch([svgSource, params], () => {
+watch([svgSource, params, particleEffect], () => {
   if (!isSvgFlow.value || !svgSource.value) return;
   localStorage.setItem(SVG_FLOW_DRAFT_KEY, JSON.stringify({
     effectId: currentEffect.value.id,
     name: currentEffect.value.name,
     source: svgSource.value,
-    config: { ...params }
+    config: { ...params },
+    particleEffect: particleEffect.value
   }));
 }, { deep: true });
 
@@ -485,6 +594,10 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
     const config = createDefaultStarRingConfig();
     return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
   }
+  if (effect.id === "subtitle-orbit-sweep-01") {
+    const config = createDefaultLayeredDecorationConfig("subtitle-sweep");
+    return `<style>${generateSubtitleSweepCss(config, effect.defaultParams as unknown as SubtitleSweepParams)}</style>${generateSubtitleSweepMarkup(config)}`;
+  }
   if (effect.generator === "svg-flow") {
     const source = createSystemSvgFlowSource(effect.id);
     return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams, source, undefined, "thumb")}`;
@@ -505,16 +618,33 @@ function resetParams(): void {
     importedSvg.value = undefined;
     return;
   }
+  if (isSubtitleSweep.value) {
+    Object.keys(params).forEach((key) => delete params[key]);
+    Object.assign(params, currentEffect.value.defaultParams);
+    if (subtitleSweepConfig.value.sourceMode === "imported" && subtitleSweepConfig.value.svg) {
+      const next = createDefaultLayeredDecorationConfig("subtitle-sweep");
+      applyImportedLayeredDecorationConfig(next, subtitleSweepConfig.value.svg);
+      subtitleSweepConfig.value = next;
+    } else {
+      subtitleSweepConfig.value = createDefaultLayeredDecorationConfig("subtitle-sweep");
+    }
+    void replayPreview();
+    return;
+  }
   if (isSvgFlow.value) {
     Object.keys(params).forEach((key) => delete params[key]);
     Object.assign(params, currentEffect.value.defaultParams);
     svgSource.value = createSystemSvgFlowSource(currentEffect.value.id);
+    particleEffect.value = createDefaultDecorationParticleConfig();
     importedSvg.value = undefined;
     void replayPreview();
     return;
   }
   Object.keys(params).forEach((key) => delete params[key]);
   Object.assign(params, currentEffect.value.defaultParams);
+  importedSvg.value = undefined;
+  Object.assign(svgStyle, createDefaultSvgStyleConfig());
+  particleEffect.value = createDefaultDecorationParticleConfig();
 }
 
 function togglePreview(): void {
@@ -570,7 +700,15 @@ async function handleSvgUpload(event: Event): Promise<void> {
   if (!file) return;
 
   try {
-    if (isStarRing.value) {
+    if (isSubtitleSweep.value) {
+      const asset = await readLayeredDecorationSvgFile(file);
+      const next = createDefaultLayeredDecorationConfig("subtitle-sweep");
+      applyImportedLayeredDecorationConfig(next, asset);
+      subtitleSweepConfig.value = next;
+      importedSvg.value = undefined;
+      ElMessage.success(`已读取 ${asset.mode === "layered" ? asset.layers.length : 1} 个素材图层，并自动添加移动光效`);
+      void replayPreview();
+    } else if (isStarRing.value) {
       const { asset, mapping } = await readStarRingSvgFile(file);
       if (asset.mode === "whole") {
         const next = createDefaultStarRingConfig();
@@ -586,19 +724,17 @@ async function handleSvgUpload(event: Event): Promise<void> {
       }
       importedSvg.value = undefined;
     } else if (isSvgFlow.value) {
-      svgSource.value = await readSvgFlowFile(file);
+      svgSource.value = isBackgroundSweep.value
+        ? await readSvgBackgroundFile(file)
+        : await readSvgFlowFile(file);
       importedSvg.value = undefined;
-      ElMessage.success("SVG 路径已读取");
-    } else {
+      ElMessage.success(isBackgroundSweep.value ? "SVG 背景已读取，编辑器柔光已自动应用" : "SVG 路径已读取");
+    } else if (currentEffect.value.generator === "loading-icon-pulse") {
       const previewAsset = await readSvgPreviewFile(file);
       importedSvg.value = previewAsset;
       Object.assign(svgStyle, createDefaultSvgStyleConfig(previewAsset.primaryColor));
-      try {
-        svgSource.value = await readSvgFlowFile(file);
-      } catch {
-        // General previews accept SVGs that do not contain a flow-compatible primitive.
-      }
-      ElMessage.success("SVG 已导入当前装饰动效");
+      params.color = previewAsset.primaryColor;
+      ElMessage.success("SVG 已替换默认加载图标");
     }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "SVG 上传失败");
@@ -613,6 +749,31 @@ function updateSvgStyle(value: SvgStyleConfig): void {
 
 function updateStarRingConfig(value: StarRingDecorationConfig): void {
   starRingConfig.value = value;
+  void replayPreview();
+}
+
+function updateLayeredConfig(value: StarRingDecorationConfig): void {
+  if (isSubtitleSweep.value) subtitleSweepConfig.value = value;
+  else starRingConfig.value = value;
+  void replayPreview();
+}
+
+function restoreLayeredPreset(): void {
+  if (isSubtitleSweep.value) {
+    subtitleSweepConfig.value = createDefaultLayeredDecorationConfig("subtitle-sweep");
+    ElMessage.success("已恢复系统预设素材");
+    void replayPreview();
+    return;
+  }
+  restoreStarRingPreset();
+}
+
+function updateParticleEffect(value: DecorationParticleConfig): void {
+  if (isStarRing.value) {
+    starRingConfig.value = { ...starRingConfig.value, particleEffect: value };
+  } else {
+    particleEffect.value = value;
+  }
   void replayPreview();
 }
 
@@ -639,6 +800,7 @@ function confirmStarRingMapping(mapping: StarRingLayerMapping, labels: Record<st
   const next = createDefaultStarRingConfig();
   applyImportedStarRingConfig(next, asset, mapping);
   if (remappingExistingAsset.value) {
+    next.particleEffect = previous.particleEffect;
     Object.keys(next.layerConfigs).forEach((key) => {
       const old = previous.layerConfigs[key];
       if (old) next.layerConfigs[key] = { ...old, visible: next.layerConfigs[key].visible };
@@ -677,6 +839,16 @@ function triggerSvgImport(): void {
 }
 
 async function saveFromToolbar(): Promise<void> {
+  if (isSubtitleSweep.value) {
+    try {
+      const artifact = await createMotionArtifact({ id: currentEffect.value.id, name: currentEffect.value.name, htmlCss: htmlCss.value, previewNode: previewCapture.value });
+      motionStore.saveDecoration(currentEffect.value, { ...params }, artifact, subtitleSweepConfig.value);
+      ElMessage.success("已保存 HTML、预览图和名称");
+    } catch {
+      ElMessage.error("保存失败，无法生成当前动效预览图");
+    }
+    return;
+  }
   if (isSvgFlow.value && svgSource.value) {
     await saveSvgFlow();
     return;
@@ -712,7 +884,8 @@ async function saveSvgFlow(): Promise<void> {
       config: {
         ...createDefaultSvgFlowConfig(),
         ...params
-      } as ReturnType<typeof createDefaultSvgFlowConfig>
+      } as ReturnType<typeof createDefaultSvgFlowConfig>,
+      particleEffect: particleEffect.value
     }, artifact);
     ElMessage.success("已保存 HTML、预览图和名称");
   } catch {
@@ -723,7 +896,9 @@ async function saveSvgFlow(): Promise<void> {
 function downloadHtml(): void {
   const exportSize = isSvgFlow.value
     ? { width: svgSource.value?.width ?? 1920, height: svgSource.value?.height ?? 96 }
-    : isStarRing.value && starRingConfig.value.sourceMode === "imported" && starRingConfig.value.svg
+    : isSubtitleSweep.value && subtitleSweepConfig.value.svg
+      ? { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height }
+      : isStarRing.value && starRingConfig.value.sourceMode === "imported" && starRingConfig.value.svg
       ? { width: starRingConfig.value.svg.width, height: starRingConfig.value.svg.height }
       : undefined;
   const bodyStyle = exportSize
@@ -745,7 +920,11 @@ ${htmlCss.value}
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${isStarRing.value ? "star-ring-base" : (svgSource.value?.fileName.replace(/\.svg$/i, "") || "path-flow")}.html`;
+  anchor.download = `${isSubtitleSweep.value || currentEffect.value.section === "loading"
+    ? currentEffect.value.name
+    : isStarRing.value
+      ? "star-ring-base"
+      : (svgSource.value?.fileName.replace(/\.svg$/i, "") || "path-flow")}.html`;
   anchor.click();
   URL.revokeObjectURL(url);
   ElMessage.success("HTML 文件已导出");
@@ -759,9 +938,10 @@ async function restoreSvgFlow(): Promise<void> {
       effectId?: string;
       source?: SvgFlowSource;
       config?: Record<string, string | number>;
+      particleEffect?: DecorationParticleConfig;
     };
     if (!saved.source || !saved.config) return;
-    activeSection.value = "线性流光";
+    activeSection.value = "标题装饰";
     await nextTick();
     activeEffectId.value = decorationEffects.some((effect) => effect.id === saved.effectId)
       ? saved.effectId!
@@ -769,6 +949,7 @@ async function restoreSvgFlow(): Promise<void> {
     await nextTick();
     svgSource.value = saved.source;
     Object.assign(params, createDefaultSvgFlowConfig(), saved.config);
+    particleEffect.value = normalizeDecorationParticleConfig(saved.particleEffect);
     localStorage.removeItem(SVG_FLOW_OPEN_KEY);
   } catch {
     localStorage.removeItem(SVG_FLOW_OPEN_KEY);
@@ -819,6 +1000,7 @@ async function restoreSvgFlow(): Promise<void> {
   padding-right: 5px;
 }
 
+.subsection-title,
 .custom-list-title {
   display: flex;
   align-items: center;
@@ -923,6 +1105,11 @@ async function restoreSvgFlow(): Promise<void> {
   background: rgba(255, 255, 255, 0.085);
 }
 
+.section-tabs button:disabled {
+  color: rgba(255, 255, 255, 0.22);
+  cursor: default;
+}
+
 .effect-card {
   min-width: 0;
   border: 0;
@@ -977,6 +1164,17 @@ async function restoreSvgFlow(): Promise<void> {
   width: 1920px;
   height: 96px;
   transform: translate(-50%, -50%) scale(0.028);
+}
+
+.real-effect-thumbnail.loading-thumbnail {
+  top: 50%;
+  width: 320px;
+  height: 160px;
+  transform: translate(-50%, -50%) scale(0.18);
+}
+
+.real-effect-thumbnail.loading-thumbnail :deep(.decoration-effect-loading-linear-flow) {
+  transform: scale(0.78);
 }
 
 .effect-thumb span {
@@ -1359,7 +1557,8 @@ async function restoreSvgFlow(): Promise<void> {
 }
 
 .generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-tool),
-.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-tool-02) {
+.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-tool-02),
+.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-double-guide) {
   width: 100% !important;
   max-width: none;
 }
@@ -1433,6 +1632,13 @@ async function restoreSvgFlow(): Promise<void> {
   color: var(--dm-primary);
   font-size: 13px;
   font-weight: 600;
+}
+
+.flow-param-note {
+  margin: -6px 0 0;
+  color: var(--dm-tertiary);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .flow-param-section-head,
