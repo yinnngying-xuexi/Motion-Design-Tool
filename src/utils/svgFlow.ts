@@ -12,6 +12,8 @@ import type {
 const SHAPE_SELECTOR = "path,line,polyline,polygon,circle,ellipse,rect";
 const FLOW_PATH_NAME = /^flow-path(?:[-_](?:\d+|left|right|top|bottom))?$/i;
 
+export type SvgFlowImportMode = "single" | "double";
+
 export const SVG_FLOW_DRAFT_KEY = "visual-motion-svg-flow-draft-v2";
 export const SVG_FLOW_LEGACY_DRAFT_KEY = "visual-motion-svg-flow-draft";
 export const SVG_FLOW_OPEN_KEY = "visual-motion-svg-flow-open";
@@ -62,22 +64,94 @@ function svgDimensions(svg: SVGSVGElement): { width: number; height: number } {
   };
 }
 
-export function parseSvgFlowSource(text: string, fileName: string): SvgFlowSource {
+function firstHorizontalPosition(element: SVGElement): number | undefined {
+  const shape = element.matches(SHAPE_SELECTOR)
+    ? element
+    : element.querySelector<SVGElement>(SHAPE_SELECTOR);
+  if (!shape) return undefined;
+  const tagName = shape.tagName.toLowerCase();
+  const directValue = tagName === "line"
+    ? shape.getAttribute("x1")
+    : tagName === "circle" || tagName === "ellipse"
+      ? shape.getAttribute("cx")
+      : tagName === "rect"
+        ? shape.getAttribute("x")
+        : undefined;
+  if (directValue !== undefined && directValue !== null) {
+    const value = Number.parseFloat(directValue);
+    if (Number.isFinite(value)) return value;
+  }
+
+  const source = tagName === "path"
+    ? shape.getAttribute("d")
+    : shape.getAttribute("points");
+  const match = source?.match(/(?:^|[Mm]\s*|\s)(-?\d*\.?\d+(?:e[-+]?\d+)?)/i);
+  if (!match) return undefined;
+  const value = Number.parseFloat(match[1]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function fallbackFlowShapes(shapes: SVGGraphicsElement[], mode: SvgFlowImportMode): SVGElement[] {
+  const lineShapes = shapes.filter((shape) => {
+    const tagName = shape.tagName.toLowerCase();
+    if (!['path', 'line', 'polyline'].includes(tagName)) return false;
+    const style = shape.getAttribute("style") ?? "";
+    return shape.getAttribute("stroke") !== "none" && !/(?:^|;)\s*stroke\s*:\s*none(?:;|$)/i.test(style);
+  });
+  if (mode === "single") return lineShapes.slice(0, 1);
+
+  const uniqueShapes = lineShapes.filter((shape, index, candidates) => {
+    const geometry = shape.getAttribute("d")
+      ?? shape.getAttribute("points")
+      ?? [shape.getAttribute("x1"), shape.getAttribute("y1"), shape.getAttribute("x2"), shape.getAttribute("y2")].join(",");
+    return candidates.findIndex((candidate) => {
+      const candidateGeometry = candidate.getAttribute("d")
+        ?? candidate.getAttribute("points")
+        ?? [candidate.getAttribute("x1"), candidate.getAttribute("y1"), candidate.getAttribute("x2"), candidate.getAttribute("y2")].join(",");
+      return candidateGeometry === geometry;
+    }) === index;
+  });
+  return uniqueShapes
+    .sort((left, right) => (firstHorizontalPosition(left) ?? 0) - (firstHorizontalPosition(right) ?? 0))
+    .slice(0, 2);
+}
+
+function automaticDoubleFlowShapes(svg: SVGSVGElement, shapes: SVGGraphicsElement[]): SVGElement[] {
+  const containsLineShape = (element: Element) => Boolean(element.querySelector("path,line,polyline"));
+  const leafGroups = [...svg.querySelectorAll<SVGGElement>("g")]
+    .filter((group) => !group.closest("defs,clipPath,mask,pattern") && containsLineShape(group))
+    .filter((group) => ![...group.children].some((child) => child.tagName.toLowerCase() === "g" && containsLineShape(child)));
+
+  if (leafGroups.length >= 2) {
+    const sortedGroups = leafGroups.sort((left, right) => (firstHorizontalPosition(left) ?? 0) - (firstHorizontalPosition(right) ?? 0));
+    return [sortedGroups[0], sortedGroups[sortedGroups.length - 1]];
+  }
+  return fallbackFlowShapes(shapes, "double");
+}
+
+export function parseSvgFlowSource(text: string, fileName: string, mode: SvgFlowImportMode = "single"): SvgFlowSource {
   const svg = parseSafeSvg(text);
   const dimensions = svgDimensions(svg);
   const shapes = [...svg.querySelectorAll<SVGGraphicsElement>(SHAPE_SELECTOR)]
     .filter((shape) => !shape.closest("defs,clipPath,mask,pattern"));
-  const namedFlowShapes = shapes.filter((shape) => {
-    const name = shape.getAttribute("id") ?? shape.getAttribute("data-name") ?? "";
-    return FLOW_PATH_NAME.test(name.trim());
-  });
+  const namedFlowShapes = [...svg.querySelectorAll<SVGElement>("[id],[data-name]")]
+    .filter((element) => {
+      const name = element.getAttribute("id") ?? element.getAttribute("data-name") ?? "";
+      return FLOW_PATH_NAME.test(name.trim()) && Boolean(element.matches(SHAPE_SELECTOR) || element.querySelector(SHAPE_SELECTOR));
+    })
+    .filter((element, _index, candidates) => !candidates.some((candidate) => candidate !== element && candidate.contains(element)));
+  const fallbackShapes = mode === "double"
+    ? automaticDoubleFlowShapes(svg, shapes)
+    : fallbackFlowShapes(shapes, mode);
   const flowShapes = namedFlowShapes.length
-    ? namedFlowShapes
-    : shapes.filter((shape) => shape.tagName.toLowerCase() === "path" && shape.getAttribute("stroke") !== "none").slice(0, 1);
+    ? mode === "double"
+      ? [...namedFlowShapes, ...fallbackShapes.filter((shape) => !namedFlowShapes.includes(shape))].slice(0, 2)
+      : namedFlowShapes
+    : fallbackShapes;
 
   if (!flowShapes.length) throw new Error("SVG 中没有可用于流光的路径，请将目标路径命名为 flow-path-01");
 
-  const targets: SvgFlowTarget[] = flowShapes.map((shape, index) => {
+  const baseTargets: SvgFlowTarget[] = flowShapes.map((shape, index) => {
     const originalName = shape.getAttribute("id")?.trim()
       || shape.getAttribute("data-name")?.trim()
       || `flow-path-${String(index + 1).padStart(2, "0")}`;
@@ -87,15 +161,35 @@ export function parseSvgFlowSource(text: string, fileName: string): SvgFlowSourc
     shape.setAttribute("id", safeId);
     if (safeId !== originalName) shape.setAttribute("data-dm-original-id", originalName);
     const normalizedName = originalName.toLowerCase();
-    const direction = normalizedName.endsWith("-right") || normalizedName.endsWith("_right")
+    const explicitDirection = normalizedName.endsWith("-right") || normalizedName.endsWith("_right")
       ? "rtl"
       : normalizedName.endsWith("-top") || normalizedName.endsWith("_top")
         ? "ttb"
         : normalizedName.endsWith("-bottom") || normalizedName.endsWith("_bottom")
           ? "btt"
-          : "ltr";
-    return { id: safeId, label: originalName, enabled: true, direction, delay: 0 };
+          : undefined;
+    const firstX = firstHorizontalPosition(shape);
+    const inferredDoubleDirection = mode === "double"
+      ? firstX === undefined
+        ? index === 0 ? "ltr" : "rtl"
+        : firstX <= dimensions.width / 2 ? "ltr" : "rtl"
+      : "ltr";
+    const direction = explicitDirection ?? inferredDoubleDirection;
+    return {
+      id: safeId,
+      label: originalName,
+      enabled: true,
+      direction,
+      delay: 0,
+      region: mode === "double" ? direction === "rtl" ? "right" : "left" : undefined
+    };
   });
+  const targets: SvgFlowTarget[] = mode === "double" && baseTargets.length === 1
+    ? [
+      { ...baseTargets[0], label: "左侧流光", direction: "ltr", region: "left" },
+      { ...baseTargets[0], label: "右侧流光", direction: "rtl", region: "right" }
+    ]
+    : baseTargets;
 
   const rawViewBox = svg.getAttribute("viewBox")?.trim();
   const viewBox = rawViewBox && rawViewBox.split(/[\s,]+/).length === 4 ? rawViewBox : "0 0 1000 180";
@@ -214,9 +308,9 @@ function validateSvgFile(file: File): void {
   if (file.size > 2 * 1024 * 1024) throw new Error("SVG 文件不能超过 2MB");
 }
 
-export async function readSvgFlowFile(file: File): Promise<SvgFlowSource> {
+export async function readSvgFlowFile(file: File, mode: SvgFlowImportMode = "single"): Promise<SvgFlowSource> {
   validateSvgFile(file);
-  return parseSvgFlowSource(await file.text(), file.name);
+  return parseSvgFlowSource(await file.text(), file.name, mode);
 }
 
 export async function readSvgBackgroundFile(file: File): Promise<SvgFlowSource> {

@@ -24,8 +24,10 @@ function svgFlowConfig(params: DecorationParams): SvgFlowConfig {
   };
 }
 
-function svgFlowMetrics(viewBox: string, config: SvgFlowConfig): { x: number; y: number; width: number; height: number; axis: "x" | "y"; start: number; finish: number; gradient: string } {
-  const [x = 0, y = 0, width = 1000, height = 180] = viewBox.split(/[\s,]+/).map(Number);
+function svgFlowMetrics(viewBox: string, config: SvgFlowConfig, region?: "left" | "right"): { x: number; y: number; width: number; height: number; axis: "x" | "y"; start: number; finish: number; gradient: string } {
+  const [viewX = 0, y = 0, viewWidth = 1000, height = 180] = viewBox.split(/[\s,]+/).map(Number);
+  const width = region ? viewWidth / 2 : viewWidth;
+  const x = region === "right" ? viewX + viewWidth / 2 : viewX;
   const horizontal = config.direction === "ltr" || config.direction === "rtl";
   const axisLength = horizontal ? width : height;
   const forward = config.direction === "ltr" || config.direction === "ttb";
@@ -69,6 +71,15 @@ function namespaceSvgContent(content: string, prefix: string): { content: string
       .replace(new RegExp(`(href|xlink:href)=(['"])#${escaped}\\2`, "g"), `$1="#${replacement}"`);
   });
   return { content: next, ids };
+}
+
+function splitSvgDefinitions(content: string): { visual: string; definitions: string } {
+  let definitions = "";
+  const visual = content.replace(/<defs\b[^>]*>([\s\S]*?)<\/defs>/gi, (_match, inner: string) => {
+    definitions += inner;
+    return "";
+  });
+  return { visual, definitions };
 }
 
 export function decorationClassName(template: DecorationEffectTemplate): string {
@@ -159,13 +170,17 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   if (template.generator === "loading-line") {
     const trackWidth = Number(param(params, "trackWidth", 280));
     const trackColor = param(params, "trackColor", "#26303B");
-    const tailLength = Number(param(params, "tailLength", 30));
+    const stripeWidth = Number(param(params, "tailLength", 20));
     const radius = Number(param(params, "radius", 3));
     const progress = Number(param(params, "progress", 48));
     const progressMode = param(params, "lineMode", "indeterminate") === "progress";
-    return `.${cls}{position:relative;width:${trackWidth}px;height:${borderWidth}px;border-radius:${radius}px;background:${trackColor};overflow:hidden;opacity:${opacity}}
-.${cls}__flow{position:absolute;inset:0 auto 0 0;width:${progressMode ? progress : tailLength}%;border-radius:inherit;background:linear-gradient(90deg,transparent 0%,color-mix(in srgb,${color} 42%,transparent) 35%,${color} 82%,${DECORATION_BLUE_LIGHT} 100%);box-shadow:0 0 ${Math.max(4, Number(borderWidth) * 3)}px ${color};${progressMode ? "" : `animation:${kf} ${duration}s ease-in-out infinite`}}
-@keyframes ${kf}{0%{left:-${tailLength}%;opacity:0}12%{opacity:1}88%{opacity:1}100%{left:100%;opacity:0}}`;
+    const stripeStep = Math.max(8, stripeWidth);
+    const stripeLight = `color-mix(in srgb,${color} 94%,white 6%)`;
+    const stripeDark = `color-mix(in srgb,${color} 42%,${trackColor})`;
+    return `.${cls}{position:relative;width:${trackWidth}px;height:${Number(borderWidth)}px;box-sizing:border-box;background:transparent;overflow:hidden;opacity:${opacity}}
+.${cls}::before{content:"";position:absolute;inset:0;border-radius:${radius}px;background:${trackColor}}
+.${cls}__flow{position:relative;z-index:1;display:block;width:${progressMode ? progress : 100}%;height:100%;border-radius:${radius}px;background-color:${stripeDark};background-image:linear-gradient(45deg,${stripeLight} 25%,${stripeDark} 25%,${stripeDark} 50%,${stripeLight} 50%,${stripeLight} 75%,${stripeDark} 75%,${stripeDark} 100%);background-size:${stripeStep.toFixed(1)}px ${stripeStep.toFixed(1)}px;animation:${kf} ${duration}s linear infinite;transition:width .2s ease-out}
+@keyframes ${kf}{to{background-position:${stripeStep.toFixed(1)}px 0}}`;
   }
 
   if (template.generator === "loading-icon-pulse") {
@@ -202,20 +217,50 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   if (template.generator === "loading-irregular-ring") {
     const ringSize = Number(size);
     const ringWidth = Number(borderWidth);
-    const glowStrength = Number(param(params, "glowIntensity", 68)) / 100;
-    const glowRadius = Math.max(2, ringSize * 0.075 * glowStrength);
-    const softGlow = Math.max(1, glowRadius * 0.42);
+    const glowStrength = Number(param(params, "glowIntensity", 35)) / 100;
+    const glowRadius = Math.max(0, ringSize * 0.06 * glowStrength);
+    const discSize = ringSize * (150 / 260);
+    const labelSize = Math.max(9, ringSize * (19 / 260));
+    const labelSpacing = Math.max(0.5, ringSize * (2 / 260));
+    const labelWidth = discSize * 0.88;
+    const ringFilter = glowRadius > 0
+      ? `drop-shadow(0 0 ${Math.max(1, glowRadius * 0.42).toFixed(1)}px color-mix(in srgb,${color} 72%,transparent)) drop-shadow(0 0 ${glowRadius.toFixed(1)}px color-mix(in srgb,${color} 38%,transparent))`
+      : "none";
     return `.${cls}{position:relative;width:${ringSize}px;height:${ringSize}px;display:grid;place-items:center;opacity:${opacity};isolation:isolate}
-.${cls}__svg{display:block;width:100%;height:100%;overflow:visible}
-.${cls}__ring{fill:none;stroke:${color};stroke-width:${ringWidth};stroke-linecap:round;stroke-linejoin:round;transform-box:fill-box;transform-origin:center;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 ${softGlow.toFixed(1)}px color-mix(in srgb,${color} 78%,transparent)) drop-shadow(0 0 ${glowRadius.toFixed(1)}px color-mix(in srgb,${color} 54%,transparent))}
-.${cls}__ring--outer{stroke-opacity:.9;stroke-dasharray:190 34 82 18;animation:${kf}Outer ${duration}s linear infinite}
-.${cls}__ring--middle{stroke-opacity:.68;stroke-width:${Math.max(1, ringWidth * 0.72).toFixed(2)};stroke-dasharray:118 26 54 16;animation:${kf}Middle ${(Number(duration) * 0.74).toFixed(2)}s linear infinite reverse}
-.${cls}__ring--inner{stroke-opacity:.48;stroke-width:${Math.max(1, ringWidth * 0.5).toFixed(2)};stroke-dasharray:74 18 38 12;animation:${kf}Inner ${(Number(duration) * 1.22).toFixed(2)}s ease-in-out infinite}
-.${cls}__core{fill:${color};opacity:.92;filter:drop-shadow(0 0 ${Math.max(3, glowRadius * 0.75).toFixed(1)}px ${color});animation:${kf}Core ${(Number(duration) * 0.82).toFixed(2)}s ease-in-out infinite}
+.${cls}__ring-frame,.${cls}__disc-frame{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.${cls}__ring,.${cls}__disc{position:absolute;display:block;border-radius:50%;box-sizing:border-box;transform-origin:center;will-change:transform}
+.${cls}__ring{border:${ringWidth}px solid color-mix(in srgb,${color} 10%,transparent);border-left-color:${color};border-right-color:${color};filter:${ringFilter}}
+.${cls}__ring--one{width:92%;height:92%;animation:${kf}Spin ${(Number(duration)).toFixed(2)}s linear infinite}
+.${cls}__ring--two{width:106%;height:106%;animation:${kf}Spinner ${(Number(duration) * 1.25).toFixed(2)}s linear infinite}
+.${cls}__ring--three{width:120%;height:120%;animation:${kf}Spin ${(Number(duration) * 1.5).toFixed(2)}s linear infinite}
+.${cls}__disc{width:${discSize.toFixed(2)}px;height:${discSize.toFixed(2)}px;border:${ringWidth}px solid ${color};opacity:.9;filter:${ringFilter};animation:${kf}Disc ${(Number(duration) * 3).toFixed(2)}s linear infinite}
+.${cls}__disc--one{animation-delay:${(Number(duration) * 0.2).toFixed(2)}s}
+.${cls}__disc--two{animation-delay:${(Number(duration) * 1.2).toFixed(2)}s}
+.${cls}__disc--three{animation-delay:${(Number(duration) * 2.2).toFixed(2)}s}
+.${cls}__label{position:relative;z-index:2;display:block;width:${labelWidth.toFixed(2)}px;max-width:${labelWidth.toFixed(2)}px;overflow:hidden;text-align:center;text-overflow:ellipsis;white-space:nowrap;color:${color};font:400 ${labelSize.toFixed(1)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:${labelSpacing.toFixed(1)}px;text-shadow:0 0 ${Math.max(0, glowRadius * 0.7).toFixed(1)}px color-mix(in srgb,${color} 55%,transparent);animation:${kf}Blink ${Number(duration).toFixed(2)}s ease infinite}
+@keyframes ${kf}Blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes ${kf}Disc{to{transform:rotate3d(.5,.5,.5,-720deg)}}
+@keyframes ${kf}Spin{to{transform:rotate(-360deg)}}
+@keyframes ${kf}Spinner{to{transform:rotate(360deg)}}`;
+  }
+
+  if (template.generator === "loading-hex-tech-ring") {
+    const ringSize = Number(size);
+    const ringWidth = Number(borderWidth);
+    const glowStrength = Number(param(params, "glowIntensity", 64)) / 100;
+    const glowRadius = Math.max(0, ringSize * 0.045 * glowStrength);
+    const glowFilter = glowRadius > 0
+      ? `drop-shadow(-${Math.max(0.5, glowRadius * 0.16).toFixed(1)}px -${Math.max(0.5, glowRadius * 0.16).toFixed(1)}px ${Math.max(1, glowRadius * 0.55).toFixed(1)}px color-mix(in srgb,${color} 78%,transparent)) drop-shadow(0 0 ${glowRadius.toFixed(1)}px color-mix(in srgb,${color} 34%,transparent))`
+      : "none";
+    return `.${cls}{position:relative;width:${ringSize}px;display:grid;place-items:center;opacity:${opacity};isolation:isolate;color:${color}}
+.${cls}__svg{display:block;width:${ringSize}px;height:${ringSize}px;overflow:visible;filter:${glowFilter}}
+.${cls}__ring{fill:none;transform-box:fill-box;transform-origin:center;will-change:transform}
+.${cls}__ring--inner{stroke:${color};stroke-width:${Math.max(6, ringWidth * 8).toFixed(1)};stroke-dasharray:${Math.max(7, ringWidth * 5).toFixed(1)} ${Math.max(3, ringWidth * 2.4).toFixed(1)};opacity:.9;animation:${kf}Inner ${Number(duration).toFixed(2)}s linear infinite}
+.${cls}__ring--outer{stroke:color-mix(in srgb,${color} 64%,#0071bc);stroke-width:${Math.max(4, ringWidth * 6).toFixed(1)};stroke-dasharray:${Math.max(1.5, ringWidth).toFixed(1)} ${Math.max(8, ringWidth * 8).toFixed(1)};opacity:.82;animation:${kf}Outer ${Number(duration).toFixed(2)}s linear infinite}
+.${cls}__cell{fill:${color};stroke:color-mix(in srgb,${color} 26%,white);stroke-width:${Math.max(1, ringWidth * 0.5).toFixed(1)};transform-box:fill-box;transform-origin:center;animation:${kf}Cell 2s linear infinite;animation-delay:calc(var(--cell-index) * .4s)}
+@keyframes ${kf}Inner{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
 @keyframes ${kf}Outer{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes ${kf}Middle{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes ${kf}Inner{0%{transform:rotate(0deg) scale(.97)}50%{transform:rotate(-170deg) scale(1.03)}100%{transform:rotate(-360deg) scale(.97)}}
-@keyframes ${kf}Core{0%,100%{transform:scale(.72);opacity:.5}50%{transform:scale(1);opacity:1}}`;
+@keyframes ${kf}Cell{0%,100%{transform:scale(.1);opacity:0}50%{transform:scale(1);opacity:1}}`;
   }
 
   if (template.id === "svg-flow-double-guide") {
@@ -729,7 +774,32 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
 
   if (template.generator === "loading-irregular-ring") {
     const cls = decorationClassName(template);
-    return `<div class="${cls}" role="status" aria-label="加载中"><svg class="${cls}__svg" viewBox="0 0 160 160" aria-hidden="true"><path class="${cls}__ring ${cls}__ring--outer" d="M80 10C111 8 147 29 150 65C154 104 128 144 91 150C51 156 14 127 10 90C6 55 29 16 66 11C71 10 76 10 80 10Z"></path><path class="${cls}__ring ${cls}__ring--middle" d="M84 24C112 23 137 44 137 72C138 102 119 130 88 136C58 142 29 119 24 91C19 62 38 32 66 26C72 25 78 24 84 24Z"></path><path class="${cls}__ring ${cls}__ring--inner" d="M78 40C101 36 121 54 121 77C122 101 104 121 80 121C55 121 38 102 40 78C41 57 58 43 78 40Z"></path><circle class="${cls}__core" cx="80" cy="80" r="3.5"></circle></svg></div>`;
+    const centerText = escapeHtml(String(param(params, "centerText", "LOADING...")));
+    return `<div class="${cls}" role="status" aria-label="加载中"><span class="${cls}__ring-frame" aria-hidden="true"><i class="${cls}__ring ${cls}__ring--one"></i><i class="${cls}__ring ${cls}__ring--two"></i><i class="${cls}__ring ${cls}__ring--three"></i></span><span class="${cls}__disc-frame" aria-hidden="true"><i class="${cls}__disc ${cls}__disc--one"></i><i class="${cls}__disc ${cls}__disc--two"></i><i class="${cls}__disc ${cls}__disc--three"></i></span><span class="${cls}__label">${centerText}</span></div>`;
+  }
+
+  if (template.generator === "loading-hex-tech-ring") {
+    const cls = decorationClassName(template);
+    const cells = [
+      [209.02, 207.52],
+      [254.02, 288.52],
+      [115.02, 206.52],
+      [160.02, 126.52],
+      [255.02, 126.52],
+      [159.02, 287.52],
+      [300.02, 208.52]
+    ].map(([x, y], index) => {
+      const points = [
+        [x, y - 49.42],
+        [x + 42.8, y - 24.71],
+        [x + 42.8, y + 24.71],
+        [x, y + 49.42],
+        [x - 42.8, y + 24.71],
+        [x - 42.8, y - 24.71]
+      ].map((point) => point.map((value) => value.toFixed(2)).join(",")).join(" ");
+      return `<polygon class="${cls}__cell" style="--cell-index:${index}" points="${points}"></polygon>`;
+    }).join("");
+    return `<div class="${cls}" role="status" aria-label="加载中"><svg class="${cls}__svg" viewBox="0 0 415.04 415.04" aria-hidden="true"><circle class="${cls}__ring ${cls}__ring--inner" cx="207.52" cy="207.52" r="198"></circle><circle class="${cls}__ring ${cls}__ring--outer" cx="207.52" cy="207.52" r="174"></circle><g>${cells}</g></svg></div>`;
   }
 
   if (template.id === "svg-flow-double-guide") {
@@ -743,6 +813,7 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
       Number(param(params, "flowFocusPosition", 14)),
       Number(param(params, "flowLeftEndWidth", 85)),
       Number(param(params, "flowRightEndWidth", 25)),
+      String(param(params, "sourceVisibility", "show")) !== "flow-only",
       particleEffect
     );
   }
@@ -756,11 +827,13 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
     const sourceWidth = Number(currentSource.width || viewBoxWidth || 1000);
     const sourceHeight = Number(currentSource.height || viewBoxHeight || 180);
     const legacyPathId = `${cls}-${instanceId}-legacy-path`;
+    const showSource = String(param(params, "sourceVisibility", "show")) !== "flow-only";
     const rawTargets = currentSource.targets?.length
       ? currentSource.targets
       : [{ id: legacyPathId, label: currentSource.fileName, enabled: true, direction: config.direction, delay: 0 }];
     const rawContent = currentSource.content ?? currentSource.shape.replace(/^<([^\s>]+)/, `<$1 id="${legacyPathId}"`);
     const namespaced = namespaceSvgContent(rawContent, `${cls}-${instanceId}-source`);
+    const sourceParts = splitSvgDefinitions(namespaced.content);
     const hasMultipleTargets = rawTargets.length > 1;
     const targets = rawTargets.filter((target) => target.enabled).map((target, index) => ({
       ...target,
@@ -771,7 +844,7 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
     }));
     const overlays = targets.map((target) => {
       const pathConfig = { ...config, direction: target.direction };
-      const metrics = svgFlowMetrics(currentSource.viewBox, pathConfig);
+      const metrics = svgFlowMetrics(currentSource.viewBox, pathConfig, target.region);
       const pad = Math.max(config.tail, config.glow * 2, 24);
       const maskX = metrics.x - pad;
       const maskY = metrics.y - pad;
@@ -781,6 +854,7 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
         ? `x="${metrics.start}" y="${maskY}" width="${config.tail}" height="${maskHeight}"`
         : `x="${maskX}" y="${metrics.start}" width="${maskWidth}" height="${config.tail}"`;
       const maskId = `${cls}-${instanceId}-mask-${target.index}`;
+      const clipId = `${cls}-${instanceId}-clip-${target.index}`;
       const easingSpline = config.easing === "ease-in"
         ? "0.42 0 1 1"
         : config.easing === "ease-out"
@@ -797,7 +871,8 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
         ? 'calcMode="linear"'
         : `calcMode="spline" keySplines="${hasPause ? `${easingSpline};0 0 1 1` : easingSpline}"`;
       return {
-        defs: `<linearGradient id="${maskId}-gradient" ${metrics.gradient}>
+        defs: `${target.region ? `<clipPath id="${clipId}"><rect x="${metrics.x}" y="${metrics.y}" width="${metrics.width}" height="${metrics.height}"></rect></clipPath>` : ""}
+      <linearGradient id="${maskId}-gradient" ${metrics.gradient}>
         <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"></stop>
         <stop offset="0.36" stop-color="#FFFFFF" stop-opacity="0.2"></stop>
         <stop offset="0.74" stop-color="#FFFFFF" stop-opacity="0.78"></stop>
@@ -808,18 +883,19 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
           <animate attributeName="${metrics.axis}" values="${animationValues}" keyTimes="${animationKeyTimes}" ${animationTiming} dur="${total}s" begin="${target.delay}s" repeatCount="indefinite"></animate>
         </rect>
       </mask>`,
-        use: `<use href="#${target.id}" class="${cls}__track"></use>
-    <use href="#${target.id}" class="${cls}__tail" mask="url(#${maskId})"></use>
-    <use href="#${target.id}" class="${cls}__path" mask="url(#${maskId})"></use>`
+        use: `${showSource ? `<use href="#${target.id}" class="${cls}__track"${target.region ? ` clip-path="url(#${clipId})"` : ""}></use>\n    ` : ""}<use href="#${target.id}" class="${cls}__tail" mask="url(#${maskId})"${target.region ? ` clip-path="url(#${clipId})"` : ""}></use>
+    <use href="#${target.id}" class="${cls}__path" mask="url(#${maskId})"${target.region ? ` clip-path="url(#${clipId})"` : ""}></use>`
       };
     });
 
     return `<div class="${cls}" style="width:${sourceWidth}px;aspect-ratio:${sourceWidth}/${sourceHeight}" aria-label="${currentSource.fileName}">
   <svg class="${cls}__svg" viewBox="${currentSource.viewBox}" fill="none" xmlns="http://www.w3.org/2000/svg">
-    ${namespaced.content}
     <defs>
+      ${sourceParts.definitions}
+      ${showSource ? "" : sourceParts.visual}
       ${overlays.map((item) => item.defs).join("\n      ")}
     </defs>
+    ${showSource ? sourceParts.visual : ""}
     ${overlays.map((item) => item.use).join("\n    ")}
   </svg>
   ${generateDecorationParticleMarkup(particleEffect, config.tailColor)}

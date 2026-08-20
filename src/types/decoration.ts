@@ -26,7 +26,7 @@ export interface DecorationEffectTemplate {
   defaultParams: Record<string, string | number>;
   editableParams: DecorationParam[];
   previewType: DecorationPreviewType;
-  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring";
+  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring" | "loading-hex-tech-ring";
 }
 
 export type DecorationParticleStyle = "float" | "twinkle" | "spread";

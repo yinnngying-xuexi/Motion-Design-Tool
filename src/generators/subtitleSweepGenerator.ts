@@ -5,6 +5,7 @@ export interface SubtitleSweepParams {
   duration: number;
   pause: number;
   easing: string;
+  sourceVisibility: "show" | "flow-only";
   sweepShape: "arc" | "oval" | "soft-band";
   sweepStartColor: string;
   sweepEndColor: string;
@@ -30,9 +31,10 @@ function sweepShapeCss(shape: SubtitleSweepParams["sweepShape"]): string {
   return "bottom:-12%;height:82%;border-radius:50% 50% 12% 12% / 100% 100% 18% 18%;";
 }
 
-export function generateSubtitleSweepMarkup(config: StarRingDecorationConfig): string {
+export function generateSubtitleSweepMarkup(config: StarRingDecorationConfig, params: SubtitleSweepParams): string {
+  const showSource = params.sourceVisibility !== "flow-only";
   return `<div class="${CLASS_NAME}">
-  <div class="${CLASS_NAME}__material">${generateStarRingMarkup(config)}</div>
+  ${showSource ? `<div class="${CLASS_NAME}__material">${generateStarRingMarkup(config)}</div>` : ""}
   <div class="${CLASS_NAME}__light" aria-hidden="true"></div>
 </div>`;
 }
@@ -51,7 +53,8 @@ export function generateSubtitleSweepCss(config: StarRingDecorationConfig, param
   const endColor = params.sweepEndColor || params.sweepColor || "#0070F3";
   const shape = ["arc", "oval", "soft-band"].includes(params.sweepShape) ? params.sweepShape : "arc";
   const travel = width + lightWidth * 1.15;
-  return `${generateStarRingCss(config)}
+  const sourceCss = params.sourceVisibility === "flow-only" ? "" : generateStarRingCss(config);
+  return `${sourceCss}
 .${CLASS_NAME}{position:relative;width:${width}px;height:${height}px;overflow:hidden;isolation:isolate;}
 .${CLASS_NAME}__material{position:absolute;inset:0;z-index:1;}
 .${CLASS_NAME}__light{position:absolute;z-index:2;left:${-lightWidth}px;width:${lightWidth}px;pointer-events:none;opacity:0;transform:translateX(0);${sweepShapeCss(shape)}background:linear-gradient(90deg,${startColor} 0%,${endColor} 100%);filter:blur(${blur}px);mix-blend-mode:screen;animation:${CLASS_NAME}-move ${total}s ${safeEasing(params.easing)} infinite;}
@@ -61,7 +64,7 @@ export function generateSubtitleSweepCss(config: StarRingDecorationConfig, param
 }
 
 export function generateSubtitleSweepHtmlCss(config: StarRingDecorationConfig, params: SubtitleSweepParams): string {
-  return `${generateSubtitleSweepMarkup(config)}
+  return `${generateSubtitleSweepMarkup(config, params)}
 
 <style>
 ${generateSubtitleSweepCss(config, params)}

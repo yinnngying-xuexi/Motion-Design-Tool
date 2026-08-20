@@ -7,6 +7,7 @@ export interface SvgFlowTarget {
   enabled: boolean;
   direction: SvgFlowDirection;
   delay: number;
+  region?: "left" | "right";
 }
 
 export interface SvgFlowSource {

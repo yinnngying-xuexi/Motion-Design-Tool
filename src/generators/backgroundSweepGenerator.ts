@@ -139,6 +139,7 @@ export function generateBackgroundSweepMarkup(
   flowFocusPosition = 14,
   flowLeftEndWidth = 85,
   flowRightEndWidth = 25,
+  showSource = true,
   particleEffect?: DecorationParticleConfig
 ): string {
   const [x = 0, y = 0, width = 1000, height = 180] = source.viewBox.split(/[\s,]+/).map(Number);
@@ -204,7 +205,7 @@ export function generateBackgroundSweepMarkup(
 
   return `<div class="${className}" style="width:${sourceWidth}px;aspect-ratio:${sourceWidth}/${sourceHeight}" aria-label="${source.fileName}">
   <svg class="${className}__svg" viewBox="${source.viewBox}" fill="none" xmlns="http://www.w3.org/2000/svg">
-    ${background}
+    ${showSource ? background : ""}
     ${definitions}
     ${water}
   </svg>

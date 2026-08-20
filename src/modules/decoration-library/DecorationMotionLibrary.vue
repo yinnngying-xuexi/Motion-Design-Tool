@@ -156,9 +156,21 @@
           <section class="flow-param-section subtitle-sweep-params">
             <h3>移动光效</h3>
             <p class="flow-param-note">导入 SVG 后自动生成，不要求素材包含“光”图层。</p>
-            <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
+            <div
+              v-for="paramItem in currentEffect.editableParams"
+              :key="paramItem.key"
+              class="param-control"
+              :class="{ 'switch-control': paramItem.key === 'sourceVisibility' }"
+            >
               <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
-              <div v-if="paramItem.type === 'color'" class="color-row">
+              <el-switch
+                v-if="paramItem.key === 'sourceVisibility'"
+                v-model="params[paramItem.key]"
+                active-value="flow-only"
+                inactive-value="show"
+                aria-label="隐藏原素材"
+              />
+              <div v-else-if="paramItem.type === 'color'" class="color-row">
                 <el-color-picker v-model="params[paramItem.key]" />
                 <el-input v-model="params[paramItem.key]" />
               </div>
@@ -184,9 +196,21 @@
           <div class="flow-param-stack">
             <section class="flow-param-section">
               <h3>流动设置</h3>
-              <div v-for="paramItem in flowMotionParams" :key="paramItem.key" class="param-control">
+              <div
+                v-for="paramItem in flowMotionParams"
+                :key="paramItem.key"
+                class="param-control"
+                :class="{ 'switch-control': paramItem.key === 'sourceVisibility' }"
+              >
                 <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
-                <template v-if="paramItem.type === 'select'">
+                <el-switch
+                  v-if="paramItem.key === 'sourceVisibility'"
+                  v-model="params[paramItem.key]"
+                  active-value="flow-only"
+                  inactive-value="show"
+                  aria-label="隐藏原素材"
+                />
+                <template v-else-if="paramItem.type === 'select'">
                   <el-select v-model="params[paramItem.key]">
                     <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
                   </el-select>
@@ -269,7 +293,7 @@
                 <h3>路径设置</h3>
                 <small>{{ flowTargets.length }} 条路径</small>
               </div>
-              <article v-for="target in flowTargets" :key="target.id" class="flow-path-card">
+              <article v-for="target in flowTargets" :key="`${target.id}-${target.region ?? target.direction}`" class="flow-path-card">
                 <header>
                   <strong>{{ target.label }}</strong>
                   <el-switch v-model="target.enabled" />
@@ -439,7 +463,7 @@ const activeParticleEffect = computed(() => isStarRing.value
   : particleEffect.value);
 const activeCustomComponent = computed(() => customDecorationStore.components.find((item) => item.id === activeCustomId.value));
 const displayTitle = computed(() => activeCustomComponent.value?.name ?? currentEffect.value.name);
-const flowMotionParams = computed(() => ["duration", "pause", "easing", ...(flowTargets.value.length > 1 ? [] : ["direction"])]
+const flowMotionParams = computed(() => ["duration", "pause", "easing", "sourceVisibility", ...(flowTargets.value.length > 1 ? [] : ["direction"])]
   .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
   .filter((item): item is NonNullable<typeof item> => Boolean(item)));
 const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColor", "tailColor", "endColor", "lightIntensity"]
@@ -498,7 +522,7 @@ const htmlCss = computed(() => isSubtitleSweep.value
   : isStarRing.value ? generateStarRingHtmlCss(starRingConfig.value)
   : generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle, activeParticleEffect.value));
 const previewMarkup = computed(() => isSubtitleSweep.value
-  ? `<style>${cssCode.value}</style>${generateSubtitleSweepMarkup(subtitleSweepConfig.value)}`
+  ? `<style>${cssCode.value}</style>${generateSubtitleSweepMarkup(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)}`
   : isStarRing.value ? `<style>${cssCode.value}</style>${generateStarRingMarkup(starRingConfig.value)}`
   : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value, "main", activeParticleEffect.value)}`);
 const previewDuration = computed(() => {
@@ -596,7 +620,8 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
   }
   if (effect.id === "subtitle-orbit-sweep-01") {
     const config = createDefaultLayeredDecorationConfig("subtitle-sweep");
-    return `<style>${generateSubtitleSweepCss(config, effect.defaultParams as unknown as SubtitleSweepParams)}</style>${generateSubtitleSweepMarkup(config)}`;
+    const defaultParams = effect.defaultParams as unknown as SubtitleSweepParams;
+    return `<style>${generateSubtitleSweepCss(config, defaultParams)}</style>${generateSubtitleSweepMarkup(config, defaultParams)}`;
   }
   if (effect.generator === "svg-flow") {
     const source = createSystemSvgFlowSource(effect.id);
@@ -726,7 +751,7 @@ async function handleSvgUpload(event: Event): Promise<void> {
     } else if (isSvgFlow.value) {
       svgSource.value = isBackgroundSweep.value
         ? await readSvgBackgroundFile(file)
-        : await readSvgFlowFile(file);
+        : await readSvgFlowFile(file, currentEffect.value.id === "svg-flow-tool-02" ? "double" : "single");
       importedSvg.value = undefined;
       ElMessage.success(isBackgroundSweep.value ? "SVG 背景已读取，编辑器柔光已自动应用" : "SVG 路径已读取");
     } else if (currentEffect.value.generator === "loading-icon-pulse") {
@@ -1688,6 +1713,17 @@ async function restoreSvgFlow(): Promise<void> {
 .param-control {
   display: grid;
   gap: 8px;
+}
+
+.param-control.switch-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.param-control.switch-control label {
+  flex: 1;
 }
 
 .param-control label {
