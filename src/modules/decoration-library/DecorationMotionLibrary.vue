@@ -79,6 +79,7 @@
           <p>{{ currentEffect.description }}</p>
         </div>
         <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
+        <input ref="backgroundFileInput" class="hidden-file-input" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" @change="handleBackgroundUpload" />
       </header>
 
       <div class="decoration-view-toolbar">
@@ -119,9 +120,40 @@
             ref="previewCapture"
             :key="`${currentEffect.id}-${previewKey}`"
             class="preview-stage dm-motion-canvas"
-            :class="{ paused: !previewPlaying }"
+            :class="{
+              paused: !previewPlaying,
+              'has-preview-background': hasPreviewBackground,
+              'grid-hidden': hasPreviewBackground && !backgroundSettings.showGrid,
+              'actual-size-view': hasPreviewBackground && backgroundSettings.viewMode === 'actual'
+            }"
           >
+            <div v-if="hasPreviewBackground" class="logical-canvas-viewport">
+              <div class="logical-canvas-frame" :style="logicalCanvasFrameStyle">
+                <div class="logical-canvas" :style="logicalCanvasStyle">
+                  <img class="logical-canvas-background" :src="backgroundUrl" alt="预览背景" :style="backgroundImageStyle" />
+                  <div class="logical-canvas-dim" :style="{ opacity: backgroundSettings.dim / 100 }"></div>
+                  <div
+                    class="logical-motion-layer"
+                    :style="logicalMotionPositionStyle"
+                    title="拖动调整动效在逻辑画布中的位置"
+                    @pointerdown="startMotionDrag"
+                  >
+                    <div
+                      class="generated-preview"
+                      :class="{
+                        'path-flow-preview': isSvgFlow,
+                        'imported-svg-preview': isStarRing && starRingConfig.sourceMode === 'imported',
+                        'size-fitted-preview': Boolean(previewIntrinsicSize)
+                      }"
+                      :style="logicalMotionSizeStyle"
+                      v-html="previewMarkup"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div
+              v-else
               class="generated-preview"
               :class="{
                 'path-flow-preview': isSvgFlow,
@@ -152,6 +184,76 @@
       </header>
 
       <el-scrollbar class="param-scroll">
+        <section class="preview-background-panel">
+          <div class="preview-background-head">
+            <div>
+              <h3>预览画布</h3>
+              <p>背景与动效共用同一逻辑尺寸，仅用于编辑预览。</p>
+            </div>
+            <el-button size="small" @click="triggerBackgroundImport">{{ hasPreviewBackground ? "替换背景" : "上传背景" }}</el-button>
+          </div>
+          <template v-if="hasPreviewBackground">
+            <div class="background-file-row">
+              <span :title="backgroundSettings.fileName">{{ backgroundSettings.fileName }}</span>
+              <button type="button" @click="removePreviewBackground">移除</button>
+            </div>
+            <div class="canvas-size-row">
+              <label>
+                <span>画布宽度</span>
+                <el-input-number v-model="backgroundSettings.logicalWidth" :min="320" :max="16384" :step="1" :controls="false" />
+              </label>
+              <label>
+                <span>画布高度</span>
+                <el-input-number v-model="backgroundSettings.logicalHeight" :min="180" :max="16384" :step="1" :controls="false" />
+              </label>
+            </div>
+            <div class="preview-setting-row">
+              <span>背景显示</span>
+              <el-select v-model="backgroundSettings.imageFit">
+                <el-option label="完整显示" value="contain" />
+                <el-option label="填满画布" value="cover" />
+                <el-option label="原始尺寸" value="natural" />
+              </el-select>
+            </div>
+            <div class="preview-setting-row">
+              <span>查看比例</span>
+              <el-radio-group v-model="backgroundSettings.viewMode" size="small">
+                <el-radio-button label="fit">适应画布</el-radio-button>
+                <el-radio-button label="actual">100%</el-radio-button>
+              </el-radio-group>
+            </div>
+            <div class="param-control compact-preview-control">
+              <label><span>背景压暗</span><small>%</small></label>
+              <div class="number-row">
+                <el-slider v-model="backgroundSettings.dim" :min="0" :max="80" :step="1" />
+                <el-input-number v-model="backgroundSettings.dim" :min="0" :max="80" :step="1" :controls="false" />
+              </div>
+            </div>
+            <div class="preview-switch-row">
+              <span>显示像素格</span>
+              <el-switch v-model="backgroundSettings.showGrid" />
+            </div>
+            <div class="preview-background-subhead">
+              <strong>当前动效位置</strong>
+              <button type="button" @click="centerCurrentMotion">居中</button>
+            </div>
+            <div class="param-control compact-preview-control">
+              <label><span>水平位置 X</span><small>px</small></label>
+              <div class="number-row">
+                <el-slider v-model="currentMotionPosition.x" :min="0" :max="backgroundSettings.logicalWidth" :step="1" />
+                <el-input-number v-model="currentMotionPosition.x" :min="0" :max="backgroundSettings.logicalWidth" :step="1" :controls="false" />
+              </div>
+            </div>
+            <div class="param-control compact-preview-control">
+              <label><span>垂直位置 Y</span><small>px</small></label>
+              <div class="number-row">
+                <el-slider v-model="currentMotionPosition.y" :min="0" :max="backgroundSettings.logicalHeight" :step="1" />
+                <el-input-number v-model="currentMotionPosition.y" :min="0" :max="backgroundSettings.logicalHeight" :step="1" :controls="false" />
+              </div>
+            </div>
+          </template>
+        </section>
+        <div class="preview-background-divider"></div>
         <template v-if="isSubtitleSweep">
           <section class="flow-param-section subtitle-sweep-params">
             <h3>移动光效</h3>
@@ -411,6 +513,15 @@ import DecorationParticlePanel from "@/modules/decoration-library/DecorationPart
 import { applyImportedLayeredDecorationConfig, applyImportedStarRingConfig, createDefaultLayeredDecorationConfig, createDefaultStarRingConfig, readLayeredDecorationSvgFile, readStarRingSvgFile, renameStarRingAssetLayers } from "@/utils/starRingDecoration";
 import { createDefaultDecorationParticleConfig, normalizeDecorationParticleConfig } from "@/utils/decorationParticles";
 import { useCustomDecorationStore } from "@/stores/customDecorationStore";
+import {
+  loadDecorationPreviewBackground,
+  removeDecorationPreviewBackground,
+  saveDecorationPreviewBackground,
+  type DecorationPreviewBackgroundRecord,
+  type PreviewBackgroundFit,
+  type PreviewCanvasView,
+  type PreviewMotionPosition
+} from "@/utils/decorationPreviewBackground";
 
 const props = defineProps<{ initialEffectId?: string }>();
 const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
@@ -433,9 +544,27 @@ const importedSvg = ref<SvgPreviewAsset>();
 const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
 const particleEffect = ref<DecorationParticleConfig>(createDefaultDecorationParticleConfig());
 const svgFileInput = ref<HTMLInputElement>();
+const backgroundFileInput = ref<HTMLInputElement>();
 const previewCapture = ref<HTMLElement>();
 const previewViewport = ref({ width: 800, height: 480 });
 let previewResizeObserver: ResizeObserver | undefined;
+let backgroundObjectUrl = "";
+let backgroundPersistTimer: ReturnType<typeof setTimeout> | undefined;
+let draggingMotion: { pointerId: number; startClientX: number; startClientY: number; startX: number; startY: number } | undefined;
+const backgroundBlob = ref<Blob>();
+const backgroundUrl = ref("");
+const backgroundSettings = reactive({
+  fileName: "",
+  naturalWidth: 1920,
+  naturalHeight: 1080,
+  logicalWidth: 1920,
+  logicalHeight: 1080,
+  imageFit: "contain" as PreviewBackgroundFit,
+  viewMode: "fit" as PreviewCanvasView,
+  dim: 24,
+  showGrid: false,
+  positions: {} as Record<string, PreviewMotionPosition>
+});
 const motionStore = useMyMotionStore();
 const customDecorationStore = useCustomDecorationStore();
 
@@ -502,6 +631,60 @@ const previewFitStyle = computed(() => {
     height: `${sourceHeight * scale}px`
   };
 });
+const hasPreviewBackground = computed(() => Boolean(backgroundBlob.value && backgroundUrl.value));
+const currentMotionPositionKey = computed(() => activeCustomId.value || currentEffect.value.id);
+const currentMotionPosition = computed(() => {
+  const key = currentMotionPositionKey.value;
+  if (!backgroundSettings.positions[key]) {
+    backgroundSettings.positions[key] = {
+      x: backgroundSettings.logicalWidth / 2,
+      y: backgroundSettings.logicalHeight / 2
+    };
+  }
+  return backgroundSettings.positions[key];
+});
+const logicalCanvasScale = computed(() => {
+  if (!hasPreviewBackground.value || backgroundSettings.viewMode === "actual") return 1;
+  const availableWidth = Math.max(1, previewViewport.value.width - 36);
+  const availableHeight = Math.max(1, previewViewport.value.height - 36);
+  return Math.min(
+    1,
+    availableWidth / Math.max(1, backgroundSettings.logicalWidth),
+    availableHeight / Math.max(1, backgroundSettings.logicalHeight)
+  );
+});
+const logicalCanvasFrameStyle = computed(() => ({
+  width: `${Math.max(1, backgroundSettings.logicalWidth) * logicalCanvasScale.value}px`,
+  height: `${Math.max(1, backgroundSettings.logicalHeight) * logicalCanvasScale.value}px`
+}));
+const logicalCanvasStyle = computed(() => ({
+  width: `${Math.max(1, backgroundSettings.logicalWidth)}px`,
+  height: `${Math.max(1, backgroundSettings.logicalHeight)}px`,
+  transform: `scale(${logicalCanvasScale.value})`
+}));
+const backgroundImageStyle = computed(() => backgroundSettings.imageFit === "natural"
+  ? {
+      width: `${backgroundSettings.naturalWidth}px`,
+      height: `${backgroundSettings.naturalHeight}px`,
+      objectFit: "fill" as const
+    }
+  : {
+      width: "100%",
+      height: "100%",
+      objectFit: backgroundSettings.imageFit
+    });
+const logicalMotionPositionStyle = computed(() => ({
+  left: `${currentMotionPosition.value.x}px`,
+  top: `${currentMotionPosition.value.y}px`
+}));
+const logicalMotionSizeStyle = computed(() => {
+  const source = previewIntrinsicSize.value;
+  if (!source) return undefined;
+  return {
+    width: `${Math.max(1, source.width)}px`,
+    height: `${Math.max(1, source.height)}px`
+  };
+});
 const flowDirectionOptions = [
   { label: "从左到右", value: "ltr" },
   { label: "从右到左", value: "rtl" },
@@ -511,6 +694,160 @@ const flowDirectionOptions = [
 
 function hasSectionEffects(section: DecorationSection): boolean {
   return decorationEffects.some((effect) => effect.section === section);
+}
+
+function triggerBackgroundImport(): void {
+  backgroundFileInput.value?.click();
+}
+
+function setBackgroundObjectUrl(blob?: Blob): void {
+  if (backgroundObjectUrl) URL.revokeObjectURL(backgroundObjectUrl);
+  backgroundObjectUrl = blob ? URL.createObjectURL(blob) : "";
+  backgroundUrl.value = backgroundObjectUrl;
+}
+
+async function readImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  if ("createImageBitmap" in window) {
+    const bitmap = await createImageBitmap(blob);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error("无法读取图片尺寸"));
+      image.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function handleBackgroundUpload(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  const isSupported = ["image/png", "image/jpeg"].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name);
+  if (!isSupported) {
+    ElMessage.error("仅支持 PNG、JPG 或 JPEG 背景图片");
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    ElMessage.error("背景图片不能超过 10MB");
+    return;
+  }
+  try {
+    const dimensions = await readImageDimensions(file);
+    if (!dimensions.width || !dimensions.height) throw new Error("图片尺寸无效");
+    backgroundBlob.value = file;
+    backgroundSettings.fileName = file.name;
+    backgroundSettings.naturalWidth = dimensions.width;
+    backgroundSettings.naturalHeight = dimensions.height;
+    backgroundSettings.logicalWidth = dimensions.width;
+    backgroundSettings.logicalHeight = dimensions.height;
+    backgroundSettings.imageFit = "contain";
+    backgroundSettings.viewMode = "fit";
+    backgroundSettings.showGrid = false;
+    backgroundSettings.positions = {};
+    setBackgroundObjectUrl(file);
+    centerCurrentMotion();
+    await persistPreviewBackground();
+    ElMessage.success(`背景已按 ${dimensions.width} × ${dimensions.height} 逻辑画布载入`);
+  } catch {
+    ElMessage.error("背景图片读取失败，请更换文件后重试");
+  }
+}
+
+async function restorePreviewBackground(): Promise<void> {
+  try {
+    const record = await loadDecorationPreviewBackground();
+    if (!record?.blob) return;
+    backgroundBlob.value = record.blob;
+    backgroundSettings.fileName = record.fileName;
+    backgroundSettings.naturalWidth = record.naturalWidth;
+    backgroundSettings.naturalHeight = record.naturalHeight;
+    backgroundSettings.logicalWidth = record.logicalWidth;
+    backgroundSettings.logicalHeight = record.logicalHeight;
+    backgroundSettings.imageFit = record.imageFit;
+    backgroundSettings.viewMode = record.viewMode;
+    backgroundSettings.dim = record.dim;
+    backgroundSettings.showGrid = record.showGrid;
+    backgroundSettings.positions = record.positions ?? {};
+    setBackgroundObjectUrl(record.blob);
+  } catch {
+    // IndexedDB 不可用时保持当前会话功能可用，不阻断编辑器。
+  }
+}
+
+async function persistPreviewBackground(): Promise<void> {
+  if (!backgroundBlob.value) return;
+  const record: DecorationPreviewBackgroundRecord = {
+    blob: backgroundBlob.value,
+    fileName: backgroundSettings.fileName,
+    naturalWidth: backgroundSettings.naturalWidth,
+    naturalHeight: backgroundSettings.naturalHeight,
+    logicalWidth: backgroundSettings.logicalWidth,
+    logicalHeight: backgroundSettings.logicalHeight,
+    imageFit: backgroundSettings.imageFit,
+    viewMode: backgroundSettings.viewMode,
+    dim: backgroundSettings.dim,
+    showGrid: backgroundSettings.showGrid,
+    positions: JSON.parse(JSON.stringify(backgroundSettings.positions)) as Record<string, PreviewMotionPosition>
+  };
+  try {
+    await saveDecorationPreviewBackground(record);
+  } catch {
+    // 浏览器拒绝持久化时仅影响下次打开恢复，不影响本次预览。
+  }
+}
+
+async function removePreviewBackground(): Promise<void> {
+  backgroundBlob.value = undefined;
+  backgroundSettings.fileName = "";
+  backgroundSettings.positions = {};
+  setBackgroundObjectUrl();
+  try {
+    await removeDecorationPreviewBackground();
+  } catch {
+    // 删除本地记录失败不影响当前画布恢复默认状态。
+  }
+  ElMessage.success("已移除预览背景，导出内容未受影响");
+}
+
+function centerCurrentMotion(): void {
+  backgroundSettings.positions[currentMotionPositionKey.value] = {
+    x: Math.round(backgroundSettings.logicalWidth / 2),
+    y: Math.round(backgroundSettings.logicalHeight / 2)
+  };
+}
+
+function startMotionDrag(event: PointerEvent): void {
+  if (!hasPreviewBackground.value || event.button !== 0) return;
+  draggingMotion = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startX: currentMotionPosition.value.x,
+    startY: currentMotionPosition.value.y
+  };
+  (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function moveMotionDrag(event: PointerEvent): void {
+  if (!draggingMotion || event.pointerId !== draggingMotion.pointerId) return;
+  const scale = Math.max(0.0001, logicalCanvasScale.value);
+  currentMotionPosition.value.x = Math.round(Math.min(backgroundSettings.logicalWidth, Math.max(0, draggingMotion.startX + (event.clientX - draggingMotion.startClientX) / scale)));
+  currentMotionPosition.value.y = Math.round(Math.min(backgroundSettings.logicalHeight, Math.max(0, draggingMotion.startY + (event.clientY - draggingMotion.startClientY) / scale)));
+}
+
+function endMotionDrag(event: PointerEvent): void {
+  if (!draggingMotion || event.pointerId !== draggingMotion.pointerId) return;
+  draggingMotion = undefined;
 }
 
 const cssCode = computed(() => isSubtitleSweep.value
@@ -562,6 +899,22 @@ watch([svgSource, params, particleEffect], () => {
   }));
 }, { deep: true });
 
+watch(backgroundSettings, () => {
+  if (!backgroundBlob.value) return;
+  clearTimeout(backgroundPersistTimer);
+  backgroundPersistTimer = setTimeout(() => void persistPreviewBackground(), 250);
+}, { deep: true });
+
+watch(
+  () => [backgroundSettings.logicalWidth, backgroundSettings.logicalHeight],
+  () => {
+    Object.values(backgroundSettings.positions).forEach((position) => {
+      position.x = Math.min(backgroundSettings.logicalWidth, Math.max(0, position.x));
+      position.y = Math.min(backgroundSettings.logicalHeight, Math.max(0, position.y));
+    });
+  }
+);
+
 watch(previewCapture, (nextElement, previousElement) => {
   if (previousElement) previewResizeObserver?.unobserve(previousElement);
   if (!nextElement) return;
@@ -585,7 +938,11 @@ onMounted(() => {
   localStorage.removeItem(SVG_FLOW_LEGACY_DRAFT_KEY);
   motionStore.loadFromLocal();
   customDecorationStore.load();
+  void restorePreviewBackground();
   void restoreSvgFlow();
+  window.addEventListener("pointermove", moveMotionDrag);
+  window.addEventListener("pointerup", endMotionDrag);
+  window.addEventListener("pointercancel", endMotionDrag);
   window.addEventListener("datamotion:import-svg", triggerSvgImport);
   window.addEventListener("datamotion:save", saveFromToolbar);
   window.addEventListener("datamotion:export", downloadHtml);
@@ -593,6 +950,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   previewResizeObserver?.disconnect();
+  clearTimeout(backgroundPersistTimer);
+  if (backgroundObjectUrl) URL.revokeObjectURL(backgroundObjectUrl);
+  window.removeEventListener("pointermove", moveMotionDrag);
+  window.removeEventListener("pointerup", endMotionDrag);
+  window.removeEventListener("pointercancel", endMotionDrag);
   window.removeEventListener("datamotion:import-svg", triggerSvgImport);
   window.removeEventListener("datamotion:save", saveFromToolbar);
   window.removeEventListener("datamotion:export", downloadHtml);
@@ -1534,6 +1896,101 @@ async function restoreSvgFlow(): Promise<void> {
   animation-play-state: paused !important;
 }
 
+.preview-stage.has-preview-background {
+  display: block;
+  background-color: #090909;
+}
+
+.preview-stage.has-preview-background.grid-hidden {
+  background-image: none;
+}
+
+.logical-canvas-viewport {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 18px;
+}
+
+.actual-size-view .logical-canvas-viewport {
+  display: block;
+}
+
+.logical-canvas-frame {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: #050505;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.13), 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.actual-size-view .logical-canvas-frame {
+  margin: 0 auto;
+}
+
+.logical-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+.logical-canvas::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.075) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.grid-hidden .logical-canvas::after {
+  display: none;
+}
+
+.logical-canvas-background,
+.logical-canvas-dim {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.logical-canvas-background {
+  z-index: 0;
+  object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.logical-canvas-dim {
+  z-index: 1;
+  pointer-events: none;
+  background: #000;
+}
+
+.logical-motion-layer {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  touch-action: none;
+}
+
+.logical-motion-layer:active {
+  cursor: grabbing;
+}
+
+.logical-motion-layer > .generated-preview {
+  pointer-events: none;
+  user-select: none;
+}
+
 .decoration-code {
   min-width: 0;
   min-height: 0;
@@ -1635,6 +2092,128 @@ async function restoreSvgFlow(): Promise<void> {
 .param-stack {
   display: grid;
   gap: 14px;
+}
+
+.preview-background-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.preview-background-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-background-head h3 {
+  margin: 0;
+  color: var(--dm-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.preview-background-head p {
+  margin: 5px 0 0;
+  color: var(--dm-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.preview-background-head :deep(.el-button) {
+  flex: 0 0 auto;
+  border-radius: 4px;
+}
+
+.background-file-row,
+.preview-switch-row,
+.preview-background-subhead,
+.preview-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--dm-secondary);
+  font-size: 12px;
+}
+
+.background-file-row {
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.background-file-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-file-row button,
+.preview-background-subhead button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1683ff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.canvas-size-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.canvas-size-row label {
+  display: grid;
+  gap: 7px;
+  color: var(--dm-secondary);
+  font-size: 11px;
+}
+
+.canvas-size-row :deep(.el-input-number) {
+  width: 100%;
+}
+
+.preview-setting-row > span,
+.preview-switch-row > span {
+  flex: 0 0 72px;
+}
+
+.preview-setting-row :deep(.el-select),
+.preview-setting-row :deep(.el-radio-group) {
+  min-width: 0;
+  flex: 1;
+}
+
+.preview-setting-row :deep(.el-radio-button) {
+  flex: 1;
+}
+
+.preview-setting-row :deep(.el-radio-button__inner) {
+  width: 100%;
+}
+
+.preview-background-subhead {
+  padding-top: 4px;
+}
+
+.preview-background-subhead strong {
+  color: var(--dm-primary);
+  font-size: 12px;
+}
+
+.compact-preview-control {
+  gap: 8px;
+}
+
+.preview-background-divider {
+  height: 1px;
+  margin: 20px 0;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .flow-param-stack {
