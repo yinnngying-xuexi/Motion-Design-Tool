@@ -1,7 +1,7 @@
 import type { BasicMotionConfig } from "@/types/motion";
 
 export type DecorationSection = "标题装饰" | "图表装饰" | "图标/点位" | "面板装饰" | "loading";
-export type DecorationSubsection = "顶部标题" | "小标题" | "图标底座" | "通用 Loading";
+export type DecorationSubsection = "顶部标题" | "小标题" | "饼图外环" | "图标底座" | "通用 Loading";
 
 export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "layered-sweep" | "scan" | "border-glow" | "loading";
 
@@ -57,7 +57,16 @@ export interface CssVariableParam {
   numericValue: number;
 }
 
-export type StarRingLayerRole = "background" | "static-ring" | "rotating-ring" | "center" | "particles";
+export type StarRingLayerRole =
+  | "background"
+  | "static-ring"
+  | "rotating-ring"
+  | "center"
+  | "particles"
+  | "outer-ring"
+  | "inner-ring"
+  | "highlight"
+  | "glow";
 export type StarRingEditableLayerRole = StarRingLayerRole | "whole";
 export type StarRingMotionType = "none" | "basic" | "rotate" | "ring-highlight" | "pulse" | "particle-float";
 export type StarRingColorMode = "original" | "monochrome";
@@ -121,13 +130,15 @@ export type StarRingLayerConfigs = Record<string, StarRingLayerConfig>;
 
 export interface StarRingDecorationConfig {
   version: 1;
-  kind?: "star-ring" | "layered-decoration";
+  kind?: "star-ring" | "layered-decoration" | "chart-tech-ring";
+  chartContentSize?: number;
   sourceMode: "preset" | "imported";
   overall: StarRingOverallConfig;
   layerMapping: StarRingLayerMapping;
   layerConfigs: StarRingLayerConfigs;
   particleEffect?: DecorationParticleConfig;
   svg?: StarRingSvgAsset;
+  chartContentSvg?: StarRingSvgAsset;
 }
 
 export interface SavedStarRingComponent {

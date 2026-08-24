@@ -58,6 +58,7 @@ const svgFlowParams = {
 };
 
 const backgroundSweepParams = {
+  color: { key: "waveColor", label: "水波纹颜色", type: "color" as const },
   intensity: { key: "lightIntensity", label: "光效强度", type: "number" as const, min: 0, max: 100, step: 5, unit: "%" },
   amplitude: { key: "flowAmplitude", label: "流动幅度", type: "number" as const, min: 0, max: 14, step: 0.5, unit: "px" },
   focusPosition: { key: "flowFocusPosition", label: "宽幅位置", type: "number" as const, min: 0, max: 100, step: 1, unit: "%" },
@@ -175,6 +176,25 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     generator: "particle-base"
   },
   {
+    id: "chart-tech-ring-01",
+    name: "饼图环形",
+    section: "图表装饰",
+    subsection: "饼图外环",
+    description: "双层科技环保持反向旋转，外围光效轻微呼吸，为饼图和环形图提供稳定的科技装饰边界。",
+    scene: "饼图、环形图、占比图表",
+    defaultParams: {
+      size: 300,
+      color: DECORATION_BLUE,
+      duration: 10,
+      opacity: 1,
+      glow: 18,
+      borderWidth: 2
+    },
+    editableParams: [],
+    previewType: "particle-base",
+    generator: "particle-base"
+  },
+  {
     id: "svg-flow-tool",
     name: "单边流光",
     section: "标题装饰",
@@ -259,6 +279,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
       duration: 5.4,
       pause: 0,
       sourceVisibility: "show",
+      waveColor: DECORATION_BLUE,
       lightIntensity: 68,
       flowAmplitude: 9,
       flowFocusPosition: 14,
@@ -268,6 +289,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     editableParams: [
       svgFlowParams.duration,
       svgFlowParams.sourceVisibility,
+      backgroundSweepParams.color,
       backgroundSweepParams.intensity,
       backgroundSweepParams.amplitude,
       backgroundSweepParams.focusPosition,

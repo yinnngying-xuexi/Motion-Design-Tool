@@ -47,7 +47,7 @@
     <template #footer>
       <div class="mapping-footer-note">已映射 {{ mappedCount }} / {{ asset.layers.length }} 个分组，未映射图层将作为普通图层保留。</div>
       <el-button @click="$emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" class="dm-blue-action" @click="confirmMapping">应用到星环底座</el-button>
+      <el-button type="primary" class="dm-blue-action" @click="confirmMapping">{{ confirmLabel }}</el-button>
     </template>
   </el-dialog>
 </template>
@@ -56,12 +56,18 @@
 import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import type { StarRingLayerMapping, StarRingLayerRole, StarRingSvgAsset, StarRingSvgLayer } from "@/types/decoration";
-import { autoMapStarRingLayers, STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER } from "@/utils/starRingDecoration";
+import { autoMapStarRingLayers, STAR_RING_ROLE_LABELS, STAR_RING_ROLE_PROFILES } from "@/utils/starRingDecoration";
 
-const props = defineProps<{ modelValue: boolean; asset: StarRingSvgAsset; mapping: StarRingLayerMapping }>();
+const props = withDefaults(defineProps<{
+  modelValue: boolean;
+  asset: StarRingSvgAsset;
+  mapping: StarRingLayerMapping;
+  roleProfile?: "star-ring" | "chart-tech-ring";
+}>(), { roleProfile: "star-ring" });
 const emit = defineEmits<{ "update:modelValue": [value: boolean]; confirm: [mapping: StarRingLayerMapping, labels: Record<string, string>] }>();
-const roleOrder = STAR_RING_ROLE_ORDER;
+const roleOrder = computed(() => STAR_RING_ROLE_PROFILES[props.roleProfile]);
 const roleLabels = STAR_RING_ROLE_LABELS;
+const confirmLabel = computed(() => props.roleProfile === "chart-tech-ring" ? "应用到饼图环形" : "应用到星环底座");
 const draft = ref<StarRingLayerMapping>(cloneMapping(props.mapping));
 const draftLabels = ref<Record<string, string>>(createLabelDraft(props.asset));
 const highlightedKey = ref(props.asset.layers[0]?.key ?? "");
@@ -87,7 +93,7 @@ const highlightedMarkup = computed(() => {
 function cloneMapping(mapping: StarRingLayerMapping): StarRingLayerMapping {
   const availableKeys = new Set(props.asset.layers.map((layer) => layer.key));
   const cloned = JSON.parse(JSON.stringify(mapping)) as StarRingLayerMapping;
-  STAR_RING_ROLE_ORDER.forEach((role) => {
+  roleOrder.value.forEach((role) => {
     cloned[role] = cloned[role].filter((key) => availableKeys.has(key));
   });
   return cloned;
@@ -102,23 +108,23 @@ function suggestMappingFromLabels(): void {
       ...layer,
       label: draftLabels.value[layer.key]?.trim() || layer.label
     }))
-  });
-  STAR_RING_ROLE_ORDER.forEach((role) => {
+  }, roleOrder.value);
+  roleOrder.value.forEach((role) => {
     const key = suggested[role][0];
     if (!key || draft.value[role].length) return;
-    const usedByAnotherRole = STAR_RING_ROLE_ORDER.some((candidate) => candidate !== role && draft.value[candidate].includes(key));
+    const usedByAnotherRole = roleOrder.value.some((candidate) => candidate !== role && draft.value[candidate].includes(key));
     if (!usedByAnotherRole) draft.value[role] = [key];
   });
 }
 function updateRole(role: StarRingLayerRole, value: string[]): void {
   const selected = [...value];
-  STAR_RING_ROLE_ORDER.forEach((other) => {
+  roleOrder.value.forEach((other) => {
     if (other !== role) draft.value[other] = draft.value[other].filter((key) => !selected.includes(key));
   });
   draft.value[role] = selected;
 }
 function isUsedByOtherRole(key: string, role: StarRingLayerRole): boolean {
-  return STAR_RING_ROLE_ORDER.some((candidate) => candidate !== role && draft.value[candidate].includes(key));
+  return roleOrder.value.some((candidate) => candidate !== role && draft.value[candidate].includes(key));
 }
 function layerOptionLabel(layer: StarRingSvgLayer): string {
   return `${"— ".repeat(layer.depth)}${draftLabels.value[layer.key]?.trim() || layer.label}`;

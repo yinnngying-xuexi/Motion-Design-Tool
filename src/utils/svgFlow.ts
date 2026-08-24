@@ -205,7 +205,7 @@ export function parseSvgFlowSource(text: string, fileName: string, mode: SvgFlow
   };
 }
 
-export function parseSvgBackgroundSource(text: string, fileName: string): SvgFlowSource {
+export function parseSvgBackgroundSource(text: string, fileName: string, keepWholeSvg = false): SvgFlowSource {
   const svg = parseSafeSvg(text);
   const dimensions = svgDimensions(svg);
   const rawViewBox = svg.getAttribute("viewBox")?.trim();
@@ -235,9 +235,11 @@ export function parseSvgBackgroundSource(text: string, fileName: string): SvgFlo
     .filter((defs) => !background?.contains(defs))
     .map((defs) => serializer.serializeToString(defs))
     .join("");
-  const content = background
-    ? `${serializer.serializeToString(background)}${definitions}`
-    : svg.innerHTML;
+  const content = keepWholeSvg
+    ? svg.innerHTML
+    : background
+      ? `${serializer.serializeToString(background)}${definitions}`
+      : svg.innerHTML;
 
   return {
     fileName,
@@ -315,5 +317,6 @@ export async function readSvgFlowFile(file: File, mode: SvgFlowImportMode = "sin
 
 export async function readSvgBackgroundFile(file: File): Promise<SvgFlowSource> {
   validateSvgFile(file);
-  return parseSvgBackgroundSource(await file.text(), file.name);
+  // 水波纹模板将用户上传的完整 SVG 视为一个背景素材，不依赖内部图层命名。
+  return parseSvgBackgroundSource(await file.text(), file.name, true);
 }

@@ -809,6 +809,7 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
       source ?? defaultSvgFlowSource(),
       instanceId,
       Number(param(params, "lightIntensity", 85)),
+      String(param(params, "waveColor", DECORATION_BLUE)),
       Number(param(params, "flowAmplitude", 4.5)),
       Number(param(params, "flowFocusPosition", 14)),
       Number(param(params, "flowLeftEndWidth", 85)),

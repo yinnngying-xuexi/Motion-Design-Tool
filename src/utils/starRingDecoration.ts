@@ -7,6 +7,7 @@ import type {
 } from "@/types/decoration";
 import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import starRingSvgMarkup from "@/assets/star-ring.svg?raw";
+import chartTechRingSvgMarkup from "@/assets/chart-tech-ring-01.svg?raw";
 import subtitleSweepSvgMarkup from "@/assets/subtitle-orbit-sweep-01.svg?raw";
 import { createDefaultDecorationParticleConfig } from "@/utils/decorationParticles";
 
@@ -15,22 +16,61 @@ export const STAR_RING_ROLE_LABELS: Record<StarRingLayerRole, string> = {
   "static-ring": "外环层",
   "rotating-ring": "内环层",
   center: "中心层",
-  particles: "粒子层"
+  particles: "粒子层",
+  "outer-ring": "外环",
+  "inner-ring": "内环",
+  highlight: "高亮装饰",
+  glow: "光效"
 };
 
 export const STAR_RING_ROLE_ORDER = Object.keys(STAR_RING_ROLE_LABELS) as StarRingLayerRole[];
+export const STAR_RING_ROLE_PROFILES = {
+  "star-ring": ["background", "static-ring", "rotating-ring", "center", "particles"],
+  "chart-tech-ring": ["outer-ring", "inner-ring", "glow"]
+} as const satisfies Record<string, readonly StarRingLayerRole[]>;
 
 const ROLE_ALIASES: Record<StarRingLayerRole, string[]> = {
   background: ["background", "bg", "base", "背景", "底座"],
   "static-ring": ["staticring", "outerring", "outring", "ringstatic", "静态环", "外环"],
   "rotating-ring": ["rotatingring", "rotatering", "middlering", "innerring", "旋转环", "中间旋转", "内环"],
   center: ["center", "centericon", "core", "icon", "中心", "中间", "图标"],
-  particles: ["particles", "particle", "dots", "spark", "粒子", "光点", "前景"]
+  particles: ["particles", "particle", "dots", "spark", "粒子", "光点", "前景"],
+  "outer-ring": ["outerring", "outring", "outside", "externalring", "外环", "外围"],
+  "inner-ring": ["innerring", "inside", "internalring", "内环", "内圈"],
+  highlight: ["highlight", "accent", "flow", "lightpath", "高亮", "流光", "装饰"],
+  glow: ["glow", "halo", "aura", "blur", "光效", "光晕", "辉光"]
 };
 
 export function createStarRingLayerConfig(role?: StarRingLayerRole | "whole", overrides: Partial<StarRingLayerConfig> = {}): StarRingLayerConfig {
   const breathTemplate = basicMotions.find((motion) => motion.id === "breath");
-  const roleDefaults: Partial<StarRingLayerConfig> = role === "rotating-ring"
+  const rotateTemplate = basicMotions.find((motion) => motion.id === "slow-rotate");
+  const roleDefaults: Partial<StarRingLayerConfig> = role === "outer-ring" || role === "inner-ring"
+    ? {
+        motion: "basic",
+        duration: role === "outer-ring" ? 10 : 7.5,
+        direction: role === "outer-ring" ? "clockwise" : "counterclockwise",
+        basicMotionId: rotateTemplate?.id,
+        basicMotionConfig: rotateTemplate
+          ? {
+              ...createBasicMotionConfig(rotateTemplate),
+              duration: role === "outer-ring" ? 10 : 7.5,
+              direction: role === "outer-ring" ? "normal" : "reverse"
+            }
+          : undefined
+      }
+    : role === "highlight"
+      ? { motion: "ring-highlight", duration: 3.6 }
+      : role === "glow"
+        ? {
+            motion: "basic",
+            duration: 2.8,
+            minScale: 0.96,
+            basicMotionId: breathTemplate?.id,
+            basicMotionConfig: breathTemplate
+              ? { ...createBasicMotionConfig(breathTemplate), duration: 2.8, minScale: 0.96 }
+              : undefined
+          }
+        : role === "rotating-ring"
     ? { motion: "ring-highlight", duration: 4.2 }
     : role === "center"
       ? {
@@ -82,6 +122,33 @@ export function createDefaultStarRingConfig(): StarRingDecorationConfig {
     particleEffect: createDefaultDecorationParticleConfig(true, "#0070F3")
   };
   const { asset, mapping } = createStarRingAssetFromMarkup(starRingSvgMarkup, "星环粒子底座.svg", "preset-svg-layer");
+  applyStarRingAssetConfig(config, asset, mapping, "preset");
+  return config;
+}
+
+export function createDefaultChartTechRingConfig(): StarRingDecorationConfig {
+  const config: StarRingDecorationConfig = {
+    version: 1,
+    kind: "chart-tech-ring",
+    chartContentSize: 208,
+    sourceMode: "preset",
+    overall: {
+      size: 300,
+      offsetX: 0,
+      offsetY: 0,
+      opacity: 1,
+      color: "#0070F3"
+    },
+    layerMapping: emptyStarRingLayerMapping(),
+    layerConfigs: {},
+    particleEffect: createDefaultDecorationParticleConfig(false, "#0070F3")
+  };
+  const { asset, mapping } = createStarRingAssetFromMarkup(
+    chartTechRingSvgMarkup,
+    "饼图环形.svg",
+    "dm-chart-ring-layer",
+    STAR_RING_ROLE_PROFILES["chart-tech-ring"]
+  );
   applyStarRingAssetConfig(config, asset, mapping, "preset");
   return config;
 }
@@ -310,7 +377,12 @@ function emptyStarRingLayerMapping(): StarRingLayerMapping {
   }, {} as StarRingLayerMapping);
 }
 
-function createStarRingAssetFromMarkup(markup: string, fileName: string, keyPrefix = "dm-svg-layer"): { asset: StarRingSvgAsset; mapping: StarRingLayerMapping } {
+function createStarRingAssetFromMarkup(
+  markup: string,
+  fileName: string,
+  keyPrefix = "dm-svg-layer",
+  roleOrder: readonly StarRingLayerRole[] = STAR_RING_ROLE_PROFILES["star-ring"]
+): { asset: StarRingSvgAsset; mapping: StarRingLayerMapping } {
   const svg = sanitizeSvg(markup);
   const dimensions = svgDimensions(svg);
   const shapeCount = svg.querySelectorAll("path,line,polyline,polygon,circle,ellipse,rect").length;
@@ -352,14 +424,17 @@ function createStarRingAssetFromMarkup(markup: string, fileName: string, keyPref
     layers,
     rootKeys: layers.filter((layer) => !layer.parentKey).map((layer) => layer.key)
   };
-  return { asset, mapping: autoMapStarRingLayers(asset) };
+  return { asset, mapping: autoMapStarRingLayers(asset, roleOrder) };
 }
 
-export function autoMapStarRingLayers(asset: StarRingSvgAsset): StarRingLayerMapping {
+export function autoMapStarRingLayers(
+  asset: StarRingSvgAsset,
+  roleOrder: readonly StarRingLayerRole[] = STAR_RING_ROLE_PROFILES["star-ring"]
+): StarRingLayerMapping {
   const mapping = emptyStarRingLayerMapping();
   const used = new Set<string>();
 
-  const matchingOrder: StarRingLayerRole[] = ["background", "rotating-ring", "static-ring", "center", "particles"];
+  const matchingOrder = [...roleOrder];
   matchingOrder.forEach((role) => {
     const aliases = ROLE_ALIASES[role].map(normalizeLayerName);
     const matched = asset.layers.find((layer) => {
@@ -372,7 +447,94 @@ export function autoMapStarRingLayers(asset: StarRingSvgAsset): StarRingLayerMap
       used.add(matched.key);
     }
   });
+  if (roleOrder.includes("outer-ring") && roleOrder.includes("inner-ring") && roleOrder.includes("glow")) {
+    completeChartRingMappingByStructure(asset, mapping, used, roleOrder);
+  }
   return mapping;
+}
+
+type ChartRingLayerMetric = {
+  key: string;
+  area: number;
+  shapeCount: number;
+  hasDash: boolean;
+  hasFilter: boolean;
+  hasGradient: boolean;
+  meanRadius: number;
+};
+
+function completeChartRingMappingByStructure(
+  asset: StarRingSvgAsset,
+  mapping: StarRingLayerMapping,
+  used: Set<string>,
+  roleOrder: readonly StarRingLayerRole[]
+): void {
+  if (asset.mode !== "layered" || typeof document === "undefined") return;
+  const svg = new DOMParser().parseFromString(asset.markup, "image/svg+xml").querySelector("svg");
+  if (!svg) return;
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-10000px;top:-10000px;width:480px;height:480px;visibility:hidden;pointer-events:none;";
+  host.appendChild(svg);
+  document.body.appendChild(host);
+  const metrics: ChartRingLayerMetric[] = [];
+  try {
+    asset.layers.forEach((layer) => {
+      const node = svg.querySelector<SVGGraphicsElement>(`[data-dm-node-key="${layer.key}"]`);
+      if (!node) return;
+      let bounds: DOMRect | SVGRect;
+      try {
+        bounds = node.getBBox();
+      } catch {
+        return;
+      }
+      const shapes = [...node.querySelectorAll<SVGGraphicsElement>("path,line,polyline,polygon,circle,ellipse,rect")];
+      const allNodes: Element[] = [node, ...node.querySelectorAll("*")];
+      const serializedStyle = allNodes.map((candidate) => [
+        candidate.getAttribute("style"),
+        candidate.getAttribute("fill"),
+        candidate.getAttribute("stroke"),
+        candidate.getAttribute("filter"),
+        candidate.getAttribute("stroke-dasharray")
+      ].filter(Boolean).join(" ")).join(" ").toLowerCase();
+      metrics.push({
+        key: layer.key,
+        area: Math.max(0, bounds.width * bounds.height),
+        shapeCount: Math.max(1, shapes.length),
+        hasDash: /dasharray|stroke-dasharray/.test(serializedStyle),
+        hasFilter: /filter|blur/.test(serializedStyle),
+        hasGradient: /url\(#/.test(serializedStyle),
+        meanRadius: (bounds.width + bounds.height) / 4
+      });
+    });
+  } finally {
+    host.remove();
+  }
+
+  const available = () => metrics.filter((metric) => !used.has(metric.key));
+  const assign = (role: StarRingLayerRole, metric?: ChartRingLayerMetric) => {
+    if (!metric || mapping[role].length) return;
+    mapping[role] = [metric.key];
+    used.add(metric.key);
+  };
+
+  if (!mapping.glow.length) {
+    const glowCandidate = available()
+      .map((metric) => ({ metric, score: (metric.hasFilter ? 8 : 0) + (metric.hasGradient ? 3 : 0) - metric.shapeCount * 0.05 }))
+      .sort((left, right) => right.score - left.score)[0];
+    if (glowCandidate && glowCandidate.score >= 3) assign("glow", glowCandidate.metric);
+  }
+  if (roleOrder.includes("highlight") && !mapping.highlight.length) {
+    const highlightCandidate = available()
+      .map((metric) => ({ metric, score: (metric.hasDash ? 5 : 0) + (metric.shapeCount <= 2 ? 3 : 0) + (metric.hasGradient ? 1 : 0) }))
+      .sort((left, right) => right.score - left.score)[0];
+    if (highlightCandidate && highlightCandidate.score >= 3) assign("highlight", highlightCandidate.metric);
+  }
+
+  const ringCandidates = available().sort((left, right) => right.meanRadius - left.meanRadius || right.area - left.area);
+  if (!mapping["outer-ring"].length) assign("outer-ring", ringCandidates.shift());
+  if (!mapping["inner-ring"].length) assign("inner-ring", ringCandidates.shift());
+  if (roleOrder.includes("highlight") && !mapping.highlight.length) assign("highlight", ringCandidates.shift());
+  if (!mapping.glow.length) assign("glow", ringCandidates.shift());
 }
 
 export async function readStarRingSvgFile(file: File): Promise<{ asset: StarRingSvgAsset; mapping: StarRingLayerMapping }> {
@@ -448,7 +610,11 @@ const RING_SEGMENT_SHAPE_SELECTOR = "path,line,polyline,polygon,circle,ellipse,r
 const RING_SEGMENT_NAME_PATTERN = /(?:^|[-_\s])(segment|slice|part|section|分段|扇区|亮片)(?:[-_\s]|\d|$)/i;
 
 function prepareRingHighlightSegments(asset: StarRingSvgAsset, mapping: StarRingLayerMapping): StarRingSvgAsset {
-  if (asset.mode !== "layered" || !mapping["rotating-ring"].length) return asset;
+  const highlightKeys = [
+    ...(mapping["rotating-ring"] ?? []),
+    ...(mapping.highlight ?? [])
+  ];
+  if (asset.mode !== "layered" || !highlightKeys.length) return asset;
   const next = JSON.parse(JSON.stringify(asset)) as StarRingSvgAsset;
   const svg = new DOMParser().parseFromString(next.markup, "image/svg+xml").querySelector("svg");
   if (!svg) return next;
@@ -460,7 +626,7 @@ function prepareRingHighlightSegments(asset: StarRingSvgAsset, mapping: StarRing
   document.body.appendChild(host);
 
   try {
-    mapping["rotating-ring"].forEach((layerKey) => {
+    highlightKeys.forEach((layerKey) => {
       const root = svg.querySelector<SVGGElement>(`[data-dm-node-key="${layerKey}"]`);
       if (!root) return;
       const directChildren = [...root.children].filter((node): node is SVGGraphicsElement => node instanceof SVGGraphicsElement);
@@ -520,6 +686,14 @@ function applyStarRingAssetConfig(config: StarRingDecorationConfig, asset: StarR
   config.svg = preparedAsset;
   config.layerMapping = { ...mapping, particles: [...mapping.particles] };
   config.overall.color = preparedAsset.primaryColor;
+  if (config.kind === "chart-tech-ring") {
+    const shortestSide = Math.min(preparedAsset.width, preparedAsset.height);
+    const maximumSize = Math.max(48, Math.floor(shortestSide * 0.8));
+    const recommendedSize = Math.max(48, Math.round(shortestSide * 0.58));
+    config.chartContentSize = sourceMode === "imported"
+      ? Math.min(maximumSize, recommendedSize)
+      : Math.min(maximumSize, config.chartContentSize ?? recommendedSize);
+  }
   config.layerConfigs = {};
   if (preparedAsset.mode === "whole") {
     config.layerConfigs["dm-svg-whole"] = createStarRingLayerConfig("whole", {

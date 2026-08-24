@@ -24,25 +24,25 @@ function namespaceSvgContent(content: string, prefix: string): string {
   return next;
 }
 
-function isolateBackgroundContent(source: SvgFlowSource): string {
-  const content = source.content ?? source.shape;
-  if (typeof DOMParser === "undefined" || typeof XMLSerializer === "undefined") return content;
-  try {
-    const document = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${content}</svg>`, "image/svg+xml");
-    const background = [...document.querySelectorAll<SVGElement>("[id],[data-name]")].find((element) => {
-      const name = element.getAttribute("id") ?? element.getAttribute("data-name") ?? "";
-      return name.trim().toLowerCase() === "background";
-    });
-    if (!background) return content;
-    const serializer = new XMLSerializer();
-    const definitions = [...document.querySelectorAll("defs")]
-      .filter((defs) => !background.contains(defs))
-      .map((defs) => serializer.serializeToString(defs))
-      .join("");
-    return `${serializer.serializeToString(background)}${definitions}`;
-  } catch {
-    return content;
+function normalizeHexColor(value: string): string {
+  const color = value.trim();
+  if (/^#[\da-f]{6}$/i.test(color)) return color.toUpperCase();
+  if (/^#[\da-f]{3}$/i.test(color)) {
+    return `#${color.slice(1).split("").map((part) => `${part}${part}`).join("")}`.toUpperCase();
   }
+  return "#0070F3";
+}
+
+function mixHexColor(base: string, target: "#FFFFFF" | "#000000", ratio: number): string {
+  const source = normalizeHexColor(base).slice(1);
+  const targetValue = target.slice(1);
+  const amount = Math.max(0, Math.min(1, ratio));
+  const channels = [0, 2, 4].map((offset) => {
+    const start = Number.parseInt(source.slice(offset, offset + 2), 16);
+    const end = Number.parseInt(targetValue.slice(offset, offset + 2), 16);
+    return Math.round(start + (end - start) * amount).toString(16).padStart(2, "0");
+  });
+  return `#${channels.join("")}`.toUpperCase();
 }
 
 type Point = readonly [number, number];
@@ -135,6 +135,7 @@ export function generateBackgroundSweepMarkup(
   source: SvgFlowSource,
   instanceId: string,
   lightIntensity = 72,
+  waveColor = "#0070F3",
   flowAmplitude = 4.5,
   flowFocusPosition = 14,
   flowLeftEndWidth = 85,
@@ -146,9 +147,15 @@ export function generateBackgroundSweepMarkup(
   const sourceWidth = Number(source.width || width || 1000);
   const sourceHeight = Number(source.height || height || 180);
   const prefix = `${className}-${instanceId}`;
-  const background = namespaceSvgContent(isolateBackgroundContent(source), `${prefix}-source`);
+  // 上传的 SVG 作为一个完整背景素材保留，水波纹作为第二个逻辑图层叠加。
+  const background = namespaceSvgContent(source.content ?? source.shape, `${prefix}-source`);
   const duration = Math.max(2.4, Number(config.duration) || 4.8);
   const intensity = Math.max(0, Math.min(1, lightIntensity / 100));
+  const mainColor = normalizeHexColor(waveColor);
+  const paleColor = mixHexColor(mainColor, "#FFFFFF", 0.64);
+  const lightColor = mixHexColor(mainColor, "#FFFFFF", 0.34);
+  const darkColor = mixHexColor(mainColor, "#000000", 0.5);
+  const deepColor = mixHexColor(mainColor, "#000000", 0.72);
   const amplitude = Math.max(height * 0.075, Math.min(height * 0.23, height * 0.075 + flowAmplitude * 0.72));
   const startX = x + Math.max(48, width * 0.025);
   const endInset = Math.max(64, width * 0.035);
@@ -184,11 +191,11 @@ export function generateBackgroundSweepMarkup(
 
   const definitions = `<defs>
     <clipPath id="${clipId}"><rect x="${startX}" y="${y + 1}" width="${flowWidth}" height="${Math.max(1, height - 2)}" rx="1"></rect></clipPath>
-    <linearGradient id="${rearGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#06184E" stop-opacity=".12"></stop><stop offset="${focusLead}%" stop-color="#0A3EBD" stop-opacity=".46"></stop><stop offset="${visualFocus}%" stop-color="#087DE8" stop-opacity=".58"></stop><stop offset="${focusAfter}%" stop-color="#00A7B6" stop-opacity=".48"></stop><stop offset="${focusFade}%" stop-color="#0A56D4" stop-opacity=".26"></stop><stop offset="1" stop-color="#07143F" stop-opacity=".06"></stop></linearGradient>
-    <linearGradient id="${bodyGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#061A56" stop-opacity=".14"></stop><stop offset="${focusLead}%" stop-color="#0648C8" stop-opacity=".62"></stop><stop offset="${visualFocus}%" stop-color="#40F3F3" stop-opacity=".88"></stop><stop offset="${focusAfter}%" stop-color="#00B9C7" stop-opacity=".72"></stop><stop offset="${focusFade}%" stop-color="#075FCF" stop-opacity=".3"></stop><stop offset="1" stop-color="#07143F" stop-opacity=".07"></stop><animateTransform attributeName="gradientTransform" type="translate" values="${(-flowWidth * 0.045).toFixed(2)} 0;${(flowWidth * 0.045).toFixed(2)} 0;${(-flowWidth * 0.045).toFixed(2)} 0" dur="${(duration * 1.35).toFixed(2)}s" repeatCount="indefinite"></animateTransform></linearGradient>
-    <linearGradient id="${frontGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#07235F" stop-opacity=".1"></stop><stop offset="${focusLead}%" stop-color="#116BFF" stop-opacity=".5"></stop><stop offset="${visualFocus}%" stop-color="#72FFFF" stop-opacity=".9"></stop><stop offset="${focusAfter}%" stop-color="#00BFD6" stop-opacity=".68"></stop><stop offset="${focusFade}%" stop-color="#148BFF" stop-opacity=".28"></stop><stop offset="1" stop-color="#06153F" stop-opacity=".05"></stop></linearGradient>
-    <linearGradient id="${highlightGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0A58E8" stop-opacity=".04"></stop><stop offset="${focusLead}%" stop-color="#177DFF" stop-opacity=".54"></stop><stop offset="${visualFocus}%" stop-color="#72FFFF" stop-opacity=".92"></stop><stop offset="${focusAfter}%" stop-color="#00D0E1" stop-opacity=".58"></stop><stop offset="${focusFade}%" stop-color="#1F79FF" stop-opacity=".2"></stop><stop offset="1" stop-color="#0B2B75" stop-opacity="0"></stop></linearGradient>
-    <pattern id="${meshPatternId}" width="5" height="3.5" patternUnits="userSpaceOnUse"><circle cx=".8" cy=".8" r=".48" fill="#80F6FF" fill-opacity=".52"></circle><circle cx="3.4" cy="2.45" r=".34" fill="#2AA7FF" fill-opacity=".42"></circle></pattern>
+    <linearGradient id="${rearGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${deepColor}" stop-opacity=".12"></stop><stop offset="${focusLead}%" stop-color="${darkColor}" stop-opacity=".46"></stop><stop offset="${visualFocus}%" stop-color="${mainColor}" stop-opacity=".58"></stop><stop offset="${focusAfter}%" stop-color="${lightColor}" stop-opacity=".48"></stop><stop offset="${focusFade}%" stop-color="${mainColor}" stop-opacity=".26"></stop><stop offset="1" stop-color="${deepColor}" stop-opacity=".06"></stop></linearGradient>
+    <linearGradient id="${bodyGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${deepColor}" stop-opacity=".14"></stop><stop offset="${focusLead}%" stop-color="${darkColor}" stop-opacity=".62"></stop><stop offset="${visualFocus}%" stop-color="${paleColor}" stop-opacity=".88"></stop><stop offset="${focusAfter}%" stop-color="${lightColor}" stop-opacity=".72"></stop><stop offset="${focusFade}%" stop-color="${mainColor}" stop-opacity=".3"></stop><stop offset="1" stop-color="${deepColor}" stop-opacity=".07"></stop><animateTransform attributeName="gradientTransform" type="translate" values="${(-flowWidth * 0.045).toFixed(2)} 0;${(flowWidth * 0.045).toFixed(2)} 0;${(-flowWidth * 0.045).toFixed(2)} 0" dur="${(duration * 1.35).toFixed(2)}s" repeatCount="indefinite"></animateTransform></linearGradient>
+    <linearGradient id="${frontGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${deepColor}" stop-opacity=".1"></stop><stop offset="${focusLead}%" stop-color="${mainColor}" stop-opacity=".5"></stop><stop offset="${visualFocus}%" stop-color="${paleColor}" stop-opacity=".9"></stop><stop offset="${focusAfter}%" stop-color="${lightColor}" stop-opacity=".68"></stop><stop offset="${focusFade}%" stop-color="${mainColor}" stop-opacity=".28"></stop><stop offset="1" stop-color="${deepColor}" stop-opacity=".05"></stop></linearGradient>
+    <linearGradient id="${highlightGradientId}" x1="${startX}" y1="0" x2="${startX + flowWidth}" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${darkColor}" stop-opacity=".04"></stop><stop offset="${focusLead}%" stop-color="${lightColor}" stop-opacity=".54"></stop><stop offset="${visualFocus}%" stop-color="${paleColor}" stop-opacity=".92"></stop><stop offset="${focusAfter}%" stop-color="${lightColor}" stop-opacity=".58"></stop><stop offset="${focusFade}%" stop-color="${mainColor}" stop-opacity=".2"></stop><stop offset="1" stop-color="${deepColor}" stop-opacity="0"></stop></linearGradient>
+    <pattern id="${meshPatternId}" width="5" height="3.5" patternUnits="userSpaceOnUse"><circle cx=".8" cy=".8" r=".48" fill="${paleColor}" fill-opacity=".52"></circle><circle cx="3.4" cy="2.45" r=".34" fill="${lightColor}" fill-opacity=".42"></circle></pattern>
     <filter id="${softGlowId}" x="-4%" y="-160%" width="108%" height="420%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${Math.max(2.2, height * 0.06).toFixed(2)}"></feGaussianBlur></filter>
     <filter id="${fluidBlurId}" x="-3%" y="-90%" width="106%" height="280%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${Math.max(1.4, height * 0.032).toFixed(2)}"></feGaussianBlur></filter>
     <filter id="${edgeGlowId}" x="-3%" y="-110%" width="106%" height="320%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${Math.max(1.8, height * 0.038).toFixed(2)}"></feGaussianBlur></filter>

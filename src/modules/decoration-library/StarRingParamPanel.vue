@@ -3,10 +3,36 @@
     <section class="source-card">
       <div><strong>{{ sourceName }}</strong><small>{{ sourceDescription }}</small></div>
       <div class="source-actions">
+        <button v-if="showImportGuide" type="button" @click="$emit('showImportGuide')"><span aria-hidden="true">ⓘ</span> 导入说明</button>
         <button v-if="modelValue.kind !== 'layered-decoration' && modelValue.sourceMode === 'imported' && modelValue.svg?.mode === 'layered'" type="button" @click="$emit('remap')">重新映射</button>
         <button v-if="modelValue.sourceMode === 'imported'" type="button" @click="$emit('usePreset')">恢复预设</button>
       </div>
     </section>
+
+    <template v-if="modelValue.kind === 'chart-tech-ring'">
+      <p class="param-group-title">图表适配</p>
+      <div class="chart-content-source">
+        <div>
+          <span>中心图表素材</span>
+          <strong :title="modelValue.chartContentSvg?.fileName">{{ modelValue.chartContentSvg?.fileName ?? "暂未导入" }}</strong>
+        </div>
+        <button v-if="modelValue.chartContentSvg" type="button" @click="$emit('removeChartContent')">移除</button>
+      </div>
+      <div class="chart-size-info">
+        <span>外环原始尺寸</span>
+        <strong>{{ sourceDimensions }}</strong>
+      </div>
+      <ParamNumber
+        label="中心图表尺寸"
+        unit="px"
+        :value="chartContentSize"
+        :min="48"
+        :max="chartContentSizeMax"
+        :step="2"
+        @update="updateChartContentSize"
+      />
+      <p class="chart-size-note">虚线区域是建议放置饼图或环形图的安全范围，只用于编辑预览，不会显示在最终页面中。</p>
+    </template>
 
     <p class="param-group-title">实际素材图层</p>
     <div class="layer-list">
@@ -91,7 +117,7 @@
             <ParamNumber label="开始延迟" unit="s" :value="activeLayer.delay" :min="0" :max="5" :step="0.1" @update="updateLayer('delay', $event)" />
           </template>
           <div v-if="showsDirection" class="param-field">
-            <label><span>{{ activeRole === 'rotating-ring' ? '轮转方向' : '旋转方向' }}</span></label>
+            <label><span>{{ activeRole === 'rotating-ring' || activeRole === 'highlight' ? '轮转方向' : '旋转方向' }}</span></label>
             <el-select :model-value="activeLayer.direction" @change="updateLayer('direction', $event)">
               <el-option label="顺时针" value="clockwise" /><el-option label="逆时针" value="counterclockwise" />
             </el-select>
@@ -110,18 +136,25 @@
 import { computed, defineComponent, h, ref, watch } from "vue";
 import { ElColorPicker, ElInput, ElInputNumber, ElSlider } from "element-plus";
 import type { StarRingDecorationConfig, StarRingLayerConfig, StarRingLayerRole, StarRingMotionType, StarRingSvgLayer } from "@/types/decoration";
-import { STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER } from "@/utils/starRingDecoration";
+import { STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER, STAR_RING_ROLE_PROFILES } from "@/utils/starRingDecoration";
 import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import type { BasicMotionConfig, BasicMotionParamKey, BasicMotionTemplate, MotionCategory } from "@/types/motion";
 
-const props = defineProps<{ modelValue: StarRingDecorationConfig }>();
-const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: [] }>();
+const props = withDefaults(defineProps<{ modelValue: StarRingDecorationConfig; showImportGuide?: boolean }>(), {
+  showImportGuide: false
+});
+const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: []; showImportGuide: []; removeChartContent: [] }>();
 const activeLayerKey = ref("");
+const activeRoleOrder = computed<readonly StarRingLayerRole[]>(() => props.modelValue.kind === "chart-tech-ring"
+  ? STAR_RING_ROLE_PROFILES["chart-tech-ring"]
+  : props.modelValue.kind === "star-ring"
+    ? STAR_RING_ROLE_PROFILES["star-ring"]
+    : STAR_RING_ROLE_ORDER);
 const editableLayers = computed<StarRingSvgLayer[]>(() => {
   if (props.modelValue.svg?.mode === "whole") return [{ key: "dm-svg-whole", id: "whole", label: "整体素材", tagName: "svg", parentKey: null, depth: 0 }];
   const layers = props.modelValue.svg?.layers ?? [];
   const byKey = new Map(layers.map((layer) => [layer.key, layer]));
-  const ordered = STAR_RING_ROLE_ORDER
+  const ordered = activeRoleOrder.value
     .filter((role) => role !== "particles")
     .flatMap((role) => props.modelValue.layerMapping[role])
     .map((key) => byKey.get(key))
@@ -143,15 +176,25 @@ const activeBasicTemplate = computed<BasicMotionTemplate | undefined>(() => acti
   : undefined);
 const activeBasicConfig = computed<Partial<BasicMotionConfig>>(() => activeLayer.value?.basicMotionConfig ?? {});
 const sourceName = computed(() => props.modelValue.sourceMode === "preset"
-  ? props.modelValue.kind === "layered-decoration" ? "系统预设 SVG" : "星环粒子底座 SVG"
+  ? props.modelValue.kind === "layered-decoration"
+    ? "系统预设 SVG"
+    : props.modelValue.kind === "chart-tech-ring"
+      ? "饼图环形 SVG"
+      : "星环粒子底座 SVG"
   : props.modelValue.svg?.fileName ?? "导入素材");
 const sourceDescription = computed(() => props.modelValue.svg?.mode === "whole" ? "整体素材" : `${props.modelValue.svg?.layers.length ?? 0} 个 SVG 图层`);
+const sourceDimensions = computed(() => `${Math.round(props.modelValue.svg?.width ?? props.modelValue.overall.size)} × ${Math.round(props.modelValue.svg?.height ?? props.modelValue.overall.size)} px`);
+const chartContentSize = computed(() => props.modelValue.chartContentSize ?? 208);
+const chartContentSizeMax = computed(() => Math.max(48, Math.floor(Math.min(
+  props.modelValue.svg?.width ?? props.modelValue.overall.size,
+  props.modelValue.svg?.height ?? props.modelValue.overall.size
+) * 0.8)));
 const componentMotionOptions = computed<Array<{ label: string; value: string }>>(() => {
   const options: Array<{ label: string; value: string }> = [];
   if (props.modelValue.kind === "layered-decoration") return options;
   const role = activeRole.value;
   if (props.modelValue.svg?.mode === "whole") options.push({ label: "持续旋转", value: "special:rotate" });
-  if (role === "rotating-ring") options.push({ label: "环形高亮轮转", value: "special:ring-highlight" });
+  if (role === "rotating-ring" || role === "highlight") options.push({ label: "环形高亮轮转", value: "special:ring-highlight" });
   if (role === "particles") options.push({ label: "粒子漂浮", value: "special:particle-float" });
   if (activeLayer.value?.motion === "pulse") options.push({ label: "轻微呼吸（旧版）", value: "special:pulse" });
   return options;
@@ -170,7 +213,7 @@ const isSpecialMotionActive = computed(() => activeLayer.value && !["none", "bas
 
 watch(editableLayers, (layers) => { if (!layers.some((layer) => layer.key === activeLayerKey.value)) activeLayerKey.value = layers[0]?.key ?? ""; }, { immediate: true });
 function cloneConfig(): StarRingDecorationConfig { return JSON.parse(JSON.stringify(props.modelValue)) as StarRingDecorationConfig; }
-function roleForLayer(key: string): StarRingLayerRole | undefined { return STAR_RING_ROLE_ORDER.find((role) => props.modelValue.layerMapping[role].includes(key)); }
+function roleForLayer(key: string): StarRingLayerRole | undefined { return activeRoleOrder.value.find((role) => props.modelValue.layerMapping[role].includes(key)); }
 function layerChineseName(key: string): string {
   if (props.modelValue.kind === "layered-decoration") return "素材图层";
   const role = roleForLayer(key);
@@ -188,6 +231,11 @@ function toggleLayerVisibility(key: string): void {
   const layer = next.layerConfigs[key];
   if (!layer) return;
   layer.visible = !layer.visible;
+  emit("update:modelValue", next);
+}
+function updateChartContentSize(value: number): void {
+  const next = cloneConfig();
+  next.chartContentSize = value;
   emit("update:modelValue", next);
 }
 function updateMotionSelection(value: string): void {
@@ -235,4 +283,6 @@ const ColorParam = defineComponent({
 
 <style>
 .star-ring-panel{display:grid;gap:16px}.star-ring-panel .param-group-title{margin:2px 0 -2px;color:var(--dm-primary);font-size:12px;font-weight:600}.star-ring-panel .param-field{display:grid;gap:8px}.star-ring-panel .param-field label{display:flex;justify-content:space-between;color:var(--dm-secondary);font-size:12px}.star-ring-panel .param-field label small{font-family:"Geist Mono",ui-monospace,monospace}.star-ring-panel .number-row{display:grid;grid-template-columns:minmax(0,1fr) var(--dm-param-value-width);gap:10px;align-items:center}.star-ring-panel .number-row .el-input-number{width:var(--dm-param-value-width)}.star-ring-panel .color-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}.star-ring-panel .source-card{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:11px;border-radius:7px;background:rgba(255,255,255,.035)}.star-ring-panel .source-card>div:first-child{min-width:0;display:grid;gap:3px}.star-ring-panel .source-card strong{overflow:hidden;color:var(--dm-primary);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .source-card small{color:var(--dm-secondary);font-size:10px}.star-ring-panel .source-actions{display:flex;gap:6px}.star-ring-panel .source-actions button{padding:0;border:0;background:transparent;color:#1683ff;font-size:10px;cursor:pointer;white-space:nowrap}.star-ring-panel .naming-guide{padding:10px 11px;border-radius:7px;background:rgba(255,255,255,.025)}.star-ring-panel .naming-guide summary{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--dm-primary);font-size:11px;font-weight:600;cursor:pointer;list-style:none}.star-ring-panel .naming-guide summary::-webkit-details-marker{display:none}.star-ring-panel .naming-guide summary::after{content:"⌄";color:var(--dm-secondary);font-size:12px;transition:transform .18s}.star-ring-panel .naming-guide[open] summary::after{transform:rotate(180deg)}.star-ring-panel .naming-guide summary small{margin-left:auto;color:var(--dm-secondary);font-size:9px;font-weight:400}.star-ring-panel .naming-guide-list{display:grid;gap:5px;margin-top:10px}.star-ring-panel .naming-guide-list>div{display:grid;grid-template-columns:58px minmax(0,1fr) 48px;align-items:center;gap:6px;min-height:24px}.star-ring-panel .naming-guide-list span{color:#b8b8b8;font-size:10px}.star-ring-panel .naming-guide-list span small{margin-left:3px;color:#686868;font-size:8px}.star-ring-panel .naming-guide-list code{overflow:hidden;color:#79b8ff;font:9px/1.4 "Geist Mono",ui-monospace,monospace;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .naming-guide-list em{color:#777;font-size:9px;font-style:normal;text-align:right}.star-ring-panel .naming-guide p{margin:8px 0 0;color:#686868;font-size:9px;line-height:1.5}.star-ring-panel .layer-list{display:grid;gap:4px}.star-ring-panel .layer-row{display:flex;align-items:center;justify-content:space-between;min-height:38px;padding-right:7px;border-radius:5px;background:rgba(255,255,255,.025);color:var(--dm-secondary);cursor:pointer;outline:none}.star-ring-panel .layer-row:hover,.star-ring-panel .layer-row:focus-visible{background:rgba(255,255,255,.055);color:var(--dm-primary)}.star-ring-panel .layer-row.active{background:rgba(255,255,255,.09);color:var(--dm-primary)}.star-ring-panel .layer-row.hidden>span:first-child{opacity:.46}.star-ring-panel .layer-row-actions{display:flex;align-items:center;gap:7px}.star-ring-panel .layer-list small{font-size:9px;color:var(--dm-secondary)}.star-ring-panel .layer-visibility{display:grid;place-items:center;width:26px;height:26px;padding:0;border:0;border-radius:4px;background:transparent;color:#a8a8a8;cursor:pointer}.star-ring-panel .layer-visibility:hover{background:rgba(255,255,255,.08);color:#fff}.star-ring-panel .layer-visibility.off{color:#5e5e5e}.star-ring-panel .layer-visibility svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.star-ring-panel .binding-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:6px;background:rgba(255,255,255,.025);color:var(--dm-secondary);font-size:11px}.star-ring-panel .binding-row strong{color:var(--dm-primary);font-weight:500}
+.star-ring-panel .chart-size-info{display:flex;align-items:center;justify-content:space-between;min-height:36px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,.025);color:var(--dm-secondary);font-size:11px}.star-ring-panel .chart-size-info strong{color:var(--dm-primary);font:500 11px/1.4 "Geist Mono",ui-monospace,monospace}.star-ring-panel .chart-size-note{margin:-4px 0 0;color:#737373;font-size:10px;line-height:1.6}
+.star-ring-panel .chart-content-source{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-radius:6px;background:rgba(0,112,243,.055)}.star-ring-panel .chart-content-source>div{min-width:0;display:grid;gap:3px}.star-ring-panel .chart-content-source span{color:var(--dm-secondary);font-size:10px}.star-ring-panel .chart-content-source strong{overflow:hidden;color:var(--dm-primary);font-size:11px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .chart-content-source button{padding:0;border:0;background:transparent;color:#ff6b6b;font-size:10px;cursor:pointer}
 </style>

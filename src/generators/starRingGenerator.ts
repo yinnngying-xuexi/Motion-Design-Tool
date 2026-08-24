@@ -12,6 +12,7 @@ import { normalizeDecorationParticleConfig } from "@/utils/decorationParticles";
 const CLASS_NAME = "dm-star-ring";
 
 function classNameFor(config: StarRingDecorationConfig): string {
+  if (config.kind === "chart-tech-ring") return "dm-chart-tech-ring";
   return config.kind === "layered-decoration"
     ? "dm-layered-decoration"
     : CLASS_NAME;
@@ -64,10 +65,10 @@ function animationCss(layerKey: string, layer: StarRingLayerConfig, className = 
   };
 }
 
-function ringHighlightCss(layerKey: string, layer: StarRingLayerConfig, segmentCount: number): string {
+function ringHighlightCss(layerKey: string, layer: StarRingLayerConfig, segmentCount: number, className = CLASS_NAME): string {
   const target = `[data-dm-node-key="${layerKey}"]`;
   const safeKey = layerKey.replace(/[^a-zA-Z0-9-]/g, "-");
-  const name = `${CLASS_NAME}-${safeKey}-ring-highlight`;
+  const name = `${className}-${safeKey}-ring-highlight`;
   const duration = Math.max(0.5, layer.duration);
   if (segmentCount < 3) {
     const overlay = `[data-dm-ring-sweep-overlay="${layerKey}"]`;
@@ -100,7 +101,7 @@ function layerCss(layerKey: string, layer: StarRingLayerConfig, isRotatingRing =
 ${target} :is(path,rect,circle,ellipse,polygon,polyline,line){stroke:${layer.strokeColor} !important;stroke-width:${layer.strokeWidth}px !important;}
 ${target} :is([fill="none"],line,polyline){fill:none !important;}`
     : "";
-  const ringHighlight = usesRingHighlight ? ringHighlightCss(layerKey, layer, segmentCount) : "";
+  const ringHighlight = usesRingHighlight ? ringHighlightCss(layerKey, layer, segmentCount, className) : "";
   return `${target}{${hidden}opacity:${effectiveOpacity};${isParticleLayer ? `--star-ring-particle-strength:${particleStrength};` : ""}}
 ${motionTarget}{transform-box:fill-box;transform-origin:center;${animation.declaration}}
 ${colorCss}
@@ -117,7 +118,8 @@ function appendRingSweepOverlay(
   node: Element,
   layerKey: string,
   bounds: { x: number; y: number; width: number; height: number },
-  direction: StarRingLayerConfig["direction"]
+  direction: StarRingLayerConfig["direction"],
+  hideSource = false
 ): void {
   const document = svg.ownerDocument;
   const safeKey = layerKey.replace(/[^a-zA-Z0-9-]/g, "-");
@@ -165,6 +167,7 @@ function appendRingSweepOverlay(
   const overlay = createSvgNode(document, "g");
   overlay.setAttribute("data-dm-ring-sweep-overlay", layerKey);
   overlay.setAttribute("mask", `url(#${maskId})`);
+  if (hideSource) node.setAttribute("data-dm-ring-sweep-source", "true");
   const clone = node.cloneNode(true) as Element;
   clone.querySelectorAll("defs,mask,clipPath").forEach((definition) => definition.remove());
   [clone, ...clone.querySelectorAll("*")].forEach((element) => {
@@ -182,13 +185,23 @@ function importedMarkup(config: StarRingDecorationConfig): string {
   const svg = new DOMParser().parseFromString(config.svg.markup, "image/svg+xml").querySelector("svg");
   if (!svg) return config.svg.markup;
   Object.entries(config.layerConfigs).forEach(([key, layer]) => {
-    const isRotatingHighlight = config.layerMapping["rotating-ring"].includes(key)
+    const isRotatingHighlight = [
+      ...(config.layerMapping["rotating-ring"] ?? []),
+      ...(config.layerMapping.highlight ?? [])
+    ].includes(key)
       && (layer.motion === "ring-highlight" || layer.motion === "rotate");
     if (isRotatingHighlight) {
       const assetLayer = config.svg?.layers.find((candidate) => candidate.key === key);
       if ((assetLayer?.highlightSegmentCount ?? 0) < 3 && assetLayer?.highlightBounds) {
         const node = svg.querySelector(`[data-dm-node-key="${key}"]`);
-        if (node) appendRingSweepOverlay(svg, node, key, assetLayer.highlightBounds, layer.direction);
+        if (node) appendRingSweepOverlay(
+          svg,
+          node,
+          key,
+          assetLayer.highlightBounds,
+          layer.direction,
+          config.kind === "chart-tech-ring"
+        );
       }
       return;
     }
@@ -207,8 +220,10 @@ function importedMarkup(config: StarRingDecorationConfig): string {
 export function generateStarRingMarkup(config: StarRingDecorationConfig): string {
   const className = classNameFor(config);
   const particleEffect = resolvedParticleEffect(config);
+  const chartContentMarkup = config.kind === "chart-tech-ring" ? config.chartContentSvg?.markup ?? "" : "";
   const content = config.svg
     ? `<div class="${className}__import">${importedMarkup(config)}</div>
+  ${config.kind === "chart-tech-ring" ? `<div class="${className}__content" data-chart-content>${chartContentMarkup}</div>` : ""}
   ${generateDecorationParticleMarkup(particleEffect, config.overall.color)}`
     : "";
   return `<div class="${className}" data-source="${config.sourceMode}">${content}</div>`;
@@ -218,7 +233,7 @@ export function generateStarRingCss(config: StarRingDecorationConfig): string {
   const className = classNameFor(config);
   const overall = config.overall;
   const particleEffect = resolvedParticleEffect(config);
-  const usesSourceSize = config.sourceMode === "imported" || config.kind === "layered-decoration";
+  const usesSourceSize = config.sourceMode === "imported" || config.kind === "layered-decoration" || config.kind === "chart-tech-ring";
   const importedWidth = usesSourceSize ? config.svg?.width : undefined;
   const importedHeight = usesSourceSize ? config.svg?.height : undefined;
   const outputWidth = Math.max(1, importedWidth ?? overall.size);
@@ -226,16 +241,23 @@ export function generateStarRingCss(config: StarRingDecorationConfig): string {
   const roleCss = Object.entries(config.layerConfigs)
     .filter(([key]) => key !== "system-particles")
     .map(([key, layer]) => {
-      const isRotatingRing = config.layerMapping["rotating-ring"].includes(key);
+      const isRotatingRing = [
+        ...(config.layerMapping["rotating-ring"] ?? []),
+        ...(config.layerMapping.highlight ?? [])
+      ].includes(key);
       const isParticleLayer = config.layerMapping.particles.includes(key);
       const segmentCount = config.svg?.layers.find((candidate) => candidate.key === key)?.highlightSegmentCount ?? 0;
       return layerCss(key, layer, isRotatingRing, segmentCount, isParticleLayer, className);
     })
     .filter(Boolean)
     .join("\n");
-  return `.${className}{--star-ring-color:${overall.color};position:relative;width:${outputWidth}px;aspect-ratio:${outputWidth}/${outputHeight};height:auto;opacity:${overall.opacity};transform:translate(${overall.offsetX}px,${overall.offsetY}px);isolation:isolate;}
+  return `.${className}{--star-ring-color:${overall.color};--chart-content-size:${Math.max(1, config.chartContentSize ?? 208)}px;position:relative;width:${outputWidth}px;aspect-ratio:${outputWidth}/${outputHeight};height:auto;opacity:${overall.opacity};transform:translate(${overall.offsetX}px,${overall.offsetY}px);isolation:isolate;}
 .${className}__import{position:absolute;z-index:1;inset:0;display:grid;place-items:center;}
 .${className}__import svg{display:block;width:100%;height:100%;overflow:visible;}
+${config.kind === "chart-tech-ring" ? `.${className}__content{position:absolute;z-index:2;left:50%;top:50%;display:grid;place-items:center;width:var(--chart-content-size);height:var(--chart-content-size);transform:translate(-50%,-50%);border-radius:50%;}
+.${className}__content>svg{display:block;width:100%;height:100%;overflow:visible;}` : ""}
+.${className}[data-source] :is([data-dm-motion-target],[data-dm-node-key]){${config.kind === "chart-tech-ring" ? "transform-box:view-box;transform-origin:50% 50%;" : ""}}
+${config.kind === "chart-tech-ring" ? `.${className} [data-dm-ring-sweep-source]{opacity:0!important;}` : ""}
 .${className}__layer{position:absolute;inset:0;transform-origin:center;}
 @media (prefers-reduced-motion:reduce){.${className} [data-dm-node-key],.${className} [data-dm-motion-target],.${className} [data-dm-ring-segment]{animation:none!important;filter:none!important;}}
 ${particleEffect.enabled ? generateDecorationParticleCss() : ""}
