@@ -56,18 +56,23 @@
 import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import type { StarRingLayerMapping, StarRingLayerRole, StarRingSvgAsset, StarRingSvgLayer } from "@/types/decoration";
-import { autoMapStarRingLayers, STAR_RING_ROLE_LABELS, STAR_RING_ROLE_PROFILES } from "@/utils/starRingDecoration";
+import { autoMapStarRingLayers, STAR_RING_ROLE_LABELS, STAR_RING_ROLE_PROFILES, type StarRingRoleProfile } from "@/utils/starRingDecoration";
 
 const props = withDefaults(defineProps<{
   modelValue: boolean;
   asset: StarRingSvgAsset;
   mapping: StarRingLayerMapping;
-  roleProfile?: "star-ring" | "chart-tech-ring";
+  roleProfile?: StarRingRoleProfile;
 }>(), { roleProfile: "star-ring" });
 const emit = defineEmits<{ "update:modelValue": [value: boolean]; confirm: [mapping: StarRingLayerMapping, labels: Record<string, string>] }>();
 const roleOrder = computed(() => STAR_RING_ROLE_PROFILES[props.roleProfile]);
 const roleLabels = STAR_RING_ROLE_LABELS;
-const confirmLabel = computed(() => props.roleProfile === "chart-tech-ring" ? "应用到饼图环形" : "应用到星环底座");
+const confirmLabel = computed(() => ({
+  "star-ring": "应用到星环底座",
+  "chart-tech-ring": "应用到饼图环形",
+  "stacked-energy-base": "应用到层叠能量底座",
+  "ripple-focus-base": "应用到环形扩散底座"
+}[props.roleProfile]));
 const draft = ref<StarRingLayerMapping>(cloneMapping(props.mapping));
 const draftLabels = ref<Record<string, string>>(createLabelDraft(props.asset));
 const highlightedKey = ref(props.asset.layers[0]?.key ?? "");

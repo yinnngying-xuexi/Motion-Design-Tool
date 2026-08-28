@@ -9,6 +9,18 @@
       </div>
     </section>
 
+    <template v-if="isStackedEnergyBase">
+      <p class="param-group-title">层叠推进</p>
+      <ParamNumber v-if="modelValue.sourceMode === 'preset'" label="底座尺寸" unit="px" :value="modelValue.overall.size" :min="140" :max="320" :step="2" @update="updatePresetSize" />
+      <ParamNumber label="循环时长" unit="s" :value="stackedEnergySettings.duration" :min="1.6" :max="6" :step="0.1" @update="updateStackedEnergy('duration', $event)" />
+      <ParamNumber label="层间延迟" unit="s" :value="stackedEnergySettings.layerDelay" :min="0" :max="0.8" :step="0.02" @update="updateStackedEnergy('layerDelay', $event)" />
+      <ParamNumber label="推进距离" unit="px" :value="stackedEnergySettings.pushDistance" :min="0" :max="36" :step="1" @update="updateStackedEnergy('pushDistance', $event)" />
+      <ParamNumber label="扩散幅度" unit="%" :value="stackedEnergySettings.spreadScale" :min="0" :max="24" :step="1" @update="updateStackedEnergy('spreadScale', $event)" />
+      <ParamNumber label="光效强度" unit="%" :value="stackedEnergySettings.glowStrength" :min="0" :max="100" :step="1" @update="updateStackedEnergy('glowStrength', $event)" />
+      <ParamNumber label="层间距离" unit="px" :value="stackedEnergySettings.layerGap" :min="0" :max="24" :step="1" @update="updateStackedEnergy('layerGap', $event)" />
+      <p class="chart-size-note">后层扩散、中层推进、前层高亮按层间延迟连续传递；导入 SVG 时仍保持素材原始尺寸。</p>
+    </template>
+
     <template v-if="modelValue.kind === 'chart-tech-ring'">
       <p class="param-group-title">图表适配</p>
       <div class="chart-content-source">
@@ -32,6 +44,25 @@
         @update="updateChartContentSize"
       />
       <p class="chart-size-note">虚线区域是建议放置饼图或环形图的安全范围，只用于编辑预览，不会显示在最终页面中。</p>
+    </template>
+
+    <template v-if="isReplaceableIconBase">
+      <p class="param-group-title">中心图标</p>
+      <div class="chart-content-source">
+        <div>
+          <span>独立替换素材</span>
+          <strong :title="modelValue.centerIconSvg?.fileName">{{ modelValue.centerIconSvg?.fileName ?? "使用案例内置图标" }}</strong>
+        </div>
+        <span class="center-icon-actions">
+          <button type="button" @click="$emit('replaceCenterIcon')">替换</button>
+          <button v-if="modelValue.centerIconSvg" type="button" @click="$emit('removeCenterIcon')">移除</button>
+        </span>
+      </div>
+      <template v-if="modelValue.centerIconSvg">
+        <ParamNumber label="图标尺寸" unit="px" :value="modelValue.centerIconSize ?? 40" :min="8" :max="160" :step="1" @update="updateCenterSetting('centerIconSize', $event)" />
+        <ParamNumber label="水平位置" unit="%" :value="modelValue.centerIconX ?? 50" :min="0" :max="100" :step="1" @update="updateCenterSetting('centerIconX', $event)" />
+        <ParamNumber label="垂直位置" unit="%" :value="modelValue.centerIconY ?? 30" :min="0" :max="100" :step="1" @update="updateCenterSetting('centerIconY', $event)" />
+      </template>
     </template>
 
     <p class="param-group-title">实际素材图层</p>
@@ -112,7 +143,7 @@
         </template>
 
         <template v-else-if="activeLayer.motion !== 'none'">
-          <template v-if="isSpecialMotionActive">
+          <template v-if="isSpecialMotionActive && activeLayer.motion !== 'stacked-energy'">
             <ParamNumber label="动效时长" unit="s" :value="activeLayer.duration" :min="0.5" :max="20" :step="0.1" @update="updateLayer('duration', $event)" />
             <ParamNumber label="开始延迟" unit="s" :value="activeLayer.delay" :min="0" :max="5" :step="0.1" @update="updateLayer('delay', $event)" />
           </template>
@@ -135,7 +166,7 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, ref, watch } from "vue";
 import { ElColorPicker, ElInput, ElInputNumber, ElSlider } from "element-plus";
-import type { StarRingDecorationConfig, StarRingLayerConfig, StarRingLayerRole, StarRingMotionType, StarRingSvgLayer } from "@/types/decoration";
+import type { StackedEnergyMotionConfig, StarRingDecorationConfig, StarRingLayerConfig, StarRingLayerRole, StarRingMotionType, StarRingSvgLayer } from "@/types/decoration";
 import { STAR_RING_ROLE_LABELS, STAR_RING_ROLE_ORDER, STAR_RING_ROLE_PROFILES } from "@/utils/starRingDecoration";
 import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import type { BasicMotionConfig, BasicMotionParamKey, BasicMotionTemplate, MotionCategory } from "@/types/motion";
@@ -143,13 +174,24 @@ import type { BasicMotionConfig, BasicMotionParamKey, BasicMotionTemplate, Motio
 const props = withDefaults(defineProps<{ modelValue: StarRingDecorationConfig; showImportGuide?: boolean }>(), {
   showImportGuide: false
 });
-const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: []; showImportGuide: []; removeChartContent: [] }>();
+const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: []; showImportGuide: []; removeChartContent: []; replaceCenterIcon: []; removeCenterIcon: [] }>();
 const activeLayerKey = ref("");
-const activeRoleOrder = computed<readonly StarRingLayerRole[]>(() => props.modelValue.kind === "chart-tech-ring"
-  ? STAR_RING_ROLE_PROFILES["chart-tech-ring"]
-  : props.modelValue.kind === "star-ring"
-    ? STAR_RING_ROLE_PROFILES["star-ring"]
-    : STAR_RING_ROLE_ORDER);
+const activeRoleOrder = computed<readonly StarRingLayerRole[]>(() => {
+  const kind = props.modelValue.kind;
+  return kind && kind in STAR_RING_ROLE_PROFILES
+    ? STAR_RING_ROLE_PROFILES[kind as keyof typeof STAR_RING_ROLE_PROFILES]
+    : STAR_RING_ROLE_ORDER;
+});
+const isReplaceableIconBase = computed(() => props.modelValue.kind === "stacked-energy-base" || props.modelValue.kind === "ripple-focus-base");
+const isStackedEnergyBase = computed(() => props.modelValue.kind === "stacked-energy-base");
+const stackedEnergySettings = computed<StackedEnergyMotionConfig>(() => ({
+  duration: props.modelValue.stackedEnergy?.duration ?? 3.2,
+  layerDelay: props.modelValue.stackedEnergy?.layerDelay ?? 0.24,
+  pushDistance: props.modelValue.stackedEnergy?.pushDistance ?? 14,
+  spreadScale: props.modelValue.stackedEnergy?.spreadScale ?? 12,
+  glowStrength: props.modelValue.stackedEnergy?.glowStrength ?? 62,
+  layerGap: props.modelValue.stackedEnergy?.layerGap ?? 7
+}));
 const editableLayers = computed<StarRingSvgLayer[]>(() => {
   if (props.modelValue.svg?.mode === "whole") return [{ key: "dm-svg-whole", id: "whole", label: "整体素材", tagName: "svg", parentKey: null, depth: 0 }];
   const layers = props.modelValue.svg?.layers ?? [];
@@ -180,6 +222,10 @@ const sourceName = computed(() => props.modelValue.sourceMode === "preset"
     ? "系统预设 SVG"
     : props.modelValue.kind === "chart-tech-ring"
       ? "饼图环形 SVG"
+      : props.modelValue.kind === "stacked-energy-base"
+        ? "层叠能量底座 SVG"
+        : props.modelValue.kind === "ripple-focus-base"
+          ? "环形扩散底座 SVG"
       : "星环粒子底座 SVG"
   : props.modelValue.svg?.fileName ?? "导入素材");
 const sourceDescription = computed(() => props.modelValue.svg?.mode === "whole" ? "整体素材" : `${props.modelValue.svg?.layers.length ?? 0} 个 SVG 图层`);
@@ -196,7 +242,12 @@ const componentMotionOptions = computed<Array<{ label: string; value: string }>>
   if (props.modelValue.svg?.mode === "whole") options.push({ label: "持续旋转", value: "special:rotate" });
   if (role === "rotating-ring" || role === "highlight") options.push({ label: "环形高亮轮转", value: "special:ring-highlight" });
   if (role === "particles") options.push({ label: "粒子漂浮", value: "special:particle-float" });
-  if (activeLayer.value?.motion === "pulse") options.push({ label: "轻微呼吸（旧版）", value: "special:pulse" });
+  if (role === "base-back" || role === "base-middle" || role === "base-front" || activeLayer.value?.motion === "stacked-energy") {
+    options.push({ label: "层叠推进", value: "special:stacked-energy" });
+  }
+  if (role === "ripple-outer" || role === "ripple-middle" || role === "ripple-inner" || activeLayer.value?.motion === "pulse") {
+    options.push({ label: "扩散脉冲", value: "special:pulse" });
+  }
   return options;
 });
 const compatibleBasicMotionIds = new Set(["fade-in", "slide-up", "slide-left", "scale-in", "breath", "float", "soft-blink", "glow-pulse", "slow-rotate", "scale-tip", "highlight-glow", "alert-blink"]);
@@ -236,6 +287,21 @@ function toggleLayerVisibility(key: string): void {
 function updateChartContentSize(value: number): void {
   const next = cloneConfig();
   next.chartContentSize = value;
+  emit("update:modelValue", next);
+}
+function updateCenterSetting(key: "centerIconSize" | "centerIconX" | "centerIconY", value: number): void {
+  const next = cloneConfig();
+  next[key] = value;
+  emit("update:modelValue", next);
+}
+function updatePresetSize(value: number): void {
+  const next = cloneConfig();
+  next.overall.size = value;
+  emit("update:modelValue", next);
+}
+function updateStackedEnergy(key: keyof StackedEnergyMotionConfig, value: number): void {
+  const next = cloneConfig();
+  next.stackedEnergy = { ...stackedEnergySettings.value, [key]: value };
   emit("update:modelValue", next);
 }
 function updateMotionSelection(value: string): void {
@@ -285,4 +351,5 @@ const ColorParam = defineComponent({
 .star-ring-panel{display:grid;gap:16px}.star-ring-panel .param-group-title{margin:2px 0 -2px;color:var(--dm-primary);font-size:12px;font-weight:600}.star-ring-panel .param-field{display:grid;gap:8px}.star-ring-panel .param-field label{display:flex;justify-content:space-between;color:var(--dm-secondary);font-size:12px}.star-ring-panel .param-field label small{font-family:"Geist Mono",ui-monospace,monospace}.star-ring-panel .number-row{display:grid;grid-template-columns:minmax(0,1fr) var(--dm-param-value-width);gap:10px;align-items:center}.star-ring-panel .number-row .el-input-number{width:var(--dm-param-value-width)}.star-ring-panel .color-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}.star-ring-panel .source-card{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:11px;border-radius:7px;background:rgba(255,255,255,.035)}.star-ring-panel .source-card>div:first-child{min-width:0;display:grid;gap:3px}.star-ring-panel .source-card strong{overflow:hidden;color:var(--dm-primary);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .source-card small{color:var(--dm-secondary);font-size:10px}.star-ring-panel .source-actions{display:flex;gap:6px}.star-ring-panel .source-actions button{padding:0;border:0;background:transparent;color:#1683ff;font-size:10px;cursor:pointer;white-space:nowrap}.star-ring-panel .naming-guide{padding:10px 11px;border-radius:7px;background:rgba(255,255,255,.025)}.star-ring-panel .naming-guide summary{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--dm-primary);font-size:11px;font-weight:600;cursor:pointer;list-style:none}.star-ring-panel .naming-guide summary::-webkit-details-marker{display:none}.star-ring-panel .naming-guide summary::after{content:"⌄";color:var(--dm-secondary);font-size:12px;transition:transform .18s}.star-ring-panel .naming-guide[open] summary::after{transform:rotate(180deg)}.star-ring-panel .naming-guide summary small{margin-left:auto;color:var(--dm-secondary);font-size:9px;font-weight:400}.star-ring-panel .naming-guide-list{display:grid;gap:5px;margin-top:10px}.star-ring-panel .naming-guide-list>div{display:grid;grid-template-columns:58px minmax(0,1fr) 48px;align-items:center;gap:6px;min-height:24px}.star-ring-panel .naming-guide-list span{color:#b8b8b8;font-size:10px}.star-ring-panel .naming-guide-list span small{margin-left:3px;color:#686868;font-size:8px}.star-ring-panel .naming-guide-list code{overflow:hidden;color:#79b8ff;font:9px/1.4 "Geist Mono",ui-monospace,monospace;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .naming-guide-list em{color:#777;font-size:9px;font-style:normal;text-align:right}.star-ring-panel .naming-guide p{margin:8px 0 0;color:#686868;font-size:9px;line-height:1.5}.star-ring-panel .layer-list{display:grid;gap:4px}.star-ring-panel .layer-row{display:flex;align-items:center;justify-content:space-between;min-height:38px;padding-right:7px;border-radius:5px;background:rgba(255,255,255,.025);color:var(--dm-secondary);cursor:pointer;outline:none}.star-ring-panel .layer-row:hover,.star-ring-panel .layer-row:focus-visible{background:rgba(255,255,255,.055);color:var(--dm-primary)}.star-ring-panel .layer-row.active{background:rgba(255,255,255,.09);color:var(--dm-primary)}.star-ring-panel .layer-row.hidden>span:first-child{opacity:.46}.star-ring-panel .layer-row-actions{display:flex;align-items:center;gap:7px}.star-ring-panel .layer-list small{font-size:9px;color:var(--dm-secondary)}.star-ring-panel .layer-visibility{display:grid;place-items:center;width:26px;height:26px;padding:0;border:0;border-radius:4px;background:transparent;color:#a8a8a8;cursor:pointer}.star-ring-panel .layer-visibility:hover{background:rgba(255,255,255,.08);color:#fff}.star-ring-panel .layer-visibility.off{color:#5e5e5e}.star-ring-panel .layer-visibility svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.star-ring-panel .binding-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:6px;background:rgba(255,255,255,.025);color:var(--dm-secondary);font-size:11px}.star-ring-panel .binding-row strong{color:var(--dm-primary);font-weight:500}
 .star-ring-panel .chart-size-info{display:flex;align-items:center;justify-content:space-between;min-height:36px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,.025);color:var(--dm-secondary);font-size:11px}.star-ring-panel .chart-size-info strong{color:var(--dm-primary);font:500 11px/1.4 "Geist Mono",ui-monospace,monospace}.star-ring-panel .chart-size-note{margin:-4px 0 0;color:#737373;font-size:10px;line-height:1.6}
 .star-ring-panel .chart-content-source{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-radius:6px;background:rgba(0,112,243,.055)}.star-ring-panel .chart-content-source>div{min-width:0;display:grid;gap:3px}.star-ring-panel .chart-content-source span{color:var(--dm-secondary);font-size:10px}.star-ring-panel .chart-content-source strong{overflow:hidden;color:var(--dm-primary);font-size:11px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .chart-content-source button{padding:0;border:0;background:transparent;color:#ff6b6b;font-size:10px;cursor:pointer}
+.star-ring-panel .center-icon-actions{display:flex;align-items:center;gap:8px}.star-ring-panel .center-icon-actions button:first-child{color:#1683ff}.star-ring-panel .center-icon-actions button:last-child:not(:first-child){color:#ff6b6b}
 </style>

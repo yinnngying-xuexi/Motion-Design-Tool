@@ -147,11 +147,128 @@ const loadingParams = {
   haloIntensity: { key: "haloIntensity", label: "光环强度", type: "number" as const, min: 0, max: 100, step: 5, unit: "%" }
 };
 
+const flowMarkerParams = {
+  shape: {
+    key: "shape",
+    label: "形状",
+    type: "select" as const,
+    options: [
+      { label: "三角形", value: "triangle" },
+      { label: "圆形", value: "circle" },
+      { label: "正方形", value: "square" },
+      { label: "菱形", value: "diamond" },
+      { label: "扇形", value: "sector" },
+      { label: "自定义 SVG", value: "custom-svg" }
+    ]
+  },
+  size: { key: "size", label: "尺寸", type: "number" as const, min: 6, max: 48, step: 1, unit: "px" },
+  color: { key: "color", label: "颜色", type: "color" as const },
+  direction: {
+    key: "direction",
+    label: "移动方向",
+    type: "select" as const,
+    options: [
+      { label: "从左到右", value: "ltr" },
+      { label: "从右到左", value: "rtl" },
+      { label: "从上到下", value: "ttb" },
+      { label: "从下到上", value: "btt" }
+    ]
+  },
+  distance: { key: "distance", label: "移动距离", type: "number" as const, min: 40, max: 600, step: 10, unit: "px" },
+  speed: { key: "speed", label: "移动速度", type: "number" as const, min: 30, max: 400, step: 10, unit: "px/s" },
+  glowIntensity: { key: "glowIntensity", label: "发光强度", type: "number" as const, min: 0, max: 100, step: 5, unit: "%" },
+  tailLength: { key: "tailLength", label: "拖尾长度", type: "number" as const, min: 0, max: 160, step: 4, unit: "px" }
+};
+
+const sequenceMarkerParams = {
+  markerCount: { key: "markerCount", label: "标记数量", type: "number" as const, min: 2, max: 8, step: 1 },
+  markerGap: { key: "markerGap", label: "标记间距", type: "number" as const, min: 0, max: 24, step: 1, unit: "px" },
+  duration: { key: "duration", label: "循环时长", type: "number" as const, min: 0.4, max: 4, step: 0.1, unit: "s" },
+  pause: { key: "pause", label: "循环间隔", type: "number" as const, min: 0, max: 2, step: 0.1, unit: "s" },
+  easing: {
+    key: "easing",
+    label: "速度变化",
+    type: "select" as const,
+    options: [
+      { label: "匀速", value: "linear" },
+      { label: "缓入", value: "ease-in" },
+      { label: "缓出", value: "ease-out" },
+      { label: "缓入缓出", value: "ease-in-out" }
+    ]
+  },
+  minOpacity: { key: "minOpacity", label: "最低透明度", type: "number" as const, min: 0.05, max: 0.8, step: 0.05 },
+  afterglow: { key: "afterglow", label: "余辉衰减", type: "number" as const, min: 0, max: 100, step: 5, unit: "%" }
+};
+
+const cornerFocusParams = {
+  style: {
+    key: "cornerStyle",
+    label: "角标样式",
+    type: "select" as const,
+    options: [
+      { label: "直角", value: "angle" },
+      { label: "断线", value: "broken" },
+      { label: "点线", value: "dot-line" },
+      { label: "自定义 SVG", value: "custom-svg" }
+    ]
+  },
+  count: {
+    key: "cornerCount",
+    label: "角标数量",
+    type: "select" as const,
+    options: [
+      { label: "单角", value: "single" },
+      { label: "对角", value: "double" },
+      { label: "四角", value: "four" }
+    ]
+  },
+  targetWidth: { key: "targetWidth", label: "目标宽度", type: "number" as const, min: 60, max: 720, step: 10, unit: "px" },
+  targetHeight: { key: "targetHeight", label: "目标高度", type: "number" as const, min: 40, max: 420, step: 10, unit: "px" },
+  cornerLength: { key: "cornerLength", label: "角标长度", type: "number" as const, min: 8, max: 64, step: 2, unit: "px" },
+  borderWidth: { key: "borderWidth", label: "线条宽度", type: "number" as const, min: 1, max: 6, step: 0.5, unit: "px" },
+  focusDistance: { key: "focusDistance", label: "聚焦距离", type: "number" as const, min: 0, max: 48, step: 2, unit: "px" },
+  duration: { key: "duration", label: "循环时长", type: "number" as const, min: 0.8, max: 6, step: 0.1, unit: "s" },
+  pause: { key: "pause", label: "停顿时间", type: "number" as const, min: 0, max: 3, step: 0.1, unit: "s" },
+  easing: sequenceMarkerParams.easing,
+  minOpacity: sequenceMarkerParams.minOpacity
+};
+
+const connectionFlowParams = {
+  pathStyle: {
+    key: "pathStyle",
+    label: "路径样式",
+    type: "select" as const,
+    options: [
+      { label: "直线", value: "straight" },
+      { label: "折线", value: "elbow" },
+      { label: "曲线", value: "curve" }
+    ]
+  },
+  endpointStyle: {
+    key: "endpointStyle",
+    label: "端点样式",
+    type: "select" as const,
+    options: [
+      { label: "无端点", value: "none" },
+      { label: "圆点", value: "dot" },
+      { label: "圆环", value: "ring" }
+    ]
+  },
+  length: { key: "length", label: "连接长度", type: "number" as const, min: 80, max: 720, step: 10, unit: "px" },
+  bend: { key: "bend", label: "转折幅度", type: "number" as const, min: 0, max: 160, step: 4, unit: "px" },
+  lineWidth: { key: "lineWidth", label: "路径线宽", type: "number" as const, min: 1, max: 6, step: 0.5, unit: "px" },
+  trackOpacity: { key: "trackOpacity", label: "路径透明度", type: "number" as const, min: 0.05, max: 0.6, step: 0.05 },
+  duration: { key: "duration", label: "流动时长", type: "number" as const, min: 0.6, max: 8, step: 0.1, unit: "s" },
+  flowCount: { key: "flowCount", label: "流光数量", type: "number" as const, min: 1, max: 5, step: 1 },
+  trailLength: { key: "trailLength", label: "流光长度", type: "number" as const, min: 4, max: 30, step: 1, unit: "%" }
+};
+
 export const decorationSections: DecorationSection[] = [
   "标题装饰",
   "图表装饰",
   "图标/点位",
   "面板装饰",
+  "通用装饰",
   "loading"
 ];
 
@@ -172,6 +289,44 @@ export const decorationEffects: DecorationEffectTemplate[] = [
       borderWidth: 1
     },
     editableParams: [commonParams.size, commonParams.color, commonParams.duration, commonParams.opacity, commonParams.glow, commonParams.borderWidth],
+    previewType: "particle-base",
+    generator: "particle-base"
+  },
+  {
+    id: "icon-base-stacked-energy",
+    name: "层叠能量底座",
+    section: "图标/点位",
+    subsection: "图标底座",
+    description: "三层能量底板按节奏依次提亮，中心图标轻微浮动，适合强调重点设备与空间点位。",
+    scene: "重点设备、定位标记、空间节点",
+    defaultParams: {
+      size: 196,
+      color: DECORATION_BLUE,
+      duration: 2.4,
+      opacity: 1,
+      glow: 18,
+      borderWidth: 2
+    },
+    editableParams: [],
+    previewType: "particle-base",
+    generator: "particle-base"
+  },
+  {
+    id: "icon-base-ripple-focus",
+    name: "环形扩散底座",
+    section: "图标/点位",
+    subsection: "图标底座",
+    description: "多层透视环由内向外错峰扩散，中心图标稳定聚焦，适合告警点位与实时事件定位。",
+    scene: "告警点位、事件定位、地图聚焦",
+    defaultParams: {
+      size: 196,
+      color: "#20A6FF",
+      duration: 2.6,
+      opacity: 1,
+      glow: 20,
+      borderWidth: 2
+    },
+    editableParams: [],
     previewType: "particle-base",
     generator: "particle-base"
   },
@@ -332,6 +487,153 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     ],
     previewType: "layered-sweep",
     generator: "layered-sweep"
+  },
+  {
+    id: "flow-marker-01",
+    name: "流动标记",
+    section: "通用装饰",
+    subsection: "动态标记",
+    description: "用于标题、按钮、卡片、模块边缘等场景的小型动态装饰标记。",
+    scene: "标题、按钮、卡片、模块边缘",
+    defaultParams: {
+      shape: "triangle",
+      size: 14,
+      color: DECORATION_BLUE,
+      direction: "ltr",
+      distance: 240,
+      speed: 120,
+      duration: 2,
+      glowIntensity: 55,
+      tailLength: 54
+    },
+    editableParams: [
+      flowMarkerParams.shape,
+      flowMarkerParams.size,
+      flowMarkerParams.color,
+      flowMarkerParams.direction,
+      flowMarkerParams.distance,
+      flowMarkerParams.speed,
+      flowMarkerParams.glowIntensity,
+      flowMarkerParams.tailLength
+    ],
+    previewType: "flow-marker",
+    generator: "flow-marker"
+  },
+  {
+    id: "flow-marker-02",
+    name: "闪烁流动",
+    section: "通用装饰",
+    subsection: "动态标记",
+    description: "多个固定标记依次提亮并保留轻微余辉，用于表达稳定、克制的方向引导。",
+    scene: "标题指示、按钮引导、流程方向、模块边缘",
+    defaultParams: {
+      shape: "triangle",
+      markerCount: 3,
+      size: 12,
+      markerGap: 4,
+      color: DECORATION_BLUE,
+      direction: "ltr",
+      duration: 1.2,
+      pause: 0.1,
+      easing: "ease-in-out",
+      minOpacity: 0.16,
+      glowIntensity: 55,
+      afterglow: 52
+    },
+    editableParams: [
+      flowMarkerParams.shape,
+      sequenceMarkerParams.markerCount,
+      flowMarkerParams.size,
+      sequenceMarkerParams.markerGap,
+      flowMarkerParams.color,
+      flowMarkerParams.direction,
+      sequenceMarkerParams.duration,
+      sequenceMarkerParams.pause,
+      sequenceMarkerParams.easing,
+      sequenceMarkerParams.minOpacity,
+      flowMarkerParams.glowIntensity,
+      sequenceMarkerParams.afterglow
+    ],
+    previewType: "flow-marker",
+    generator: "flow-marker-sequence"
+  },
+  {
+    id: "corner-focus-01",
+    name: "角标聚焦",
+    section: "通用装饰",
+    subsection: "动态标记",
+    description: "角标从外围缓慢收拢并提亮，用于强调选中区域、图表或关键模块。",
+    scene: "选中区域、重点卡片、图表聚焦、模块定位",
+    defaultParams: {
+      cornerStyle: "angle",
+      cornerCount: "four",
+      targetWidth: 180,
+      targetHeight: 100,
+      cornerLength: 22,
+      borderWidth: 2,
+      color: DECORATION_BLUE,
+      focusDistance: 12,
+      duration: 1.8,
+      pause: 0.3,
+      easing: "ease-in-out",
+      minOpacity: 0.22,
+      glowIntensity: 42
+    },
+    editableParams: [
+      cornerFocusParams.style,
+      cornerFocusParams.count,
+      cornerFocusParams.targetWidth,
+      cornerFocusParams.targetHeight,
+      cornerFocusParams.cornerLength,
+      cornerFocusParams.borderWidth,
+      flowMarkerParams.color,
+      cornerFocusParams.focusDistance,
+      cornerFocusParams.duration,
+      cornerFocusParams.pause,
+      cornerFocusParams.easing,
+      cornerFocusParams.minOpacity,
+      flowMarkerParams.glowIntensity
+    ],
+    previewType: "flow-marker",
+    generator: "corner-focus"
+  },
+  {
+    id: "connection-flow-01",
+    name: "连接流向",
+    section: "通用装饰",
+    subsection: "动态标记",
+    description: "低亮连接路径承载连续流动信号，用于表达节点、模块或设备之间的数据方向。",
+    scene: "设备连接、节点关系、数据传输、流程指引",
+    defaultParams: {
+      pathStyle: "curve",
+      endpointStyle: "dot",
+      length: 300,
+      bend: 48,
+      lineWidth: 1.5,
+      color: DECORATION_BLUE,
+      trackOpacity: 0.2,
+      direction: "ltr",
+      duration: 2.4,
+      flowCount: 2,
+      trailLength: 14,
+      glowIntensity: 44
+    },
+    editableParams: [
+      connectionFlowParams.pathStyle,
+      connectionFlowParams.endpointStyle,
+      connectionFlowParams.length,
+      connectionFlowParams.bend,
+      connectionFlowParams.lineWidth,
+      flowMarkerParams.color,
+      connectionFlowParams.trackOpacity,
+      flowMarkerParams.direction,
+      connectionFlowParams.duration,
+      connectionFlowParams.flowCount,
+      connectionFlowParams.trailLength,
+      flowMarkerParams.glowIntensity
+    ],
+    previewType: "flow-marker",
+    generator: "connection-flow"
   },
   {
     id: "loading-rotating-ring",

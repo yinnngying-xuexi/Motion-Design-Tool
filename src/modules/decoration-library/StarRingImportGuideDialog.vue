@@ -2,13 +2,13 @@
   <el-dialog
     v-model="visible"
     class="star-ring-import-guide"
-    title="星环粒子底座 · SVG 导入说明"
+    :title="`${guide.title} · SVG 导入说明`"
     width="680px"
     align-center
   >
     <div class="guide-intro">
       <strong>在 Figma 中建议这样命名顶层编组</strong>
-      <p>根分组名称可以自定义；编辑器会按以下英文名称识别素材结构。</p>
+      <p>{{ guide.intro }}</p>
     </div>
 
     <section class="guide-section">
@@ -16,12 +16,10 @@
         <h3>推荐图层结构</h3>
         <span>英文名称不区分大小写</span>
       </div>
-      <div class="layer-tree" aria-label="星环 SVG 推荐图层结构">
-        <div><em>背景层</em><span>•</span><b>background</b></div>
-        <div><em>外环层</em><span>•</span><b>outer-ring</b></div>
-        <div><em>内环层</em><span>•</span><b>inner-ring</b></div>
-        <div><em>中心层</em><span>•</span><b>center</b></div>
-        <div><em>粒子层</em><span>•</span><b>particles</b><small>可选</small></div>
+      <div class="layer-tree" :aria-label="`${guide.title} SVG 推荐图层结构`">
+        <div v-for="layer in guide.layers" :key="layer.name">
+          <em>{{ layer.label }}</em><span>•</span><b>{{ layer.name }}</b><small v-if="'optional' in layer && layer.optional">可选</small>
+        </div>
       </div>
     </section>
 
@@ -29,14 +27,14 @@
       <h3>导出前检查</h3>
       <ul>
         <li>这些图层放在素材根分组下，并保持同级。</li>
-        <li>没有粒子素材时可不建立 <code>particles</code>，不影响其余图层导入。</li>
+        <li>{{ guide.note }}</li>
         <li>Figma 导出 SVG 时勾选 <code>Include “id” attribute</code>。</li>
       </ul>
     </section>
 
     <template #footer>
       <div class="guide-footer">
-        <a class="guide-download" href="/examples/star-ring-layer-template.svg" download="星环粒子底座-分层示例.svg">
+        <a class="guide-download" :href="guide.href" :download="guide.downloadName">
           下载示例 SVG
         </a>
         <el-button size="small" @click="visible = false">关闭</el-button>
@@ -48,13 +46,59 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const props = defineProps<{ modelValue: boolean }>();
+type GuideType = "star-ring" | "stacked-energy-base" | "ripple-focus-base";
+const props = withDefaults(defineProps<{ modelValue: boolean; guideType?: GuideType }>(), { guideType: "star-ring" });
 const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>();
 
 const visible = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit("update:modelValue", value)
 });
+const guides = {
+  "star-ring": {
+    title: "星环粒子底座",
+    intro: "根分组名称可以自定义；编辑器会按以下英文名称识别素材结构。",
+    layers: [
+      { label: "背景层", name: "background" },
+      { label: "外环层", name: "outer-ring" },
+      { label: "内环层", name: "inner-ring" },
+      { label: "中心层", name: "center" },
+      { label: "粒子层", name: "particles", optional: true }
+    ],
+    note: "没有粒子素材时可不建立 particles，不影响其余图层导入。",
+    href: "/examples/star-ring-layer-template.svg",
+    downloadName: "星环粒子底座-分层示例.svg"
+  },
+  "stacked-energy-base": {
+    title: "层叠能量底座",
+    intro: "案例将原始 SVG 整理为三层底板、中心图标和可选光效；整套替换时建议保留以下顶层名称。",
+    layers: [
+      { label: "底层底板", name: "base-back" },
+      { label: "中层底板", name: "base-middle" },
+      { label: "前层底板", name: "base-front" },
+      { label: "中心图标", name: "center" },
+      { label: "底部光效", name: "glow", optional: true }
+    ],
+    note: "只替换中心图标时无需遵守命名；整套结构替换时，三层底板会自动套用错峰提亮动效。",
+    href: "/examples/icon-base-stacked-energy-layer-template.svg",
+    downloadName: "层叠能量底座-分层示例.svg"
+  },
+  "ripple-focus-base": {
+    title: "环形扩散底座",
+    intro: "案例将原始 SVG 整理为背景、三层透视扩散环和中心图标；整套替换时建议保留以下顶层名称。",
+    layers: [
+      { label: "底座背景", name: "background" },
+      { label: "外扩散环", name: "ripple-outer" },
+      { label: "中扩散环", name: "ripple-middle" },
+      { label: "内扩散环", name: "ripple-inner" },
+      { label: "中心图标", name: "center" }
+    ],
+    note: "只替换中心图标时无需遵守命名；整套结构替换后，三层扩散环会按由内到外的顺序自动错峰播放。",
+    href: "/examples/icon-base-ripple-focus-layer-template.svg",
+    downloadName: "环形扩散底座-分层示例.svg"
+  }
+} as const;
+const guide = computed(() => guides[props.guideType]);
 </script>
 
 <style scoped>

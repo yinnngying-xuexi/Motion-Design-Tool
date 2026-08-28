@@ -103,6 +103,61 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+interface ConnectionFlowGeometry {
+  width: number;
+  height: number;
+  path: string;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+}
+
+function connectionFlowGeometry(params: DecorationParams): ConnectionFlowGeometry {
+  const length = Math.max(80, Number(param(params, "length", 300)));
+  const bend = Math.max(0, Number(param(params, "bend", 48)));
+  const pathStyle = String(param(params, "pathStyle", "curve"));
+  const direction = String(param(params, "direction", "ltr"));
+  const vertical = direction === "ttb" || direction === "btt";
+  const padding = 20;
+
+  if (vertical) {
+    const width = Math.max(64, bend + padding * 2);
+    const height = length + padding * 2;
+    const centerX = width / 2;
+    const start = { x: centerX + bend / 2, y: padding };
+    const end = { x: centerX - bend / 2, y: height - padding };
+    const path = pathStyle === "straight"
+      ? `M ${centerX} ${padding} L ${centerX} ${height - padding}`
+      : pathStyle === "elbow"
+        ? `M ${start.x} ${start.y} V ${height / 2} H ${end.x} V ${end.y}`
+        : `M ${start.x} ${start.y} C ${start.x} ${height * 0.38},${end.x} ${height * 0.62},${end.x} ${end.y}`;
+    return {
+      width,
+      height,
+      path,
+      start: pathStyle === "straight" ? { x: centerX, y: padding } : start,
+      end: pathStyle === "straight" ? { x: centerX, y: height - padding } : end
+    };
+  }
+
+  const width = length + padding * 2;
+  const height = Math.max(64, bend + padding * 2);
+  const centerY = height / 2;
+  const start = { x: padding, y: centerY + bend / 2 };
+  const end = { x: width - padding, y: centerY - bend / 2 };
+  const path = pathStyle === "straight"
+    ? `M ${padding} ${centerY} L ${width - padding} ${centerY}`
+    : pathStyle === "elbow"
+      ? `M ${start.x} ${start.y} H ${width / 2} V ${end.y} H ${end.x}`
+      : `M ${start.x} ${start.y} C ${width * 0.38} ${start.y},${width * 0.62} ${end.y},${end.x} ${end.y}`;
+  return {
+    width,
+    height,
+    path,
+    start: pathStyle === "straight" ? { x: padding, y: centerY } : start,
+    end: pathStyle === "straight" ? { x: width - padding, y: centerY } : end
+  };
+}
+
 function particleRingSegments(className: string, count = 10): string {
   const center = 100;
   const outerRadius = 88;
@@ -145,6 +200,171 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   const opacity = param(params, "opacity", 1);
   const glow = param(params, "glow", 18);
   const borderWidth = param(params, "borderWidth", 1);
+
+  if (template.generator === "flow-marker") {
+    const markerSize = Math.max(1, Number(size));
+    const distance = Math.max(0, Number(param(params, "distance", 240)));
+    const speed = Math.max(1, Number(param(params, "speed", 120)));
+    const glowIntensity = Math.max(0, Math.min(100, Number(param(params, "glowIntensity", 55)))) / 100;
+    const tailLength = Math.max(0, Number(param(params, "tailLength", 54)));
+    const direction = String(param(params, "direction", "ltr"));
+    const horizontal = direction === "ltr" || direction === "rtl";
+    const reverse = direction === "rtl" || direction === "btt";
+    const loopDuration = Math.max(0.25, distance / speed);
+    const crossSize = Math.max(64, markerSize * 4, tailLength * 0.34);
+    const width = horizontal ? distance + markerSize : crossSize;
+    const height = horizontal ? crossSize : distance + markerSize;
+    const startTransform = horizontal
+      ? `translate3d(0,-50%,0)`
+      : `translate3d(-50%,0,0)`;
+    const finishTransform = horizontal
+      ? `translate3d(${reverse ? -distance : distance}px,-50%,0)`
+      : `translate3d(-50%,${reverse ? -distance : distance}px,0)`;
+    const runnerPosition = horizontal
+      ? `top:50%;${reverse ? "right" : "left"}:0;`
+      : `left:50%;${reverse ? "bottom" : "top"}:0;`;
+    const tailThickness = Math.max(1, markerSize * 0.22);
+    const tailPosition = horizontal
+      ? `top:50%;${reverse ? "left" : "right"}:50%;width:${tailLength}px;height:${tailThickness.toFixed(1)}px;transform:translateY(-50%);background:linear-gradient(${reverse ? "90deg" : "270deg"},color-mix(in srgb,${color} 68%,transparent),transparent);`
+      : `left:50%;${reverse ? "top" : "bottom"}:50%;width:${tailThickness.toFixed(1)}px;height:${tailLength}px;transform:translateX(-50%);background:linear-gradient(${reverse ? "180deg" : "0deg"},color-mix(in srgb,${color} 68%,transparent),transparent);`;
+    const directionRotation = direction === "rtl" ? 180 : direction === "ttb" ? 90 : direction === "btt" ? -90 : 0;
+    const glowSoft = Math.max(1, markerSize * 0.42 * glowIntensity);
+    const glowPeak = Math.max(1, markerSize * 0.9 * glowIntensity);
+
+    return `.${cls}{position:relative;width:${width.toFixed(1)}px;height:${height.toFixed(1)}px;overflow:hidden;isolation:isolate;color:${color}}
+.${cls}__runner{position:absolute;${runnerPosition}width:${markerSize}px;height:${markerSize}px;display:grid;place-items:center;will-change:transform,opacity,filter;animation:${kf} ${loopDuration.toFixed(3)}s ease-in-out infinite}
+.${cls}__tail{position:absolute;${tailPosition}border-radius:999px;opacity:${tailLength > 0 ? 0.7 : 0};filter:blur(${Math.max(0.5, markerSize * 0.08).toFixed(1)}px);pointer-events:none}
+.${cls}__mark{position:relative;z-index:1;display:block;width:${markerSize}px;height:${markerSize}px;background:${color};box-sizing:border-box}
+.${cls}[data-shape="circle"] .${cls}__mark{border-radius:50%}
+.${cls}[data-shape="square"] .${cls}__mark{border-radius:${Math.max(1, markerSize * 0.12).toFixed(1)}px}
+.${cls}[data-shape="diamond"] .${cls}__mark{border-radius:${Math.max(1, markerSize * 0.08).toFixed(1)}px;transform:rotate(45deg) scale(.78)}
+.${cls}[data-shape="triangle"] .${cls}__mark{clip-path:polygon(8% 6%,100% 50%,8% 94%);transform:rotate(${directionRotation}deg)}
+.${cls}[data-shape="sector"] .${cls}__mark{border-radius:100% 0 0 0;transform:rotate(${directionRotation + 45}deg) scale(.82)}
+.${cls}[data-shape="custom-svg"] .${cls}__mark{background:transparent;transform:none}
+.${cls}__mark svg{display:block;width:100%;height:100%;overflow:visible}
+.${cls} .flow-marker-imported-svg :is(path,rect,circle,ellipse,polygon):not([fill="none"]){fill:${color}!important}
+.${cls} .flow-marker-imported-svg :is(path,rect,circle,ellipse,polygon,polyline,line)[stroke]:not([stroke="none"]){stroke:${color}!important}
+.${cls} .flow-marker-imported-svg :is([fill="none"],line,polyline){fill:none!important}
+@keyframes ${kf}{0%{transform:${startTransform};opacity:0;filter:drop-shadow(0 0 0 transparent)}12%{opacity:.72;filter:drop-shadow(0 0 ${glowSoft.toFixed(1)}px color-mix(in srgb,${color} 46%,transparent))}48%{opacity:1;filter:drop-shadow(0 0 ${glowPeak.toFixed(1)}px color-mix(in srgb,${color} 74%,transparent))}82%{opacity:.82;filter:drop-shadow(0 0 ${glowSoft.toFixed(1)}px color-mix(in srgb,${color} 42%,transparent))}100%{transform:${finishTransform};opacity:0;filter:drop-shadow(0 0 0 transparent)}}`;
+  }
+
+  if (template.generator === "flow-marker-sequence") {
+    const markerSize = Math.max(1, Number(size));
+    const markerCount = Math.max(2, Math.min(8, Math.round(Number(param(params, "markerCount", 3)))));
+    const markerGap = Math.max(0, Number(param(params, "markerGap", 4)));
+    const direction = String(param(params, "direction", "ltr"));
+    const horizontal = direction === "ltr" || direction === "rtl";
+    const directionRotation = direction === "rtl" ? 180 : direction === "ttb" ? 90 : direction === "btt" ? -90 : 0;
+    const loopDuration = Math.max(0.4, Number(duration));
+    const pause = Math.max(0, Number(param(params, "pause", 0.1)));
+    const totalDuration = loopDuration + pause;
+    const easing = String(param(params, "easing", "ease-in-out"));
+    const minOpacity = Math.max(0.05, Math.min(0.8, Number(param(params, "minOpacity", 0.16))));
+    const glowIntensity = Math.max(0, Math.min(100, Number(param(params, "glowIntensity", 55)))) / 100;
+    const afterglow = Math.max(0, Math.min(100, Number(param(params, "afterglow", 52)))) / 100;
+    const mainSize = markerCount * markerSize + (markerCount - 1) * markerGap;
+    const crossSize = markerSize * 2.6;
+    const width = horizontal ? mainSize : crossSize;
+    const height = horizontal ? crossSize : mainSize;
+    const delayStep = loopDuration / markerCount;
+    const motionEnd = Math.min(100, (loopDuration / totalDuration) * 100);
+    const peakAt = Math.min(motionEnd * 0.48, 38);
+    const riseAt = Math.max(0, peakAt - 12);
+    const fadeAt = Math.min(motionEnd, peakAt + 12 + afterglow * 24);
+    const glowSoft = Math.max(0.5, markerSize * 0.36 * glowIntensity);
+    const glowPeak = Math.max(1, markerSize * 0.95 * glowIntensity);
+
+    return `.${cls}{position:relative;width:${width.toFixed(1)}px;height:${height.toFixed(1)}px;display:flex;flex-direction:${horizontal ? "row" : "column"};align-items:center;justify-content:center;gap:${markerGap}px;isolation:isolate;color:${color}}
+.${cls}__item{position:relative;display:grid;place-items:center;width:${markerSize}px;height:${markerSize}px;opacity:${minOpacity};will-change:transform,opacity,filter;animation:${kf} ${totalDuration.toFixed(3)}s ${easing} infinite;animation-delay:calc(var(--marker-index) * ${delayStep.toFixed(3)}s)}
+.${cls}__mark{display:block;width:100%;height:100%;background:${color};box-sizing:border-box}
+.${cls}[data-shape="circle"] .${cls}__mark{border-radius:50%}
+.${cls}[data-shape="square"] .${cls}__mark{border-radius:${Math.max(1, markerSize * 0.12).toFixed(1)}px}
+.${cls}[data-shape="diamond"] .${cls}__mark{border-radius:${Math.max(1, markerSize * 0.08).toFixed(1)}px;transform:rotate(45deg) scale(.78)}
+.${cls}[data-shape="triangle"] .${cls}__mark{clip-path:polygon(8% 6%,100% 50%,8% 94%);transform:rotate(${directionRotation}deg)}
+.${cls}[data-shape="sector"] .${cls}__mark{border-radius:100% 0 0 0;transform:rotate(${directionRotation + 45}deg) scale(.82)}
+.${cls}[data-shape="custom-svg"] .${cls}__mark{background:transparent;transform:rotate(${directionRotation}deg)}
+.${cls}__mark svg{display:block;width:100%;height:100%;overflow:visible}
+.${cls} .sequence-marker-imported-svg :is(path,rect,circle,ellipse,polygon):not([fill="none"]){fill:${color}!important}
+.${cls} .sequence-marker-imported-svg :is(path,rect,circle,ellipse,polygon,polyline,line)[stroke]:not([stroke="none"]){stroke:${color}!important}
+.${cls} .sequence-marker-imported-svg :is([fill="none"],line,polyline){fill:none!important}
+@keyframes ${kf}{0%,100%{transform:scale(.86);opacity:${minOpacity};filter:drop-shadow(0 0 0 transparent)}${riseAt.toFixed(1)}%{transform:scale(.94);opacity:${Math.min(0.8, minOpacity + 0.2).toFixed(2)};filter:drop-shadow(0 0 ${glowSoft.toFixed(1)}px color-mix(in srgb,${color} 36%,transparent))}${peakAt.toFixed(1)}%{transform:scale(1.08);opacity:1;filter:drop-shadow(0 0 ${glowPeak.toFixed(1)}px color-mix(in srgb,${color} 78%,transparent))}${fadeAt.toFixed(1)}%{transform:scale(.98);opacity:${Math.min(0.86, minOpacity + afterglow * 0.52).toFixed(2)};filter:drop-shadow(0 0 ${glowSoft.toFixed(1)}px color-mix(in srgb,${color} 42%,transparent))}${motionEnd.toFixed(1)}%{transform:scale(.86);opacity:${minOpacity};filter:drop-shadow(0 0 0 transparent)}}`;
+  }
+
+  if (template.generator === "corner-focus") {
+    const targetWidth = Math.max(40, Number(param(params, "targetWidth", 180)));
+    const targetHeight = Math.max(32, Number(param(params, "targetHeight", 100)));
+    const cornerLength = Math.max(6, Number(param(params, "cornerLength", 22)));
+    const lineWidth = Math.max(0.5, Number(borderWidth));
+    const focusDistance = Math.max(0, Number(param(params, "focusDistance", 12)));
+    const cornerStyle = String(param(params, "cornerStyle", "angle"));
+    const cornerCount = String(param(params, "cornerCount", "four"));
+    const minOpacity = Math.max(0.05, Math.min(0.8, Number(param(params, "minOpacity", 0.22))));
+    const glowIntensity = Math.max(0, Math.min(100, Number(param(params, "glowIntensity", 42)))) / 100;
+    const loopDuration = Math.max(0.8, Number(duration));
+    const pause = Math.max(0, Number(param(params, "pause", 0.3)));
+    const totalDuration = loopDuration + pause;
+    const easing = String(param(params, "easing", "ease-in-out"));
+    const motionEnd = Math.min(100, (loopDuration / totalDuration) * 100);
+    const focusIn = motionEnd * 0.32;
+    const focusOut = motionEnd * 0.68;
+    const glowRadius = Math.max(0.5, cornerLength * 0.45 * glowIntensity);
+    const pointSize = Math.max(2, lineWidth * 1.8);
+    const fullWidth = targetWidth + focusDistance * 2;
+    const fullHeight = targetHeight + focusDistance * 2;
+
+    return `.${cls}{position:relative;width:${fullWidth.toFixed(1)}px;height:${fullHeight.toFixed(1)}px;isolation:isolate;color:${color}}
+.${cls}__corner{position:absolute;width:${cornerLength}px;height:${cornerLength}px;opacity:${minOpacity};will-change:transform,opacity,filter;animation:${kf} ${totalDuration.toFixed(3)}s ${easing} infinite}
+.${cls}__corner::before,.${cls}__corner::after{content:"";position:absolute;display:block;background:${color};border-radius:999px}
+.${cls}__corner::before{width:100%;height:${lineWidth}px}
+.${cls}__corner::after{width:${lineWidth}px;height:100%}
+.${cls}__corner--tl{left:${focusDistance}px;top:${focusDistance}px;--start-x:-${focusDistance}px;--start-y:-${focusDistance}px}
+.${cls}__corner--tr{right:${focusDistance}px;top:${focusDistance}px;--start-x:${focusDistance}px;--start-y:-${focusDistance}px}
+.${cls}__corner--br{right:${focusDistance}px;bottom:${focusDistance}px;--start-x:${focusDistance}px;--start-y:${focusDistance}px}
+.${cls}__corner--bl{left:${focusDistance}px;bottom:${focusDistance}px;--start-x:-${focusDistance}px;--start-y:${focusDistance}px}
+.${cls}__corner--tl::before,.${cls}__corner--tr::before{top:0}.${cls}__corner--br::before,.${cls}__corner--bl::before{bottom:0}
+.${cls}__corner--tl::after,.${cls}__corner--bl::after{left:0}.${cls}__corner--tr::after,.${cls}__corner--br::after{right:0}
+.${cls}[data-count="single"] .${cls}__corner:not(.${cls}__corner--tl){display:none}
+.${cls}[data-count="double"] .${cls}__corner--tr,.${cls}[data-count="double"] .${cls}__corner--bl{display:none}
+.${cls}[data-style="broken"] .${cls}__corner::before{background:linear-gradient(90deg,${color} 0 38%,transparent 38% 56%,${color} 56% 100%)}
+.${cls}[data-style="broken"] .${cls}__corner::after{background:linear-gradient(180deg,${color} 0 38%,transparent 38% 56%,${color} 56% 100%)}
+.${cls}[data-style="dot-line"] .${cls}__corner::before,.${cls}[data-style="dot-line"] .${cls}__corner::after{opacity:.72}
+.${cls}__point{display:none;position:absolute;width:${pointSize}px;height:${pointSize}px;border-radius:50%;background:${color};box-shadow:0 0 ${Math.max(2, pointSize * 2)}px color-mix(in srgb,${color} 60%,transparent)}
+.${cls}[data-style="dot-line"] .${cls}__point{display:block}
+.${cls}__corner--tl .${cls}__point{left:0;top:0;transform:translate(-30%,-30%)}
+.${cls}__corner--tr .${cls}__point{right:0;top:0;transform:translate(30%,-30%)}
+.${cls}__corner--br .${cls}__point{right:0;bottom:0;transform:translate(30%,30%)}
+.${cls}__corner--bl .${cls}__point{left:0;bottom:0;transform:translate(-30%,30%)}
+.${cls}__custom{display:none;width:100%;height:100%}
+.${cls}[data-style="custom-svg"] .${cls}__corner::before,.${cls}[data-style="custom-svg"] .${cls}__corner::after,.${cls}[data-style="custom-svg"] .${cls}__point{display:none}
+.${cls}[data-style="custom-svg"] .${cls}__custom{display:block}
+.${cls}__corner--tr .${cls}__custom{transform:rotate(90deg)}
+.${cls}__corner--br .${cls}__custom{transform:rotate(180deg)}
+.${cls}__corner--bl .${cls}__custom{transform:rotate(-90deg)}
+.${cls}__custom svg{display:block;width:100%;height:100%;overflow:visible}
+.${cls} .corner-focus-imported-svg :is(path,rect,circle,ellipse,polygon):not([fill="none"]){fill:${color}!important}
+.${cls} .corner-focus-imported-svg :is(path,rect,circle,ellipse,polygon,polyline,line)[stroke]:not([stroke="none"]){stroke:${color}!important}
+.${cls} .corner-focus-imported-svg :is([fill="none"],line,polyline){fill:none!important}
+@keyframes ${kf}{0%,100%{transform:translate(var(--start-x),var(--start-y)) scale(.96);opacity:${minOpacity};filter:drop-shadow(0 0 0 transparent)}${focusIn.toFixed(1)}%,${focusOut.toFixed(1)}%{transform:translate(0,0) scale(1);opacity:1;filter:drop-shadow(0 0 ${glowRadius.toFixed(1)}px color-mix(in srgb,${color} 68%,transparent))}${motionEnd.toFixed(1)}%{transform:translate(var(--start-x),var(--start-y)) scale(.96);opacity:${minOpacity};filter:drop-shadow(0 0 0 transparent)}}`;
+  }
+
+  if (template.generator === "connection-flow") {
+    const geometry = connectionFlowGeometry(params);
+    const lineWidth = Math.max(0.5, Number(param(params, "lineWidth", 1.5)));
+    const trackOpacity = Math.max(0.05, Math.min(0.6, Number(param(params, "trackOpacity", 0.2))));
+    const glowIntensity = Math.max(0, Math.min(100, Number(param(params, "glowIntensity", 44)))) / 100;
+    const glowWidth = lineWidth + 3 + glowIntensity * 6;
+    const blur = Math.max(0.4, 1 + glowIntensity * 3.5);
+    return `.${cls}{position:relative;width:${geometry.width.toFixed(1)}px;height:${geometry.height.toFixed(1)}px;isolation:isolate;color:${color}}
+.${cls}__svg{display:block;width:100%;height:100%;overflow:visible}
+.${cls}__track,.${cls}__flow-glow,.${cls}__flow-core{fill:none;stroke:${color};stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.${cls}__track{stroke-width:${lineWidth}px;opacity:${trackOpacity}}
+.${cls}__flow-glow{stroke-width:${glowWidth.toFixed(1)}px;opacity:${(0.18 + glowIntensity * 0.2).toFixed(2)};filter:blur(${blur.toFixed(1)}px)}
+.${cls}__flow-core{stroke-width:${Math.max(1, lineWidth * 1.25).toFixed(1)}px;opacity:${(0.72 + glowIntensity * 0.24).toFixed(2)};filter:drop-shadow(0 0 ${Math.max(1, glowIntensity * 6).toFixed(1)}px ${color})}
+.${cls}__endpoint{fill:${color};stroke:${color};vector-effect:non-scaling-stroke}
+.${cls}[data-endpoint="none"] .${cls}__endpoint{display:none}
+.${cls}[data-endpoint="dot"] .${cls}__endpoint{stroke-width:0;opacity:.82}
+.${cls}[data-endpoint="ring"] .${cls}__endpoint{fill:#111;stroke-width:${lineWidth}px;opacity:.86}`;
+  }
 
   if (template.generator === "loading-ring") {
     const arcLength = Number(param(params, "arcLength", 32));
@@ -714,7 +934,7 @@ export function generateDecorationCompositionCss(asset?: SvgPreviewAsset, style?
     strokeWidth: 1,
     opacity: 1
   };
-  const svgTargets = ":is(.decoration-composition__svg,.loading-imported-svg)";
+  const svgTargets = ":is(.decoration-composition__svg,.loading-imported-svg,.flow-marker-imported-svg,.sequence-marker-imported-svg,.corner-focus-imported-svg)";
   const monochromeCss = current.colorMode === "monochrome"
     ? `${svgTargets} :is(path,rect,circle,ellipse,polygon,polyline,line) { stroke:${current.strokeColor} !important; stroke-width:${current.strokeWidth}px !important; }
 ${svgTargets} :is(path,rect,circle,ellipse,polygon):not([fill="none"]) { fill:${current.fillColor} !important; }
@@ -726,6 +946,10 @@ ${svgTargets} :is([fill="none"],line,polyline) { fill:none !important; }`
 .decoration-composition__svg svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .loading-imported-svg{width:100%;height:100%;display:grid;place-items:center;opacity:${current.opacity}}
 .loading-imported-svg svg{width:100%;height:100%;display:block;overflow:visible}
+.flow-marker-imported-svg{opacity:${current.opacity}}
+.flow-marker-imported-svg svg{width:100%;height:100%;display:block;overflow:visible}
+.sequence-marker-imported-svg,.corner-focus-imported-svg{opacity:${current.opacity}}
+.sequence-marker-imported-svg svg,.corner-focus-imported-svg svg{width:100%;height:100%;display:block;overflow:visible}
 ${monochromeCss}`;
 }
 
@@ -748,6 +972,69 @@ ${particleEffect?.enabled ? generateDecorationParticleCss() : ""}
 }
 
 export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset, instanceId = "main", particleEffect?: DecorationParticleConfig): string {
+  if (template.generator === "flow-marker") {
+    const cls = decorationClassName(template);
+    const requestedShape = String(param(params, "shape", "triangle"));
+    const shape = requestedShape === "custom-svg" && !asset ? "triangle" : requestedShape;
+    const assetClass = asset && shape === "custom-svg" ? " flow-marker-imported-svg" : "";
+    const shapeMarkup = asset && shape === "custom-svg" ? asset.markup : "";
+    return `<div class="${cls}" data-shape="${escapeHtml(shape)}" aria-hidden="true"><span class="${cls}__runner"><i class="${cls}__tail"></i><i class="${cls}__mark${assetClass}">${shapeMarkup}</i></span>${generateDecorationParticleMarkup(particleEffect, String(param(params, "color", DECORATION_BLUE)))}</div>`;
+  }
+
+  if (template.generator === "flow-marker-sequence") {
+    const cls = decorationClassName(template);
+    const requestedShape = String(param(params, "shape", "triangle"));
+    const shape = requestedShape === "custom-svg" && !asset ? "triangle" : requestedShape;
+    const markerCount = Math.max(2, Math.min(8, Math.round(Number(param(params, "markerCount", 3)))));
+    const direction = String(param(params, "direction", "ltr"));
+    const reverseOrder = direction === "rtl" || direction === "btt";
+    const items = Array.from({ length: markerCount }, (_, index) => {
+      const markerIndex = reverseOrder ? markerCount - index - 1 : index;
+      const importedSvg = asset && shape === "custom-svg"
+        ? namespaceSvgContent(asset.markup, `${cls}-${instanceId}-${index}`).content
+        : "";
+      const assetClass = importedSvg ? " sequence-marker-imported-svg" : "";
+      return `<span class="${cls}__item" style="--marker-index:${markerIndex}"><i class="${cls}__mark${assetClass}">${importedSvg}</i></span>`;
+    }).join("");
+    return `<div class="${cls}" data-shape="${escapeHtml(shape)}" data-direction="${escapeHtml(direction)}" aria-hidden="true">${items}${generateDecorationParticleMarkup(particleEffect, String(param(params, "color", DECORATION_BLUE)))}</div>`;
+  }
+
+  if (template.generator === "corner-focus") {
+    const cls = decorationClassName(template);
+    const requestedStyle = String(param(params, "cornerStyle", "angle"));
+    const cornerStyle = requestedStyle === "custom-svg" && !asset ? "angle" : requestedStyle;
+    const cornerCount = String(param(params, "cornerCount", "four"));
+    const positions = ["tl", "tr", "br", "bl"];
+    const corners = positions.map((position, index) => {
+      const importedSvg = asset && cornerStyle === "custom-svg"
+        ? namespaceSvgContent(asset.markup, `${cls}-${instanceId}-${index}`).content
+        : "";
+      return `<span class="${cls}__corner ${cls}__corner--${position}"><i class="${cls}__point"></i><i class="${cls}__custom corner-focus-imported-svg">${importedSvg}</i></span>`;
+    }).join("");
+    return `<div class="${cls}" data-style="${escapeHtml(cornerStyle)}" data-count="${escapeHtml(cornerCount)}" aria-hidden="true">${corners}${generateDecorationParticleMarkup(particleEffect, String(param(params, "color", DECORATION_BLUE)))}</div>`;
+  }
+
+  if (template.generator === "connection-flow") {
+    const cls = decorationClassName(template);
+    const geometry = connectionFlowGeometry(params);
+    const endpointStyle = String(param(params, "endpointStyle", "dot"));
+    const direction = String(param(params, "direction", "ltr"));
+    const reverse = direction === "rtl" || direction === "btt";
+    const duration = Math.max(0.4, Number(param(params, "duration", 2.4)));
+    const flowCount = Math.max(1, Math.min(5, Math.round(Number(param(params, "flowCount", 2)))));
+    const trailLength = Math.max(4, Math.min(30, Number(param(params, "trailLength", 14))));
+    const lineWidth = Math.max(0.5, Number(param(params, "lineWidth", 1.5)));
+    const endpointRadius = endpointStyle === "ring" ? Math.max(3.5, lineWidth * 3) : Math.max(2.5, lineWidth * 2.2);
+    const flowSegments = Array.from({ length: flowCount }, (_, index) => {
+      const begin = -duration * index / flowCount;
+      const from = reverse ? 0 : 100;
+      const to = reverse ? 100 : 0;
+      const animation = `<animate attributeName="stroke-dashoffset" from="${from}" to="${to}" dur="${duration.toFixed(2)}s" begin="${begin.toFixed(2)}s" repeatCount="indefinite" calcMode="linear"></animate>`;
+      return `<path class="${cls}__flow-glow" d="${geometry.path}" pathLength="100" stroke-dasharray="${trailLength} ${100 - trailLength}" stroke-dashoffset="${from}">${animation}</path><path class="${cls}__flow-core" d="${geometry.path}" pathLength="100" stroke-dasharray="${trailLength} ${100 - trailLength}" stroke-dashoffset="${from}">${animation}</path>`;
+    }).join("");
+    return `<div class="${cls}" data-endpoint="${escapeHtml(endpointStyle)}" aria-hidden="true"><svg class="${cls}__svg" viewBox="0 0 ${geometry.width.toFixed(1)} ${geometry.height.toFixed(1)}"><path class="${cls}__track" d="${geometry.path}"></path>${flowSegments}<circle class="${cls}__endpoint" cx="${geometry.start.x.toFixed(1)}" cy="${geometry.start.y.toFixed(1)}" r="${endpointRadius.toFixed(1)}"></circle><circle class="${cls}__endpoint" cx="${geometry.end.x.toFixed(1)}" cy="${geometry.end.y.toFixed(1)}" r="${endpointRadius.toFixed(1)}"></circle></svg>${generateDecorationParticleMarkup(particleEffect, String(param(params, "color", DECORATION_BLUE)))}</div>`;
+  }
+
   if (template.generator === "loading-ring") {
     return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中"><span class="${decorationClassName(template)}__arc"></span></div>`;
   }

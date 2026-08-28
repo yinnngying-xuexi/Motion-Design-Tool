@@ -1,9 +1,9 @@
 import type { BasicMotionConfig } from "@/types/motion";
 
-export type DecorationSection = "标题装饰" | "图表装饰" | "图标/点位" | "面板装饰" | "loading";
-export type DecorationSubsection = "顶部标题" | "小标题" | "饼图外环" | "图标底座" | "通用 Loading";
+export type DecorationSection = "标题装饰" | "图表装饰" | "图标/点位" | "面板装饰" | "通用装饰" | "loading";
+export type DecorationSubsection = "顶部标题" | "小标题" | "饼图外环" | "图标底座" | "动态标记" | "通用 Loading";
 
-export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "layered-sweep" | "scan" | "border-glow" | "loading";
+export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "layered-sweep" | "scan" | "border-glow" | "loading";
 
 export interface DecorationParam {
   key: string;
@@ -26,7 +26,7 @@ export interface DecorationEffectTemplate {
   defaultParams: Record<string, string | number>;
   editableParams: DecorationParam[];
   previewType: DecorationPreviewType;
-  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring" | "loading-hex-tech-ring";
+  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "flow-marker-sequence" | "corner-focus" | "connection-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring" | "loading-hex-tech-ring";
 }
 
 export type DecorationParticleStyle = "float" | "twinkle" | "spread";
@@ -66,9 +66,15 @@ export type StarRingLayerRole =
   | "outer-ring"
   | "inner-ring"
   | "highlight"
-  | "glow";
+  | "glow"
+  | "base-back"
+  | "base-middle"
+  | "base-front"
+  | "ripple-outer"
+  | "ripple-middle"
+  | "ripple-inner";
 export type StarRingEditableLayerRole = StarRingLayerRole | "whole";
-export type StarRingMotionType = "none" | "basic" | "rotate" | "ring-highlight" | "pulse" | "particle-float";
+export type StarRingMotionType = "none" | "basic" | "rotate" | "ring-highlight" | "pulse" | "particle-float" | "stacked-energy";
 export type StarRingColorMode = "original" | "monochrome";
 
 export interface StarRingOverallConfig {
@@ -96,6 +102,15 @@ export interface StarRingLayerConfig {
   particleIntensity: number;
   basicMotionId?: string;
   basicMotionConfig?: Partial<BasicMotionConfig>;
+}
+
+export interface StackedEnergyMotionConfig {
+  duration: number;
+  layerDelay: number;
+  pushDistance: number;
+  spreadScale: number;
+  glowStrength: number;
+  layerGap: number;
 }
 
 export interface StarRingSvgLayer {
@@ -130,8 +145,13 @@ export type StarRingLayerConfigs = Record<string, StarRingLayerConfig>;
 
 export interface StarRingDecorationConfig {
   version: 1;
-  kind?: "star-ring" | "layered-decoration" | "chart-tech-ring";
+  kind?: "star-ring" | "layered-decoration" | "chart-tech-ring" | "stacked-energy-base" | "ripple-focus-base";
   chartContentSize?: number;
+  centerIconSvg?: StarRingSvgAsset;
+  centerIconSize?: number;
+  centerIconX?: number;
+  centerIconY?: number;
+  stackedEnergy?: StackedEnergyMotionConfig;
   sourceMode: "preset" | "imported";
   overall: StarRingOverallConfig;
   layerMapping: StarRingLayerMapping;

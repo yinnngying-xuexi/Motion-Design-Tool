@@ -9,6 +9,8 @@ import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import starRingSvgMarkup from "@/assets/star-ring.svg?raw";
 import chartTechRingSvgMarkup from "@/assets/chart-tech-ring-01.svg?raw";
 import subtitleSweepSvgMarkup from "@/assets/subtitle-orbit-sweep-01.svg?raw";
+import stackedEnergyBaseSvgMarkup from "@/assets/icon-base-stacked-energy.svg?raw";
+import rippleFocusBaseSvgMarkup from "@/assets/icon-base-ripple-focus.svg?raw";
 import { createDefaultDecorationParticleConfig } from "@/utils/decorationParticles";
 
 export const STAR_RING_ROLE_LABELS: Record<StarRingLayerRole, string> = {
@@ -20,14 +22,23 @@ export const STAR_RING_ROLE_LABELS: Record<StarRingLayerRole, string> = {
   "outer-ring": "外环",
   "inner-ring": "内环",
   highlight: "高亮装饰",
-  glow: "光效"
+  glow: "光效",
+  "base-back": "底层底板",
+  "base-middle": "中层底板",
+  "base-front": "前层底板",
+  "ripple-outer": "外扩散环",
+  "ripple-middle": "中扩散环",
+  "ripple-inner": "内扩散环"
 };
 
 export const STAR_RING_ROLE_ORDER = Object.keys(STAR_RING_ROLE_LABELS) as StarRingLayerRole[];
 export const STAR_RING_ROLE_PROFILES = {
   "star-ring": ["background", "static-ring", "rotating-ring", "center", "particles"],
-  "chart-tech-ring": ["outer-ring", "inner-ring", "glow"]
+  "chart-tech-ring": ["outer-ring", "inner-ring", "glow"],
+  "stacked-energy-base": ["base-back", "base-middle", "base-front", "center", "glow"],
+  "ripple-focus-base": ["background", "ripple-outer", "ripple-middle", "ripple-inner", "center"]
 } as const satisfies Record<string, readonly StarRingLayerRole[]>;
+export type StarRingRoleProfile = keyof typeof STAR_RING_ROLE_PROFILES;
 
 const ROLE_ALIASES: Record<StarRingLayerRole, string[]> = {
   background: ["background", "bg", "base", "背景", "底座"],
@@ -38,7 +49,13 @@ const ROLE_ALIASES: Record<StarRingLayerRole, string[]> = {
   "outer-ring": ["outerring", "outring", "outside", "externalring", "外环", "外围"],
   "inner-ring": ["innerring", "inside", "internalring", "内环", "内圈"],
   highlight: ["highlight", "accent", "flow", "lightpath", "高亮", "流光", "装饰"],
-  glow: ["glow", "halo", "aura", "blur", "光效", "光晕", "辉光"]
+  glow: ["glow", "halo", "aura", "blur", "光效", "光晕", "辉光"],
+  "base-back": ["baseback", "backbase", "backplate", "底层底板", "后层底板"],
+  "base-middle": ["basemiddle", "middlebase", "middleplate", "中层底板"],
+  "base-front": ["basefront", "frontbase", "frontplate", "前层底板"],
+  "ripple-outer": ["rippleouter", "outerripple", "外扩散环", "外波纹"],
+  "ripple-middle": ["ripplemiddle", "middleripple", "中扩散环", "中波纹"],
+  "ripple-inner": ["rippleinner", "innerripple", "内扩散环", "内波纹"]
 };
 
 export function createStarRingLayerConfig(role?: StarRingLayerRole | "whole", overrides: Partial<StarRingLayerConfig> = {}): StarRingLayerConfig {
@@ -69,6 +86,21 @@ export function createStarRingLayerConfig(role?: StarRingLayerRole | "whole", ov
             basicMotionConfig: breathTemplate
               ? { ...createBasicMotionConfig(breathTemplate), duration: 2.8, minScale: 0.96 }
               : undefined
+          }
+    : role === "base-back" || role === "base-middle" || role === "base-front"
+      ? {
+          motion: "stacked-energy",
+          duration: 3.2,
+          delay: 0,
+          minOpacity: role === "base-back" ? 0.2 : role === "base-middle" ? 0.34 : 0.48
+        }
+      : role === "ripple-outer" || role === "ripple-middle" || role === "ripple-inner"
+        ? {
+            motion: "pulse",
+            duration: 2.6,
+            delay: role === "ripple-inner" ? 0 : role === "ripple-middle" ? 0.36 : 0.72,
+            minScale: role === "ripple-inner" ? 0.84 : role === "ripple-middle" ? 0.9 : 0.94,
+            minOpacity: 0.18
           }
         : role === "rotating-ring"
     ? { motion: "ring-highlight", duration: 4.2 }
@@ -148,6 +180,60 @@ export function createDefaultChartTechRingConfig(): StarRingDecorationConfig {
     "饼图环形.svg",
     "dm-chart-ring-layer",
     STAR_RING_ROLE_PROFILES["chart-tech-ring"]
+  );
+  applyStarRingAssetConfig(config, asset, mapping, "preset");
+  return config;
+}
+
+export function createDefaultStackedEnergyBaseConfig(): StarRingDecorationConfig {
+  const config: StarRingDecorationConfig = {
+    version: 1,
+    kind: "stacked-energy-base",
+    centerIconSize: 47,
+    centerIconX: 50,
+    centerIconY: 25,
+    stackedEnergy: {
+      duration: 3.2,
+      layerDelay: 0.24,
+      pushDistance: 14,
+      spreadScale: 12,
+      glowStrength: 62,
+      layerGap: 7
+    },
+    sourceMode: "preset",
+    overall: { size: 170, offsetX: 0, offsetY: 0, opacity: 1, color: "#0070F3" },
+    layerMapping: emptyStarRingLayerMapping(),
+    layerConfigs: {},
+    particleEffect: createDefaultDecorationParticleConfig(false, "#0070F3")
+  };
+  const { asset, mapping } = createStarRingAssetFromMarkup(
+    stackedEnergyBaseSvgMarkup,
+    "层叠能量底座.svg",
+    "dm-stacked-energy-layer",
+    STAR_RING_ROLE_PROFILES["stacked-energy-base"]
+  );
+  applyStarRingAssetConfig(config, asset, mapping, "preset");
+  return config;
+}
+
+export function createDefaultRippleFocusBaseConfig(): StarRingDecorationConfig {
+  const config: StarRingDecorationConfig = {
+    version: 1,
+    kind: "ripple-focus-base",
+    centerIconSize: 36,
+    centerIconX: 50,
+    centerIconY: 20,
+    sourceMode: "preset",
+    overall: { size: 196, offsetX: 0, offsetY: 0, opacity: 1, color: "#20A6FF" },
+    layerMapping: emptyStarRingLayerMapping(),
+    layerConfigs: {},
+    particleEffect: createDefaultDecorationParticleConfig(false, "#20A6FF")
+  };
+  const { asset, mapping } = createStarRingAssetFromMarkup(
+    rippleFocusBaseSvgMarkup,
+    "环形扩散底座.svg",
+    "dm-ripple-focus-layer",
+    STAR_RING_ROLE_PROFILES["ripple-focus-base"]
   );
   applyStarRingAssetConfig(config, asset, mapping, "preset");
   return config;
@@ -537,13 +623,16 @@ function completeChartRingMappingByStructure(
   if (!mapping.glow.length) assign("glow", ringCandidates.shift());
 }
 
-export async function readStarRingSvgFile(file: File): Promise<{ asset: StarRingSvgAsset; mapping: StarRingLayerMapping }> {
+export async function readStarRingSvgFile(
+  file: File,
+  roleOrder: readonly StarRingLayerRole[] = STAR_RING_ROLE_PROFILES["star-ring"]
+): Promise<{ asset: StarRingSvgAsset; mapping: StarRingLayerMapping }> {
   if (!file.name.toLowerCase().endsWith(".svg") || file.type && file.type !== "image/svg+xml") {
     throw new Error("只允许上传 SVG 文件");
   }
   if (file.size > 2 * 1024 * 1024) throw new Error("SVG 文件不能超过 2MB");
 
-  return createStarRingAssetFromMarkup(await file.text(), file.name);
+  return createStarRingAssetFromMarkup(await file.text(), file.name, "dm-svg-layer", roleOrder);
 }
 
 export async function readLayeredDecorationSvgFile(file: File): Promise<StarRingSvgAsset> {

@@ -1,7 +1,9 @@
 import type {
   DecorationParticleConfig,
+  StackedEnergyMotionConfig,
   StarRingDecorationConfig,
-  StarRingLayerConfig
+  StarRingLayerConfig,
+  StarRingLayerRole
 } from "@/types/decoration";
 import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import { generateBasicMotionFrames } from "@/generators/basicMotionGenerator";
@@ -13,6 +15,8 @@ const CLASS_NAME = "dm-star-ring";
 
 function classNameFor(config: StarRingDecorationConfig): string {
   if (config.kind === "chart-tech-ring") return "dm-chart-tech-ring";
+  if (config.kind === "stacked-energy-base") return "dm-stacked-energy-base";
+  if (config.kind === "ripple-focus-base") return "dm-ripple-focus-base";
   return config.kind === "layered-decoration"
     ? "dm-layered-decoration"
     : CLASS_NAME;
@@ -25,10 +29,54 @@ function resolvedParticleEffect(config: StarRingDecorationConfig): DecorationPar
   return result;
 }
 
-function animationCss(layerKey: string, layer: StarRingLayerConfig, className = CLASS_NAME): { declaration: string; keyframes: string } {
+const DEFAULT_STACKED_ENERGY: StackedEnergyMotionConfig = {
+  duration: 3.2,
+  layerDelay: 0.24,
+  pushDistance: 14,
+  spreadScale: 12,
+  glowStrength: 62,
+  layerGap: 7
+};
+
+function normalizeStackedEnergy(value?: StackedEnergyMotionConfig): StackedEnergyMotionConfig {
+  const config = { ...DEFAULT_STACKED_ENERGY, ...value };
+  return {
+    duration: Math.min(6, Math.max(1.6, config.duration)),
+    layerDelay: Math.min(0.8, Math.max(0, config.layerDelay)),
+    pushDistance: Math.min(36, Math.max(0, config.pushDistance)),
+    spreadScale: Math.min(24, Math.max(0, config.spreadScale)),
+    glowStrength: Math.min(100, Math.max(0, config.glowStrength)),
+    layerGap: Math.min(24, Math.max(0, config.layerGap))
+  };
+}
+
+function stackedEnergyFrames(role: StarRingLayerRole | undefined, config: StackedEnergyMotionConfig): string {
+  const glowRatio = config.glowStrength / 100;
+  const glow = Number((2 + glowRatio * 12).toFixed(2));
+  const bright = Number((1.04 + glowRatio * 0.9).toFixed(2));
+  const spread = Number((1 + config.spreadScale / 100).toFixed(3));
+  if (role === "base-back") {
+    return `0%,100%{transform:translateY(${config.layerGap}px) scale(.96);opacity:.18;filter:brightness(.72) drop-shadow(0 0 0 transparent)}48%{transform:translateY(${Number((config.layerGap - config.pushDistance * .35).toFixed(2))}px) scale(${spread});opacity:.64;filter:brightness(${Number((1 + glowRatio * .48).toFixed(2))}) drop-shadow(0 0 ${Number((glow * .7).toFixed(2))}px color-mix(in srgb,var(--star-ring-color) ${Math.round(38 + glowRatio * 34)}%,transparent))}`;
+  }
+  if (role === "base-middle") {
+    return `0%,100%{transform:translateY(${Number((config.pushDistance * .45).toFixed(2))}px) scale(.97);opacity:.28;filter:brightness(.82) drop-shadow(0 0 0 transparent)}50%{transform:translateY(-${Number((config.pushDistance * .28).toFixed(2))}px) scale(1.025);opacity:.86;filter:brightness(${Number((1.08 + glowRatio * .54).toFixed(2))}) drop-shadow(0 0 ${Number((glow * .82).toFixed(2))}px color-mix(in srgb,var(--star-ring-color) ${Math.round(45 + glowRatio * 38)}%,transparent))}`;
+  }
+  return `0%,100%{transform:translateY(-${config.layerGap}px) scale(.985);opacity:.46;filter:brightness(.9) drop-shadow(0 0 ${Number((glow * .2).toFixed(2))}px color-mix(in srgb,var(--star-ring-color) 26%,transparent))}44%,58%{transform:translateY(-${Number((config.layerGap + config.pushDistance * .22).toFixed(2))}px) scale(1.02);opacity:1;filter:brightness(${bright}) drop-shadow(0 0 ${glow}px color-mix(in srgb,var(--star-ring-color) ${Math.round(58 + glowRatio * 34)}%,transparent))}`;
+}
+
+function animationCss(layerKey: string, layer: StarRingLayerConfig, className = CLASS_NAME, role?: StarRingLayerRole, stackedEnergy?: StackedEnergyMotionConfig): { declaration: string; keyframes: string } {
   const safeKey = layerKey.replace(/[^a-zA-Z0-9-]/g, "-");
   const name = `${className}-${safeKey}-${layer.motion}`;
   if (layer.motion === "none") return { declaration: "animation:none;", keyframes: "" };
+  if (layer.motion === "stacked-energy") {
+    const config = normalizeStackedEnergy(stackedEnergy);
+    const roleIndex = role === "base-middle" ? 1 : role === "base-front" ? 2 : 0;
+    const delay = Number((roleIndex * config.layerDelay).toFixed(3));
+    return {
+      declaration: `animation:${name} ${config.duration}s ease-in-out ${delay}s infinite both;will-change:transform,opacity,filter;`,
+      keyframes: `@keyframes ${name}{${stackedEnergyFrames(role, config)}}`
+    };
+  }
   if (layer.motion === "basic" && layer.basicMotionId) {
     const template = basicMotions.find((motion) => motion.id === layer.basicMotionId);
     if (!template) return { declaration: "animation:none;", keyframes: "" };
@@ -55,8 +103,8 @@ function animationCss(layerKey: string, layer: StarRingLayerConfig, className = 
   }
   if (layer.motion === "pulse") {
     return {
-      declaration: `animation:${name} ${layer.duration}s ease-in-out ${layer.delay}s infinite alternate;`,
-      keyframes: `@keyframes ${name}{from{transform:scale(${layer.minScale})}to{transform:scale(1)}}`
+      declaration: `animation:${name} ${layer.duration}s ease-out ${layer.delay}s infinite both;`,
+      keyframes: `@keyframes ${name}{0%{transform:scale(${layer.minScale});opacity:${layer.minOpacity}}58%{transform:scale(1);opacity:1}100%{transform:scale(1.08);opacity:0}}`
     };
   }
   return {
@@ -88,11 +136,11 @@ ${directionRules}
 @keyframes ${name}{0%,100%{filter:brightness(.68) saturate(.82) drop-shadow(0 0 0 transparent)}10%{filter:brightness(.9) saturate(.96) drop-shadow(0 0 2px color-mix(in srgb,var(--star-ring-color) 45%,transparent))}18%{filter:brightness(1.72) saturate(1.28) drop-shadow(0 0 3px var(--star-ring-color)) drop-shadow(0 0 10px color-mix(in srgb,var(--star-ring-color) 82%,transparent))}30%{filter:brightness(1.08) saturate(1.04) drop-shadow(0 0 4px color-mix(in srgb,var(--star-ring-color) 42%,transparent))}48%{filter:brightness(.76) saturate(.88) drop-shadow(0 0 0 transparent)}}`;
 }
 
-function layerCss(layerKey: string, layer: StarRingLayerConfig, isRotatingRing = false, segmentCount = 0, isParticleLayer = false, className = CLASS_NAME): string {
+function layerCss(layerKey: string, layer: StarRingLayerConfig, isRotatingRing = false, segmentCount = 0, isParticleLayer = false, className = CLASS_NAME, role?: StarRingLayerRole, stackedEnergy?: StackedEnergyMotionConfig): string {
   const target = `[data-dm-node-key="${layerKey}"]`;
   const motionTarget = `:is([data-dm-motion-target="${layerKey}"],[data-dm-node-key="${layerKey}"]:not([data-dm-has-motion-wrapper]))`;
   const usesRingHighlight = isRotatingRing && (layer.motion === "ring-highlight" || layer.motion === "rotate");
-  const animation = usesRingHighlight ? { declaration: "animation:none;", keyframes: "" } : animationCss(layerKey, layer, className);
+  const animation = usesRingHighlight ? { declaration: "animation:none;", keyframes: "" } : animationCss(layerKey, layer, className, role, stackedEnergy);
   const hidden = layer.visible ? "" : "display:none !important;";
   const particleStrength = Math.min(100, Math.max(0, layer.particleIntensity ?? 70)) / 100;
   const effectiveOpacity = isParticleLayer ? Number((layer.opacity * particleStrength).toFixed(3)) : layer.opacity;
@@ -221,9 +269,11 @@ export function generateStarRingMarkup(config: StarRingDecorationConfig): string
   const className = classNameFor(config);
   const particleEffect = resolvedParticleEffect(config);
   const chartContentMarkup = config.kind === "chart-tech-ring" ? config.chartContentSvg?.markup ?? "" : "";
+  const centerIconMarkup = config.centerIconSvg?.markup ?? "";
   const content = config.svg
     ? `<div class="${className}__import">${importedMarkup(config)}</div>
   ${config.kind === "chart-tech-ring" ? `<div class="${className}__content" data-chart-content>${chartContentMarkup}</div>` : ""}
+  ${centerIconMarkup ? `<div class="${className}__center-icon" data-center-icon>${centerIconMarkup}</div>` : ""}
   ${generateDecorationParticleMarkup(particleEffect, config.overall.color)}`
     : "";
   return `<div class="${className}" data-source="${config.sourceMode}">${content}</div>`;
@@ -233,11 +283,15 @@ export function generateStarRingCss(config: StarRingDecorationConfig): string {
   const className = classNameFor(config);
   const overall = config.overall;
   const particleEffect = resolvedParticleEffect(config);
-  const usesSourceSize = config.sourceMode === "imported" || config.kind === "layered-decoration" || config.kind === "chart-tech-ring";
+  const usesSourceSize = config.sourceMode === "imported"
+    || config.kind === "layered-decoration"
+    || config.kind === "chart-tech-ring"
+    || config.kind === "ripple-focus-base";
   const importedWidth = usesSourceSize ? config.svg?.width : undefined;
   const importedHeight = usesSourceSize ? config.svg?.height : undefined;
   const outputWidth = Math.max(1, importedWidth ?? overall.size);
-  const outputHeight = Math.max(1, importedHeight ?? Math.round(overall.size * 0.7));
+  const sourceRatio = config.svg?.width && config.svg?.height ? config.svg.height / config.svg.width : 0.7;
+  const outputHeight = Math.max(1, importedHeight ?? Math.round(outputWidth * sourceRatio));
   const roleCss = Object.entries(config.layerConfigs)
     .filter(([key]) => key !== "system-particles")
     .map(([key, layer]) => {
@@ -246,14 +300,19 @@ export function generateStarRingCss(config: StarRingDecorationConfig): string {
         ...(config.layerMapping.highlight ?? [])
       ].includes(key);
       const isParticleLayer = config.layerMapping.particles.includes(key);
+      const role = (Object.keys(config.layerMapping) as StarRingLayerRole[]).find((candidate) => config.layerMapping[candidate].includes(key));
       const segmentCount = config.svg?.layers.find((candidate) => candidate.key === key)?.highlightSegmentCount ?? 0;
-      return layerCss(key, layer, isRotatingRing, segmentCount, isParticleLayer, className);
+      return layerCss(key, layer, isRotatingRing, segmentCount, isParticleLayer, className, role, config.stackedEnergy);
     })
     .filter(Boolean)
     .join("\n");
+  const centerSourceCss = config.centerIconSvg
+    ? (config.layerMapping.center ?? []).map((key) => `.${className} [data-dm-node-key="${key}"]{display:none!important;}`).join("\n")
+    : "";
   return `.${className}{--star-ring-color:${overall.color};--chart-content-size:${Math.max(1, config.chartContentSize ?? 208)}px;position:relative;width:${outputWidth}px;aspect-ratio:${outputWidth}/${outputHeight};height:auto;opacity:${overall.opacity};transform:translate(${overall.offsetX}px,${overall.offsetY}px);isolation:isolate;}
 .${className}__import{position:absolute;z-index:1;inset:0;display:grid;place-items:center;}
 .${className}__import svg{display:block;width:100%;height:100%;overflow:visible;}
+${centerIconMarkupCss(className, config)}
 ${config.kind === "chart-tech-ring" ? `.${className}__content{position:absolute;z-index:2;left:50%;top:50%;display:grid;place-items:center;width:var(--chart-content-size);height:var(--chart-content-size);transform:translate(-50%,-50%);border-radius:50%;}
 .${className}__content>svg{display:block;width:100%;height:100%;overflow:visible;}` : ""}
 .${className}[data-source] :is([data-dm-motion-target],[data-dm-node-key]){${config.kind === "chart-tech-ring" ? "transform-box:view-box;transform-origin:50% 50%;" : ""}}
@@ -261,7 +320,17 @@ ${config.kind === "chart-tech-ring" ? `.${className} [data-dm-ring-sweep-source]
 .${className}__layer{position:absolute;inset:0;transform-origin:center;}
 @media (prefers-reduced-motion:reduce){.${className} [data-dm-node-key],.${className} [data-dm-motion-target],.${className} [data-dm-ring-segment]{animation:none!important;filter:none!important;}}
 ${particleEffect.enabled ? generateDecorationParticleCss() : ""}
+${centerSourceCss}
 ${roleCss}`;
+}
+
+function centerIconMarkupCss(className: string, config: StarRingDecorationConfig): string {
+  if (!config.centerIconSvg) return "";
+  const size = Math.max(8, config.centerIconSize ?? 40);
+  const x = Math.min(100, Math.max(0, config.centerIconX ?? 50));
+  const y = Math.min(100, Math.max(0, config.centerIconY ?? 30));
+  return `.${className}__center-icon{position:absolute;z-index:4;left:${x}%;top:${y}%;display:grid;place-items:center;width:${size}px;height:${size}px;transform:translate(-50%,-50%);pointer-events:none;}
+.${className}__center-icon>svg{display:block;width:100%;height:100%;overflow:visible;}`;
 }
 
 export function generateStarRingHtmlCss(config: StarRingDecorationConfig): string {

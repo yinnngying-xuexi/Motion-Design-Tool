@@ -37,10 +37,11 @@
             >
               <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
                 <div
-                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow' || effect.previewType === 'loading'"
+                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow' || effect.previewType === 'flow-marker' || effect.previewType === 'loading'"
                   class="real-effect-thumbnail"
                   :class="{
                     'path-flow-thumbnail': effect.previewType === 'svg-flow',
+                    'flow-marker-thumbnail': effect.previewType === 'flow-marker',
                     'loading-thumbnail': effect.previewType === 'loading',
                     'chart-ring-thumbnail': effect.id === 'chart-tech-ring-01'
                   }"
@@ -67,6 +68,7 @@
           <p>{{ currentEffect.description }}</p>
         </div>
         <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
+        <input ref="centerIconFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleCenterIconUpload" />
         <input ref="backgroundFileInput" class="hidden-file-input" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" @change="handleBackgroundUpload" />
       </header>
 
@@ -278,12 +280,14 @@
         <StarRingParamPanel
           v-if="isLayeredDecoration"
           :model-value="activeLayeredConfig"
-          :show-import-guide="isStarRing"
+          :show-import-guide="isStarRing || isReplaceableIconBase"
           @update:model-value="updateLayeredConfig"
           @use-preset="restoreLayeredPreset"
           @remap="openCurrentMapping"
           @show-import-guide="starRingGuideVisible = true"
           @remove-chart-content="removeChartContent"
+          @replace-center-icon="triggerCenterIconImport"
+          @remove-center-icon="removeCenterIcon"
         />
         <template v-else-if="isSvgFlow">
           <div class="flow-param-stack">
@@ -407,6 +411,44 @@
             </section>
           </div>
         </template>
+        <template v-else-if="isGeneralDecoration">
+          <div class="flow-param-stack">
+            <section v-for="section in generalParamSections" :key="section.title" class="flow-param-section">
+              <h3>{{ section.title }}</h3>
+              <div v-for="paramItem in section.params" :key="paramItem.key" class="param-control">
+                <label>
+                  <span>{{ paramItem.label }}</span>
+                  <small v-if="paramItem.unit">{{ paramItem.unit }}</small>
+                </label>
+                <div v-if="paramItem.type === 'color'" class="color-row">
+                  <el-color-picker v-model="params[paramItem.key]" />
+                  <el-input v-model="params[paramItem.key]" />
+                </div>
+                <el-select v-else-if="paramItem.type === 'select'" v-model="params[paramItem.key]">
+                  <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
+                </el-select>
+                <el-input v-else-if="paramItem.type === 'text'" v-model="params[paramItem.key]" maxlength="24" />
+                <div v-else class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
+        </template>
         <template v-else-if="!isLayeredDecoration">
           <div class="param-stack">
             <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
@@ -450,7 +492,7 @@
             </div>
           </div>
           <SvgStylePanel
-            v-if="importedSvg && !isSvgFlow"
+            v-if="importedSvg && !isSvgFlow && !isGeneralSvgDecoration"
             :model-value="svgStyle"
             :primary-color="importedSvg.primaryColor"
             @update:model-value="updateSvgStyle"
@@ -469,11 +511,11 @@
       v-model="mappingDialogVisible"
       :asset="pendingStarRingAsset"
       :mapping="pendingStarRingMapping"
-      :role-profile="isChartTechRing ? 'chart-tech-ring' : 'star-ring'"
+      :role-profile="currentRoleProfile"
       @confirm="confirmStarRingMapping"
     />
 
-    <StarRingImportGuideDialog v-model="starRingGuideVisible" />
+    <StarRingImportGuideDialog v-model="starRingGuideVisible" :guide-type="currentImportGuideType" />
 
   </section>
 </template>
@@ -505,7 +547,7 @@ import StarRingParamPanel from "@/modules/decoration-library/StarRingParamPanel.
 import StarRingMappingDialog from "@/modules/decoration-library/StarRingMappingDialog.vue";
 import StarRingImportGuideDialog from "@/modules/decoration-library/StarRingImportGuideDialog.vue";
 import DecorationParticlePanel from "@/modules/decoration-library/DecorationParticlePanel.vue";
-import { applyImportedLayeredDecorationConfig, applyImportedStarRingConfig, createDefaultChartTechRingConfig, createDefaultLayeredDecorationConfig, createDefaultStarRingConfig, readLayeredDecorationSvgFile, readStarRingSvgFile, renameStarRingAssetLayers } from "@/utils/starRingDecoration";
+import { applyImportedLayeredDecorationConfig, applyImportedStarRingConfig, createDefaultChartTechRingConfig, createDefaultLayeredDecorationConfig, createDefaultRippleFocusBaseConfig, createDefaultStackedEnergyBaseConfig, createDefaultStarRingConfig, readLayeredDecorationSvgFile, readStarRingSvgFile, renameStarRingAssetLayers, STAR_RING_ROLE_PROFILES, type StarRingRoleProfile } from "@/utils/starRingDecoration";
 import { createDefaultDecorationParticleConfig, normalizeDecorationParticleConfig } from "@/utils/decorationParticles";
 import {
   loadDecorationPreviewBackground,
@@ -528,6 +570,8 @@ const previewSpeed = ref(1);
 const params = reactive<Record<string, string | number>>({});
 const starRingConfig = ref<StarRingDecorationConfig>(createDefaultStarRingConfig());
 const chartTechRingConfig = ref<StarRingDecorationConfig>(createDefaultChartTechRingConfig());
+const stackedEnergyBaseConfig = ref<StarRingDecorationConfig>(createDefaultStackedEnergyBaseConfig());
+const rippleFocusBaseConfig = ref<StarRingDecorationConfig>(createDefaultRippleFocusBaseConfig());
 const subtitleSweepConfig = ref<StarRingDecorationConfig>(createDefaultLayeredDecorationConfig("subtitle-sweep"));
 const pendingStarRingAsset = ref<StarRingSvgAsset>();
 const pendingStarRingMapping = ref<StarRingLayerMapping>(createDefaultStarRingConfig().layerMapping);
@@ -539,6 +583,7 @@ const importedSvg = ref<SvgPreviewAsset>();
 const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
 const particleEffect = ref<DecorationParticleConfig>(createDefaultDecorationParticleConfig());
 const svgFileInput = ref<HTMLInputElement>();
+const centerIconFileInput = ref<HTMLInputElement>();
 const backgroundFileInput = ref<HTMLInputElement>();
 const previewCapture = ref<HTMLElement>();
 const previewViewport = ref({ width: 800, height: 480 });
@@ -577,12 +622,35 @@ const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
 const isBackgroundSweep = computed(() => currentEffect.value.id === "svg-flow-double-guide");
 const isStarRing = computed(() => currentEffect.value.id === "base-particle-star-ring");
 const isChartTechRing = computed(() => currentEffect.value.id === "chart-tech-ring-01");
-const isLayeredRingDecoration = computed(() => isStarRing.value || isChartTechRing.value);
+const isStackedEnergyBase = computed(() => currentEffect.value.id === "icon-base-stacked-energy");
+const isRippleFocusBase = computed(() => currentEffect.value.id === "icon-base-ripple-focus");
+const isReplaceableIconBase = computed(() => isStackedEnergyBase.value || isRippleFocusBase.value);
+const isLayeredRingDecoration = computed(() => isStarRing.value || isChartTechRing.value || isReplaceableIconBase.value);
 const isSubtitleSweep = computed(() => currentEffect.value.id === "subtitle-orbit-sweep-01");
-const supportsImportedSvg = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value || isSvgFlow.value || currentEffect.value.generator === "loading-icon-pulse");
+const isFlowMarker = computed(() => currentEffect.value.generator === "flow-marker");
+const isSequenceMarker = computed(() => currentEffect.value.generator === "flow-marker-sequence");
+const isCornerFocus = computed(() => currentEffect.value.generator === "corner-focus");
+const isGeneralDecoration = computed(() => currentEffect.value.section === "通用装饰");
+const isGeneralSvgDecoration = computed(() => isFlowMarker.value || isSequenceMarker.value || isCornerFocus.value);
+const supportsImportedSvg = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value || isSvgFlow.value || isGeneralSvgDecoration.value || currentEffect.value.generator === "loading-icon-pulse");
 const supportsParticleEffect = computed(() => currentEffect.value.section !== "loading");
 const isLayeredDecoration = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value);
-const activeRingConfig = computed(() => isChartTechRing.value ? chartTechRingConfig.value : starRingConfig.value);
+const activeRingConfig = computed(() => isChartTechRing.value
+  ? chartTechRingConfig.value
+  : isStackedEnergyBase.value
+    ? stackedEnergyBaseConfig.value
+    : isRippleFocusBase.value
+      ? rippleFocusBaseConfig.value
+      : starRingConfig.value);
+const currentRoleProfile = computed<StarRingRoleProfile>(() => isChartTechRing.value
+  ? "chart-tech-ring"
+  : isStackedEnergyBase.value
+    ? "stacked-energy-base"
+    : isRippleFocusBase.value
+      ? "ripple-focus-base"
+      : "star-ring");
+const currentImportGuideType = computed<"star-ring" | "stacked-energy-base" | "ripple-focus-base">(() =>
+  isStackedEnergyBase.value ? "stacked-energy-base" : isRippleFocusBase.value ? "ripple-focus-base" : "star-ring");
 const activeLayeredConfig = computed(() => isSubtitleSweep.value ? subtitleSweepConfig.value : activeRingConfig.value);
 const activeParticleEffect = computed(() => isLayeredRingDecoration.value
   ? normalizeDecorationParticleConfig(activeRingConfig.value.particleEffect, isStarRing.value, activeRingConfig.value.overall.color)
@@ -597,12 +665,38 @@ const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColo
 const flowShapeParams = computed(() => ["flowAmplitude", "flowFocusPosition", "flowLeftEndWidth", "flowRightEndWidth"]
   .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
   .filter((item): item is NonNullable<typeof item> => Boolean(item)));
+const generalParamSections = computed(() => [
+  {
+    title: "素材设置",
+    keys: ["shape", "markerCount", "size", "markerGap", "color", "cornerStyle", "cornerCount", "targetWidth", "targetHeight", "cornerLength", "pathStyle", "endpointStyle", "length", "bend", "borderWidth", "lineWidth", "trackOpacity"]
+  },
+  {
+    title: "运动设置",
+    keys: ["direction", "distance", "speed", "focusDistance", "duration", "pause", "easing", "flowCount"]
+  },
+  {
+    title: "光效设置",
+    keys: ["minOpacity", "glowIntensity", "tailLength", "afterglow"]
+  }
+].map((section) => ({
+  title: section.title,
+  params: section.keys
+    .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+})).filter((section) => section.params.length));
 const flowTargets = computed(() => svgSource.value?.targets ?? []);
 const previewIntrinsicSize = computed(() => {
   if (isSvgFlow.value && svgSource.value) {
     return { width: svgSource.value.width, height: svgSource.value.height };
   }
   if (isLayeredRingDecoration.value && activeRingConfig.value.svg) {
+    if (isStackedEnergyBase.value && activeRingConfig.value.sourceMode === "preset") {
+      const source = activeRingConfig.value.svg;
+      return {
+        width: activeRingConfig.value.overall.size,
+        height: activeRingConfig.value.overall.size * source.height / source.width
+      };
+    }
     return { width: activeRingConfig.value.svg.width, height: activeRingConfig.value.svg.height };
   }
   if (isSubtitleSweep.value && subtitleSweepConfig.value.svg) {
@@ -620,8 +714,12 @@ const previewFitStyle = computed(() => {
   const previewWidthRatio = isSvgFlow.value ? 0.74 : 0.9;
   const availableWidth = Math.max(1, previewViewport.value.width * previewWidthRatio);
   const availableHeight = Math.max(1, previewViewport.value.height * 0.78);
-  const importedStarRingScale = isLayeredRingDecoration.value && activeRingConfig.value.sourceMode === "imported" ? 0.82 : 1;
-  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight) * importedStarRingScale;
+  const decorationPreviewScale = isStackedEnergyBase.value
+    ? 0.62
+    : isLayeredRingDecoration.value && activeRingConfig.value.sourceMode === "imported"
+      ? 0.82
+      : 1;
+  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight) * decorationPreviewScale;
   return {
     width: `${sourceWidth * scale}px`,
     height: `${sourceHeight * scale}px`
@@ -859,8 +957,16 @@ const previewMarkup = computed(() => isSubtitleSweep.value
   : isLayeredRingDecoration.value ? `<style>${cssCode.value}</style>${generateStarRingMarkup(activeRingConfig.value)}`
   : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value, "main", activeParticleEffect.value)}`);
 const previewDuration = computed(() => {
+  if (isFlowMarker.value) {
+    return Number(params.distance ?? 240) / Math.max(1, Number(params.speed ?? 120));
+  }
+  if (isSequenceMarker.value || isCornerFocus.value) {
+    return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0)
+      + Number(params.pause ?? currentEffect.value.defaultParams.pause ?? 0);
+  }
   if (!isLayeredRingDecoration.value && !isSubtitleSweep.value) return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0);
   if (isSubtitleSweep.value) return Number(params.duration ?? 2.8);
+  if (isStackedEnergyBase.value) return Number(activeRingConfig.value.stackedEnergy?.duration ?? 3.2);
   return Math.max(...Object.values(activeRingConfig.value.layerConfigs)
     .filter((layer) => layer.visible && layer.motion !== "none")
     .map((layer) => layer.motion === "basic" ? Number(layer.basicMotionConfig?.duration ?? layer.duration) : layer.duration), 0);
@@ -959,6 +1065,20 @@ function selectEffect(id: string): void {
   activeEffectId.value = id;
 }
 
+function createCurrentRingDefault(): StarRingDecorationConfig {
+  if (isChartTechRing.value) return createDefaultChartTechRingConfig();
+  if (isStackedEnergyBase.value) return createDefaultStackedEnergyBaseConfig();
+  if (isRippleFocusBase.value) return createDefaultRippleFocusBaseConfig();
+  return createDefaultStarRingConfig();
+}
+
+function setActiveRingConfig(value: StarRingDecorationConfig): void {
+  if (isChartTechRing.value) chartTechRingConfig.value = value;
+  else if (isStackedEnergyBase.value) stackedEnergyBaseConfig.value = value;
+  else if (isRippleFocusBase.value) rippleFocusBaseConfig.value = value;
+  else starRingConfig.value = value;
+}
+
 function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
   if (effect.id === "chart-tech-ring-01") {
     const config = createDefaultChartTechRingConfig();
@@ -966,6 +1086,14 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
   }
   if (effect.id === "base-particle-star-ring") {
     const config = createDefaultStarRingConfig();
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  }
+  if (effect.id === "icon-base-stacked-energy") {
+    const config = createDefaultStackedEnergyBaseConfig();
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  }
+  if (effect.id === "icon-base-ripple-focus") {
+    const config = createDefaultRippleFocusBaseConfig();
     return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
   }
   if (effect.id === "subtitle-orbit-sweep-01") {
@@ -983,7 +1111,6 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
 function resetParams(): void {
   if (isLayeredRingDecoration.value) {
     const current = activeRingConfig.value;
-    const createDefault = isChartTechRing.value ? createDefaultChartTechRingConfig : createDefaultStarRingConfig;
     if (isChartTechRing.value) {
       const next = createDefaultChartTechRingConfig();
       next.chartContentSvg = current.chartContentSvg;
@@ -993,11 +1120,20 @@ function resetParams(): void {
       return;
     }
     if (current.sourceMode === "imported" && current.svg) {
-      const next = createDefault();
+      const next = createCurrentRingDefault();
       applyImportedStarRingConfig(next, current.svg, current.layerMapping);
-      starRingConfig.value = next;
+      next.centerIconSvg = current.centerIconSvg;
+      next.centerIconSize = current.centerIconSize;
+      next.centerIconX = current.centerIconX;
+      next.centerIconY = current.centerIconY;
+      setActiveRingConfig(next);
     } else {
-      starRingConfig.value = createDefaultStarRingConfig();
+      const next = createCurrentRingDefault();
+      next.centerIconSvg = current.centerIconSvg;
+      next.centerIconSize = current.centerIconSize;
+      next.centerIconX = current.centerIconX;
+      next.centerIconY = current.centerIconY;
+      setActiveRingConfig(next);
     }
     importedSvg.value = undefined;
     return;
@@ -1102,12 +1238,11 @@ async function handleSvgUpload(event: Event): Promise<void> {
       ElMessage.success(`已读取 ${asset.mode === "layered" ? asset.layers.length : 1} 个素材图层，并自动添加移动光效`);
       void replayPreview();
     } else if (isLayeredRingDecoration.value) {
-      const { asset, mapping } = await readStarRingSvgFile(file);
+      const { asset, mapping } = await readStarRingSvgFile(file, STAR_RING_ROLE_PROFILES[currentRoleProfile.value]);
       if (asset.mode === "whole") {
-        const next = isChartTechRing.value ? createDefaultChartTechRingConfig() : createDefaultStarRingConfig();
+        const next = createCurrentRingDefault();
         applyImportedStarRingConfig(next, asset, mapping);
-        if (isChartTechRing.value) chartTechRingConfig.value = next;
-        else starRingConfig.value = next;
+        setActiveRingConfig(next);
         ElMessage.success("SVG 已按整体素材导入");
       } else {
         pendingStarRingAsset.value = asset;
@@ -1122,12 +1257,16 @@ async function handleSvgUpload(event: Event): Promise<void> {
         : await readSvgFlowFile(file, currentEffect.value.id === "svg-flow-tool-02" ? "double" : "single");
       importedSvg.value = undefined;
       ElMessage.success(isBackgroundSweep.value ? "完整 SVG 已作为标题背景读取，水波纹已自动应用" : "SVG 路径已读取");
-    } else if (currentEffect.value.generator === "loading-icon-pulse") {
+    } else if (currentEffect.value.generator === "loading-icon-pulse" || isGeneralSvgDecoration.value) {
       const previewAsset = await readSvgPreviewFile(file);
       importedSvg.value = previewAsset;
       Object.assign(svgStyle, createDefaultSvgStyleConfig(previewAsset.primaryColor));
       params.color = previewAsset.primaryColor;
-      ElMessage.success("SVG 已替换默认加载图标");
+      if (isFlowMarker.value || isSequenceMarker.value) params.shape = "custom-svg";
+      if (isCornerFocus.value) params.cornerStyle = "custom-svg";
+      ElMessage.success(isCornerFocus.value
+        ? "SVG 已作为自定义角标应用"
+        : isGeneralSvgDecoration.value ? "SVG 已作为自定义标记应用" : "SVG 已替换默认加载图标");
     }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "SVG 上传失败");
@@ -1147,8 +1286,7 @@ function updateStarRingConfig(value: StarRingDecorationConfig): void {
 
 function updateLayeredConfig(value: StarRingDecorationConfig): void {
   if (isSubtitleSweep.value) subtitleSweepConfig.value = value;
-  else if (isChartTechRing.value) chartTechRingConfig.value = value;
-  else starRingConfig.value = value;
+  else setActiveRingConfig(value);
   void replayPreview();
 }
 
@@ -1158,6 +1296,40 @@ function removeChartContent(): void {
   delete next.chartContentSvg;
   chartTechRingConfig.value = next;
   ElMessage.success("已移除中心图表素材，系统外环保持不变");
+  void replayPreview();
+}
+
+function triggerCenterIconImport(): void {
+  centerIconFileInput.value?.click();
+}
+
+async function handleCenterIconUpload(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || !isReplaceableIconBase.value) return;
+  try {
+    const asset = await readLayeredDecorationSvgFile(file);
+    setActiveRingConfig({
+      ...activeRingConfig.value,
+      centerIconSvg: asset,
+      centerIconSize: activeRingConfig.value.centerIconSize ?? (isStackedEnergyBase.value ? 47 : 36),
+      centerIconX: activeRingConfig.value.centerIconX ?? 50,
+      centerIconY: activeRingConfig.value.centerIconY ?? (isStackedEnergyBase.value ? 25 : 20)
+    });
+    ElMessage.success("中心图标已替换，底座分层动效保持不变");
+    void replayPreview();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "中心图标读取失败");
+  }
+}
+
+function removeCenterIcon(): void {
+  if (!isReplaceableIconBase.value || !activeRingConfig.value.centerIconSvg) return;
+  const next = JSON.parse(JSON.stringify(activeRingConfig.value)) as StarRingDecorationConfig;
+  delete next.centerIconSvg;
+  setActiveRingConfig(next);
+  ElMessage.success("已恢复案例内置中心图标");
   void replayPreview();
 }
 
@@ -1174,13 +1346,14 @@ function restoreLayeredPreset(): void {
     void replayPreview();
     return;
   }
-  restoreStarRingPreset();
+  setActiveRingConfig(createCurrentRingDefault());
+  ElMessage.success("已恢复系统预设素材");
+  void replayPreview();
 }
 
 function updateParticleEffect(value: DecorationParticleConfig): void {
   if (isLayeredRingDecoration.value) {
-    if (isChartTechRing.value) chartTechRingConfig.value = { ...chartTechRingConfig.value, particleEffect: value };
-    else starRingConfig.value = { ...starRingConfig.value, particleEffect: value };
+    setActiveRingConfig({ ...activeRingConfig.value, particleEffect: value });
   } else {
     particleEffect.value = value;
   }
@@ -1207,18 +1380,25 @@ function confirmStarRingMapping(mapping: StarRingLayerMapping, labels: Record<st
   if (!pendingAsset) return;
   const asset = renameStarRingAssetLayers(pendingAsset, labels);
   const previous = activeRingConfig.value;
-  const next = isChartTechRing.value ? createDefaultChartTechRingConfig() : createDefaultStarRingConfig();
+  const next = createCurrentRingDefault();
   applyImportedStarRingConfig(next, asset, mapping);
   if (remappingExistingAsset.value) {
     next.particleEffect = previous.particleEffect;
+    next.centerIconSvg = previous.centerIconSvg;
+    next.centerIconSize = previous.centerIconSize;
+    next.centerIconX = previous.centerIconX;
+    next.centerIconY = previous.centerIconY;
+    if (isStackedEnergyBase.value) {
+      next.stackedEnergy = previous.stackedEnergy;
+      next.overall.size = previous.overall.size;
+    }
     if (isChartTechRing.value) next.chartContentSize = previous.chartContentSize;
     Object.keys(next.layerConfigs).forEach((key) => {
       const old = previous.layerConfigs[key];
       if (old) next.layerConfigs[key] = { ...old, visible: next.layerConfigs[key].visible };
     });
   }
-  if (isChartTechRing.value) chartTechRingConfig.value = next;
-  else starRingConfig.value = next;
+  setActiveRingConfig(next);
   pendingStarRingAsset.value = asset;
   pendingStarRingMapping.value = mapping;
   remappingExistingAsset.value = false;
@@ -1297,7 +1477,12 @@ function downloadHtml(): void {
     : isSubtitleSweep.value && subtitleSweepConfig.value.svg
       ? { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height }
       : isLayeredRingDecoration.value && activeRingConfig.value.svg
-      ? { width: activeRingConfig.value.svg.width, height: activeRingConfig.value.svg.height }
+      ? isStackedEnergyBase.value && activeRingConfig.value.sourceMode === "preset"
+        ? {
+            width: activeRingConfig.value.overall.size,
+            height: activeRingConfig.value.overall.size * activeRingConfig.value.svg.height / activeRingConfig.value.svg.width
+          }
+        : { width: activeRingConfig.value.svg.width, height: activeRingConfig.value.svg.height }
       : undefined;
   const bodyStyle = exportSize
     ? `margin:0;width:${exportSize.width}px;height:${exportSize.height}px;background:#000;overflow:hidden;`
@@ -1318,10 +1503,10 @@ ${htmlCss.value}
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${isSubtitleSweep.value || currentEffect.value.section === "loading"
+  anchor.download = `${isSubtitleSweep.value || currentEffect.value.section === "loading" || isGeneralDecoration.value
     ? currentEffect.value.name
     : isLayeredRingDecoration.value
-      ? isChartTechRing.value ? currentEffect.value.name : "star-ring-base"
+      ? isStarRing.value ? "star-ring-base" : currentEffect.value.name
       : (svgSource.value?.fileName.replace(/\.svg$/i, "") || "path-flow")}.html`;
   anchor.click();
   URL.revokeObjectURL(url);
@@ -1561,6 +1746,13 @@ async function restoreSvgFlow(): Promise<void> {
   top: 50%;
   width: 320px;
   height: 160px;
+  transform: translate(-50%, -50%) scale(0.18);
+}
+
+.real-effect-thumbnail.flow-marker-thumbnail {
+  top: 50%;
+  width: 280px;
+  height: 88px;
   transform: translate(-50%, -50%) scale(0.18);
 }
 
