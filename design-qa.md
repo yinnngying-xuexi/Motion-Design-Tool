@@ -1,36 +1,34 @@
-**Design QA**
+# 横向进度条外层背景移除 QA
 
-- Source visual truth: `C:\Users\asus\Downloads\ChatGPT Image 2026年6月29日 10_17_37.png`
-- Implementation: `http://127.0.0.1:5173/`
-- Target viewport: `1813 x 868`
-- State: 基础动效库，默认选中“淡入”
-- Full-view comparison evidence: source image opened successfully; an implementation capture was reviewed after the first styling pass, but the final Browser capture repeatedly timed out after the last polish pass.
-- Focused comparison evidence: DOM and computed-style checks confirmed the dark input surface, blue primary action, three-column structure, and viewport-contained layout. A final focused image capture was unavailable.
+- source screenshot: `C:\Users\asus\AppData\Local\Temp\codex-clipboard-75431a05-7e6a-41da-b584-571dfbadcf1a.png`
+- implementation screenshot: `F:\codex文件\loading\loading-qa-horizontal-progress-transparent.png`
+- focused comparison: `F:\codex文件\loading\loading-qa-horizontal-progress-transparent-comparison.png`
+- viewport: `1680 × 940` CSS px，deviceScaleFactor `1`
+- state: 装饰组件 → loading → 横向进度条；无限加载；默认参数
 
-**Findings**
+## Full-view comparison evidence
 
-- [P1] Final visual capture unavailable
-  Location: final implementation screenshot.
-  Evidence: Browser DOM and computed styles are available, but final screenshot capture timed out repeatedly.
-  Impact: the final pixel-level comparison cannot be completed reliably.
-  Fix: reopen or refresh the in-app Browser capture session, then recapture at `1813 x 868` and compare with the source image.
+- 横向进度条在编辑器像素格画布内完整居中，没有裁切、溢出或遮挡。
+- 页面其他布局、参数、颜色和控件均保持不变。
+- 左侧缩略图和主预览共用当前生成器，均已移除外层背景。
 
-**Patches Made**
+## Focused region comparison evidence
 
-- Matched the reference sidebar width, topbar height, three-column proportions, and panel spacing.
-- Replaced bright form surfaces with dark editor controls.
-- Unified panel, card, selected, preview, button, tag, and scrollbar styling across all four modules.
-- Preserved the Vercel Ink single-blue accent and avoided gradients.
-- Verified all modules remain contained within one viewport with internal scrolling only.
+- 修改前红框位置存在额外深色背景与左右空白。
+- 修改后组件高度收敛为进度条本身高度，左右不再出现深色背景块。
+- 蓝色斜纹仍保持无接缝连续流动，低对比轨道只在未完成区域需要时显示。
 
-**Implementation Checklist**
+## Findings
 
-- Recapture the final basic motion page at the target viewport.
-- Compare typography, spacing, panel borders, controls, and selected states.
-- Mark the report passed when no actionable P0/P1/P2 visual differences remain.
+- 未发现 P0/P1/P2 问题。
+- 组件主体无文字，不涉及字体偏差。
+- 外层背景、固定上下左右内边距已经完全移除。
+- 品牌蓝、深蓝斜纹间隔、圆角和参数联动保持正常。
+- 页面运行时控制台异常数量为 `0`。
 
-**Follow-up Polish**
+## Verification
 
-- None recorded until the final capture is available.
+- TypeScript 检查和生产构建通过，`1684` 个模块完成转换。
+- 整页截图和同画面对照均通过视觉核对。
 
-final result: blocked
+final result: passed

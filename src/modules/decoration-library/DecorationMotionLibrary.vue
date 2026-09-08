@@ -3,9 +3,9 @@
     <aside class="decoration-list panel">
       <header class="section-head">
         <div>
-          <h2>装饰动效库</h2>
+          <h2>装饰组件</h2>
         </div>
-        <small>系统内置</small>
+        <small>{{ sectionEffects.length }} / {{ decorationEffects.length }}</small>
       </header>
 
       <div class="section-tabs">
@@ -14,6 +14,7 @@
           :key="section"
           type="button"
           :class="{ active: activeSection === section }"
+          :disabled="!hasSectionEffects(section)"
           @click="activeSection = section"
         >
           {{ section }}
@@ -22,60 +23,449 @@
 
       <el-scrollbar class="effect-scroll">
         <div class="effect-stack">
-          <article
-            v-for="effect in sectionEffects"
-            :key="effect.id"
-            class="effect-card"
-            :class="{ active: currentEffect.id === effect.id }"
-            @click="selectEffect(effect.id)"
-          >
-            <div class="effect-thumb" :class="effect.previewType">
-              <span></span>
+          <template v-for="group in sectionGroups" :key="group.name">
+            <div class="subsection-title">
+              <span>{{ group.name }}</span>
+              <small>{{ group.effects.length }}</small>
             </div>
-            <div>
-              <strong>{{ effect.name }}</strong>
-              <p>{{ effect.scene }}</p>
-            </div>
-          </article>
+            <article
+              v-for="effect in group.effects"
+              :key="effect.id"
+              class="effect-card"
+              :class="{ active: currentEffect.id === effect.id }"
+              @click="selectEffect(effect.id)"
+            >
+              <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
+                <div
+                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow' || effect.previewType === 'flow-marker' || effect.previewType === 'panel-border-flow' || effect.previewType === 'loading'"
+                  class="real-effect-thumbnail"
+                  :class="{
+                    'path-flow-thumbnail': effect.previewType === 'svg-flow',
+                    'flow-marker-thumbnail': effect.previewType === 'flow-marker',
+                    'panel-border-thumbnail': effect.previewType === 'panel-border-flow',
+                    'loading-thumbnail': effect.previewType === 'loading',
+                    'chart-ring-thumbnail': effect.id === 'chart-tech-ring-01'
+                  }"
+                  v-html="effectThumbnailMarkup(effect)"
+                ></div>
+                <span v-else></span>
+              </div>
+              <div class="effect-card-copy">
+                <strong>{{ effect.name }}</strong>
+                <p>{{ effect.defaultParams.duration }}s · {{ effect.scene }}</p>
+              </div>
+            </article>
+          </template>
         </div>
       </el-scrollbar>
     </aside>
 
     <main class="decoration-preview panel">
-      <header class="section-head">
-        <div>
-          <h2>{{ currentEffect.name }}</h2>
-        </div>
-        <el-tag effect="dark">{{ currentEffect.section }}</el-tag>
-      </header>
-
-      <div class="preview-stage">
-        <div class="generated-preview" v-html="previewMarkup"></div>
-      </div>
-
-      <div class="effect-meta">
-        <div>
-          <span>说明</span>
+      <header class="decoration-workspace-head">
+        <div class="decoration-title-copy">
+          <div class="decoration-title-line">
+            <h2>{{ displayTitle }}</h2>
+          </div>
           <p>{{ currentEffect.description }}</p>
         </div>
-        <div>
-          <span>推荐场景</span>
-          <p>{{ currentEffect.scene }}</p>
+        <input ref="svgFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleSvgUpload" />
+        <input ref="centerIconFileInput" class="hidden-file-input" type="file" accept=".svg,image/svg+xml" @change="handleCenterIconUpload" />
+        <input ref="backgroundFileInput" class="hidden-file-input" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" @change="handleBackgroundUpload" />
+      </header>
+
+      <div class="decoration-view-toolbar">
+        <div class="decoration-view-tabs" role="tablist" aria-label="装饰组件展示视图">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'preview'"
+            :class="{ active: activeWorkspaceView === 'preview' }"
+            @click="activeWorkspaceView = 'preview'"
+          >
+            动效预览
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkspaceView === 'code'"
+            :class="{ active: activeWorkspaceView === 'code' }"
+            @click="activeWorkspaceView = 'code'"
+          >
+            代码展示
+          </button>
         </div>
+        <div class="decoration-workspace-actions">
+          <el-button v-if="supportsImportedSvg" size="small" @click="triggerSvgImport">
+            <el-icon><Download /></el-icon>
+            {{ isChartTechRing ? "导入图表 SVG" : "导入 SVG" }}
+          </el-button>
+          <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
+          <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
+        </div>
+      </div>
+
+      <div class="decoration-workspace-content">
+        <div v-show="activeWorkspaceView === 'preview'" class="preview-surface" role="tabpanel">
+          <div
+            ref="previewCapture"
+            :key="`${currentEffect.id}-${previewKey}`"
+            class="preview-stage dm-motion-canvas"
+            :class="{
+              paused: !previewPlaying,
+              'has-preview-background': hasPreviewBackground,
+              'grid-hidden': hasPreviewBackground && !backgroundSettings.showGrid,
+              'actual-size-view': hasPreviewBackground && backgroundSettings.viewMode === 'actual'
+            }"
+          >
+            <div v-if="hasPreviewBackground" class="logical-canvas-viewport">
+              <div class="logical-canvas-frame" :style="logicalCanvasFrameStyle">
+                <div class="logical-canvas" :style="logicalCanvasStyle">
+                  <img class="logical-canvas-background" :src="backgroundUrl" alt="预览背景" :style="backgroundImageStyle" />
+                  <div class="logical-canvas-dim" :style="{ opacity: backgroundSettings.dim / 100 }"></div>
+                  <div
+                    class="logical-motion-layer"
+                    :style="logicalMotionPositionStyle"
+                    title="拖动调整动效在逻辑画布中的位置"
+                    @pointerdown="startMotionDrag"
+                  >
+                    <div
+                      class="generated-preview"
+                      :class="{
+                        'path-flow-preview': isSvgFlow,
+                        'imported-svg-preview': isLayeredRingDecoration && activeRingConfig.sourceMode === 'imported',
+                        'size-fitted-preview': Boolean(previewIntrinsicSize)
+                      }"
+                      :style="logicalMotionSizeStyle"
+                      v-html="previewMarkup"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              v-else
+              class="generated-preview"
+              :class="{
+                'path-flow-preview': isSvgFlow,
+                'imported-svg-preview': isLayeredRingDecoration && activeRingConfig.sourceMode === 'imported',
+                'size-fitted-preview': Boolean(previewIntrinsicSize)
+              }"
+              :style="previewFitStyle"
+              v-html="previewMarkup"
+            ></div>
+          </div>
+          <PreviewPlaybackControls
+            :duration="previewDuration"
+            @replay="replayPreview"
+          />
+        </div>
+        <section v-show="activeWorkspaceView === 'code'" class="decoration-code" role="tabpanel">
+          <CodeMirrorViewer :code="htmlCss" language="html" />
+        </section>
       </div>
     </main>
 
     <aside class="decoration-params panel">
       <header class="section-head">
         <div>
-          <h2>参数编辑</h2>
+          <h2>参数设置</h2>
         </div>
-        <el-button size="small" @click="resetParams">重置</el-button>
+        <el-button size="small" @click="resetParams()">重置</el-button>
       </header>
 
       <el-scrollbar class="param-scroll">
-        <div class="param-stack">
-          <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
+        <section class="preview-background-panel">
+          <div class="preview-background-head">
+            <div>
+              <h3>预览画布</h3>
+              <p>背景与动效共用同一逻辑尺寸，仅用于编辑预览。</p>
+            </div>
+            <el-button size="small" @click="triggerBackgroundImport">{{ hasPreviewBackground ? "替换背景" : "上传背景" }}</el-button>
+          </div>
+          <template v-if="hasPreviewBackground">
+            <div class="background-file-row">
+              <span :title="backgroundSettings.fileName">{{ backgroundSettings.fileName }}</span>
+              <button type="button" @click="removePreviewBackground">移除</button>
+            </div>
+            <div class="canvas-size-row">
+              <label>
+                <span>画布宽度</span>
+                <el-input-number v-model="backgroundSettings.logicalWidth" :min="320" :max="16384" :step="1" :controls="false" />
+              </label>
+              <label>
+                <span>画布高度</span>
+                <el-input-number v-model="backgroundSettings.logicalHeight" :min="180" :max="16384" :step="1" :controls="false" />
+              </label>
+            </div>
+            <div class="preview-setting-row">
+              <span>背景显示</span>
+              <el-select v-model="backgroundSettings.imageFit">
+                <el-option label="完整显示" value="contain" />
+                <el-option label="填满画布" value="cover" />
+                <el-option label="原始尺寸" value="natural" />
+              </el-select>
+            </div>
+            <div class="preview-setting-row">
+              <span>查看比例</span>
+              <el-radio-group v-model="backgroundSettings.viewMode" size="small">
+                <el-radio-button label="fit">适应画布</el-radio-button>
+                <el-radio-button label="actual">100%</el-radio-button>
+              </el-radio-group>
+            </div>
+            <div class="param-control compact-preview-control">
+              <label><span>背景压暗</span><small>%</small></label>
+              <div class="number-row">
+                <el-slider v-model="backgroundSettings.dim" :min="0" :max="80" :step="1" />
+                <el-input-number v-model="backgroundSettings.dim" :min="0" :max="80" :step="1" :controls="false" />
+              </div>
+            </div>
+            <div class="preview-switch-row">
+              <span>显示像素格</span>
+              <el-switch v-model="backgroundSettings.showGrid" />
+            </div>
+            <div class="preview-background-subhead">
+              <strong>当前动效位置</strong>
+              <button type="button" @click="centerCurrentMotion">居中</button>
+            </div>
+            <div class="param-control compact-preview-control">
+              <label><span>水平位置 X</span><small>px</small></label>
+              <div class="number-row">
+                <el-slider v-model="currentMotionPosition.x" :min="0" :max="backgroundSettings.logicalWidth" :step="1" />
+                <el-input-number v-model="currentMotionPosition.x" :min="0" :max="backgroundSettings.logicalWidth" :step="1" :controls="false" />
+              </div>
+            </div>
+            <div class="param-control compact-preview-control">
+              <label><span>垂直位置 Y</span><small>px</small></label>
+              <div class="number-row">
+                <el-slider v-model="currentMotionPosition.y" :min="0" :max="backgroundSettings.logicalHeight" :step="1" />
+                <el-input-number v-model="currentMotionPosition.y" :min="0" :max="backgroundSettings.logicalHeight" :step="1" :controls="false" />
+              </div>
+            </div>
+          </template>
+        </section>
+        <div class="preview-background-divider"></div>
+        <template v-if="isSubtitleSweep">
+          <section class="flow-param-section subtitle-sweep-params">
+            <h3>移动光效</h3>
+            <p class="flow-param-note">导入 SVG 后自动生成，不要求素材包含“光”图层。</p>
+            <div
+              v-for="paramItem in currentEffect.editableParams"
+              :key="paramItem.key"
+              class="param-control"
+              :class="{ 'switch-control': paramItem.key === 'sourceVisibility' }"
+            >
+              <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+              <el-switch
+                v-if="paramItem.key === 'sourceVisibility'"
+                v-model="params[paramItem.key]"
+                active-value="flow-only"
+                inactive-value="show"
+                aria-label="隐藏原素材"
+              />
+              <div v-else-if="paramItem.type === 'color'" class="color-row">
+                <el-color-picker v-model="params[paramItem.key]" />
+                <el-input v-model="params[paramItem.key]" />
+              </div>
+              <template v-else-if="paramItem.type === 'select'">
+                <el-select v-model="params[paramItem.key]">
+                  <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
+                </el-select>
+              </template>
+              <div v-else class="number-row">
+                <el-slider :model-value="Number(params[paramItem.key])" :min="paramItem.min" :max="paramItem.max" :step="paramItem.step" @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event" />
+                <el-input-number :model-value="Number(params[paramItem.key])" :min="paramItem.min" :max="paramItem.max" :step="paramItem.step" :controls="false" @change="params[paramItem.key] = Number($event ?? params[paramItem.key])" />
+              </div>
+            </div>
+          </section>
+        </template>
+        <StarRingParamPanel
+          v-if="isLayeredDecoration"
+          :model-value="activeLayeredConfig"
+          :show-import-guide="isStarRing || isReplaceableIconBase"
+          @update:model-value="updateLayeredConfig"
+          @use-preset="restoreLayeredPreset"
+          @remap="openCurrentMapping"
+          @show-import-guide="starRingGuideVisible = true"
+          @replace-base-svg="triggerSvgImport"
+          @remove-chart-content="removeChartContent"
+          @replace-center-icon="triggerCenterIconImport"
+          @remove-center-icon="removeCenterIcon"
+        />
+        <template v-else-if="isSvgFlow">
+          <div class="flow-param-stack">
+            <section class="flow-param-section">
+              <h3>流动设置</h3>
+              <div
+                v-for="paramItem in flowMotionParams"
+                :key="paramItem.key"
+                class="param-control"
+                :class="{ 'switch-control': paramItem.key === 'sourceVisibility' }"
+              >
+                <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+                <el-switch
+                  v-if="paramItem.key === 'sourceVisibility'"
+                  v-model="params[paramItem.key]"
+                  active-value="flow-only"
+                  inactive-value="show"
+                  aria-label="隐藏原素材"
+                />
+                <template v-else-if="paramItem.type === 'select'">
+                  <el-select v-model="params[paramItem.key]">
+                    <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
+                  </el-select>
+                </template>
+                <div v-else class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section class="flow-param-section">
+              <h3>光效设置</h3>
+              <div v-for="paramItem in flowLightParams" :key="paramItem.key" class="param-control">
+                <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+                <div v-if="paramItem.type === 'color'" class="color-row">
+                  <el-color-picker v-model="params[paramItem.key]" />
+                  <el-input v-model="params[paramItem.key]" />
+                </div>
+                <div v-else class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section v-if="flowShapeParams.length" class="flow-param-section">
+              <h3>形态设置</h3>
+              <p v-if="isBackgroundSweep" class="flow-param-note">宽幅位置 0% 为最左侧；端点宽度 100% 与最宽处相同。</p>
+              <div v-for="paramItem in flowShapeParams" :key="paramItem.key" class="param-control">
+                <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+                <div class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section v-if="flowTargets.length > 1" class="flow-param-section flow-path-section">
+              <div class="flow-param-section-head">
+                <h3>路径设置</h3>
+                <small>{{ flowTargets.length }} 条路径</small>
+              </div>
+              <article v-for="target in flowTargets" :key="`${target.id}-${target.region ?? target.direction}`" class="flow-path-card">
+                <header>
+                  <strong>{{ target.label }}</strong>
+                  <el-switch v-model="target.enabled" />
+                </header>
+                <template v-if="target.enabled">
+                  <label class="flow-path-field">
+                    <span>流动方向</span>
+                    <el-select v-model="target.direction">
+                      <el-option v-for="option in flowDirectionOptions" :key="option.value" :label="option.label" :value="option.value" />
+                    </el-select>
+                  </label>
+                  <label class="flow-path-field">
+                    <span>开始延迟</span>
+                    <el-input-number v-model="target.delay" :min="0" :max="8" :step="0.1" :controls="false" />
+                  </label>
+                </template>
+              </article>
+            </section>
+          </div>
+        </template>
+        <template v-else-if="isGeneralDecoration || isPanelBorderFlow">
+          <div class="flow-param-stack">
+            <section v-for="section in generalParamSections" :key="section.title" class="flow-param-section">
+              <h3>{{ section.title }}</h3>
+              <div
+                v-for="paramItem in section.params"
+                :key="paramItem.key"
+                class="param-control"
+                :class="{ 'switch-control': paramItem.key === 'sourceVisibility' }"
+              >
+                <label>
+                  <span>{{ paramItem.label }}</span>
+                  <small v-if="paramItem.unit">{{ paramItem.unit }}</small>
+                </label>
+                <el-switch
+                  v-if="paramItem.key === 'sourceVisibility'"
+                  v-model="params[paramItem.key]"
+                  active-value="flow-only"
+                  inactive-value="show"
+                  aria-label="隐藏原素材"
+                />
+                <div v-else-if="paramItem.type === 'color'" class="color-row">
+                  <el-color-picker v-model="params[paramItem.key]" />
+                  <el-input v-model="params[paramItem.key]" />
+                </div>
+                <el-select v-else-if="paramItem.type === 'select'" v-model="params[paramItem.key]">
+                  <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
+                </el-select>
+                <el-input v-else-if="paramItem.type === 'text'" v-model="params[paramItem.key]" maxlength="24" />
+                <div v-else class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
+        </template>
+        <template v-else-if="!isLayeredDecoration">
+          <div class="param-stack">
+            <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
             <label>
               <span>{{ paramItem.label }}</span>
               <small v-if="paramItem.unit">{{ paramItem.unit }}</small>
@@ -91,6 +481,9 @@
                 <el-option v-for="option in paramItem.options" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
             </template>
+            <template v-else-if="paramItem.type === 'text'">
+              <el-input v-model="params[paramItem.key]" maxlength="24" />
+            </template>
             <template v-else>
               <div class="number-row">
                 <el-slider
@@ -105,110 +498,1162 @@
                   :min="paramItem.min"
                   :max="paramItem.max"
                   :step="paramItem.step"
-                  controls-position="right"
+                  :controls="false"
                   @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
                 />
               </div>
             </template>
+            </div>
           </div>
-        </div>
+          <SvgStylePanel
+            v-if="importedSvg && !isSvgFlow && !isGeneralSvgDecoration && !isPanelBorderFlow"
+            :model-value="svgStyle"
+            :primary-color="importedSvg.primaryColor"
+            @update:model-value="updateSvgStyle"
+          />
+        </template>
+        <DecorationParticlePanel
+          v-if="supportsParticleEffect"
+          :model-value="activeParticleEffect"
+          @update:model-value="updateParticleEffect"
+        />
       </el-scrollbar>
     </aside>
 
-    <section class="decoration-export panel">
-      <header class="section-head">
-        <div>
-          <h2>导出代码</h2>
-        </div>
-        <el-button type="primary" @click="copyCode">复制</el-button>
-      </header>
-      <el-tabs v-model="activeExport">
-        <el-tab-pane label="HTML + CSS" name="html">
-          <CodeMirrorViewer :code="htmlCss" language="html" />
-        </el-tab-pane>
-        <el-tab-pane label="Vue Component" name="vue">
-          <CodeMirrorViewer :code="vueCode" language="vue" />
-        </el-tab-pane>
-        <el-tab-pane label="JSON Config" name="json">
-          <CodeMirrorViewer :code="jsonCode" language="json" />
-        </el-tab-pane>
-      </el-tabs>
-    </section>
+    <StarRingMappingDialog
+      v-if="pendingStarRingAsset && isLayeredRingDecoration"
+      v-model="mappingDialogVisible"
+      :asset="pendingStarRingAsset"
+      :mapping="pendingStarRingMapping"
+      :role-profile="currentRoleProfile"
+      @confirm="confirmStarRingMapping"
+    />
+
+    <StarRingImportGuideDialog v-model="starRingGuideVisible" :guide-type="currentImportGuideType" />
+
   </section>
 </template>
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
-import { computed, reactive, ref, watch } from "vue";
+import { Download } from "@element-plus/icons-vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { decorationEffects, decorationSections } from "@/data/decorationEffects";
 import {
   generateDecorationCss,
+  generateDecorationCompositionCss,
   generateDecorationHtmlCss,
-  generateDecorationJson,
-  generateDecorationMarkup,
-  generateDecorationVue
+  generateDecorationMarkup
 } from "@/generators/decorationGenerator";
-import type { DecorationSection } from "@/types/decoration";
+import { generateStarRingCss, generateStarRingHtmlCss, generateStarRingMarkup } from "@/generators/starRingGenerator";
+import { generateSubtitleSweepCss, generateSubtitleSweepHtmlCss, generateSubtitleSweepMarkup, type SubtitleSweepParams } from "@/generators/subtitleSweepGenerator";
+import { generateDecorationParticleCss } from "@/generators/decorationParticleGenerator";
+import type { DecorationEffectTemplate, DecorationParticleConfig, DecorationSection } from "@/types/decoration";
+import type { StarRingDecorationConfig, StarRingLayerMapping, StarRingSvgAsset } from "@/types/decoration";
+import type { SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
+import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, createSystemSvgFlowSource, readSvgBackgroundFile, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
+import { useMyMotionStore } from "@/stores/myMotionStore";
+import { createMotionArtifact } from "@/utils/motionArtifact";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
+import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
+import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
+import StarRingParamPanel from "@/modules/decoration-library/StarRingParamPanel.vue";
+import StarRingMappingDialog from "@/modules/decoration-library/StarRingMappingDialog.vue";
+import StarRingImportGuideDialog from "@/modules/decoration-library/StarRingImportGuideDialog.vue";
+import DecorationParticlePanel from "@/modules/decoration-library/DecorationParticlePanel.vue";
+import { applyImportedLayeredDecorationConfig, applyImportedStarRingConfig, createDefaultChartTechRingConfig, createDefaultLayeredDecorationConfig, createDefaultRippleFocusBaseConfig, createDefaultStackedEnergyBaseConfig, createDefaultStarRingConfig, readLayeredDecorationSvgFile, readStarRingSvgFile, renameStarRingAssetLayers, STAR_RING_ROLE_PROFILES, type StarRingRoleProfile } from "@/utils/starRingDecoration";
+import { createDefaultDecorationParticleConfig, normalizeDecorationParticleConfig } from "@/utils/decorationParticles";
+import {
+  loadDecorationPreviewBackground,
+  removeDecorationPreviewBackground,
+  saveDecorationPreviewBackground,
+  type DecorationPreviewBackgroundRecord,
+  type PreviewBackgroundFit,
+  type PreviewCanvasView,
+  type PreviewMotionPosition
+} from "@/utils/decorationPreviewBackground";
 
-const activeSection = ref<DecorationSection>("图标底座");
-const activeEffectId = ref(decorationEffects[0].id);
-const activeExport = ref<"html" | "vue" | "json">("html");
+const props = defineProps<{ initialEffectId?: string }>();
+const initialEffect = decorationEffects.find((effect) => effect.id === props.initialEffectId);
+const activeSection = ref<DecorationSection>(initialEffect?.section ?? decorationEffects[0].section);
+const activeEffectId = ref(initialEffect?.id ?? decorationEffects[0].id);
+const activeWorkspaceView = ref<"preview" | "code">("preview");
+const previewKey = ref(0);
+const previewPlaying = ref(true);
+const previewSpeed = ref(1);
 const params = reactive<Record<string, string | number>>({});
+const starRingConfig = ref<StarRingDecorationConfig>(createDefaultStarRingConfig());
+const chartTechRingConfig = ref<StarRingDecorationConfig>(createDefaultChartTechRingConfig());
+const stackedEnergyBaseConfig = ref<StarRingDecorationConfig>(createDefaultStackedEnergyBaseConfig());
+const rippleFocusBaseConfig = ref<StarRingDecorationConfig>(createDefaultRippleFocusBaseConfig());
+const subtitleSweepConfig = ref<StarRingDecorationConfig>(createDefaultLayeredDecorationConfig("subtitle-sweep"));
+const pendingStarRingAsset = ref<StarRingSvgAsset>();
+const pendingStarRingMapping = ref<StarRingLayerMapping>(createDefaultStarRingConfig().layerMapping);
+const mappingDialogVisible = ref(false);
+const starRingGuideVisible = ref(false);
+const remappingExistingAsset = ref(false);
+const svgSource = ref<SvgFlowSource>(createSystemSvgFlowSource(initialEffect?.id));
+const importedSvg = ref<SvgPreviewAsset>();
+const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
+const particleEffect = ref<DecorationParticleConfig>(createDefaultDecorationParticleConfig());
+const svgFileInput = ref<HTMLInputElement>();
+const centerIconFileInput = ref<HTMLInputElement>();
+const backgroundFileInput = ref<HTMLInputElement>();
+const previewCapture = ref<HTMLElement>();
+const previewViewport = ref({ width: 800, height: 480 });
+let previewResizeObserver: ResizeObserver | undefined;
+let backgroundObjectUrl = "";
+let backgroundPersistTimer: ReturnType<typeof setTimeout> | undefined;
+let draggingMotion: { pointerId: number; startClientX: number; startClientY: number; startX: number; startY: number } | undefined;
+const backgroundBlob = ref<Blob>();
+const backgroundUrl = ref("");
+const backgroundSettings = reactive({
+  fileName: "",
+  naturalWidth: 1920,
+  naturalHeight: 1080,
+  logicalWidth: 1920,
+  logicalHeight: 1080,
+  imageFit: "contain" as PreviewBackgroundFit,
+  viewMode: "fit" as PreviewCanvasView,
+  dim: 24,
+  showGrid: false,
+  positions: {} as Record<string, PreviewMotionPosition>
+});
+const motionStore = useMyMotionStore();
 
 const sectionEffects = computed(() => decorationEffects.filter((effect) => effect.section === activeSection.value));
+const sectionGroups = computed(() => {
+  const groups = new Map<string, DecorationEffectTemplate[]>();
+  sectionEffects.value.forEach((effect) => {
+    const effects = groups.get(effect.subsection) ?? [];
+    effects.push(effect);
+    groups.set(effect.subsection, effects);
+  });
+  return [...groups].map(([name, effects]) => ({ name, effects }));
+});
 const currentEffect = computed(() => decorationEffects.find((effect) => effect.id === activeEffectId.value) ?? sectionEffects.value[0] ?? decorationEffects[0]);
+const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
+const isBackgroundSweep = computed(() => currentEffect.value.id === "svg-flow-double-guide");
+const isStarRing = computed(() => currentEffect.value.id === "base-particle-star-ring");
+const isChartTechRing = computed(() => currentEffect.value.id === "chart-tech-ring-01");
+const isStackedEnergyBase = computed(() => currentEffect.value.id === "icon-base-stacked-energy");
+const isRippleFocusBase = computed(() => currentEffect.value.id === "icon-base-ripple-focus");
+const isReplaceableIconBase = computed(() => isStackedEnergyBase.value || isRippleFocusBase.value);
+const isLayeredRingDecoration = computed(() => isStarRing.value || isChartTechRing.value || isReplaceableIconBase.value);
+const isSubtitleSweep = computed(() => currentEffect.value.id === "subtitle-orbit-sweep-01");
+const isFlowMarker = computed(() => currentEffect.value.generator === "flow-marker");
+const isSequenceMarker = computed(() => currentEffect.value.generator === "flow-marker-sequence");
+const isCornerFocus = computed(() => currentEffect.value.generator === "corner-focus");
+const isPanelBorderFlow = computed(() => currentEffect.value.generator === "panel-border-flow");
+const isGeneralDecoration = computed(() => currentEffect.value.section === "通用装饰");
+const isGeneralSvgDecoration = computed(() => isFlowMarker.value || isSequenceMarker.value || isCornerFocus.value);
+const supportsImportedSvg = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value || isSvgFlow.value || isGeneralSvgDecoration.value || isPanelBorderFlow.value || currentEffect.value.generator === "loading-icon-pulse");
+const supportsParticleEffect = computed(() => currentEffect.value.section !== "loading");
+const isLayeredDecoration = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value);
+const activeRingConfig = computed(() => isChartTechRing.value
+  ? chartTechRingConfig.value
+  : isStackedEnergyBase.value
+    ? stackedEnergyBaseConfig.value
+    : isRippleFocusBase.value
+      ? rippleFocusBaseConfig.value
+      : starRingConfig.value);
+const currentRoleProfile = computed<StarRingRoleProfile>(() => isChartTechRing.value
+  ? "chart-tech-ring"
+  : isStackedEnergyBase.value
+    ? "stacked-energy-base"
+    : isRippleFocusBase.value
+      ? "ripple-focus-base"
+      : "star-ring");
+const currentImportGuideType = computed<"star-ring" | "stacked-energy-base" | "ripple-focus-base">(() =>
+  isStackedEnergyBase.value ? "stacked-energy-base" : isRippleFocusBase.value ? "ripple-focus-base" : "star-ring");
+const activeLayeredConfig = computed(() => isSubtitleSweep.value ? subtitleSweepConfig.value : activeRingConfig.value);
+const activeParticleEffect = computed(() => isLayeredRingDecoration.value
+  ? normalizeDecorationParticleConfig(activeRingConfig.value.particleEffect, isStarRing.value, activeRingConfig.value.overall.color)
+  : particleEffect.value);
+const displayTitle = computed(() => currentEffect.value.name);
+const flowMotionParams = computed(() => ["duration", "pause", "easing", "sourceVisibility", ...(flowTargets.value.length > 1 ? [] : ["direction"])]
+  .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+  .filter((item): item is NonNullable<typeof item> => Boolean(item)));
+const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColor", "tailColor", "endColor", "waveColor", "lightIntensity"]
+  .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+  .filter((item): item is NonNullable<typeof item> => Boolean(item)));
+const flowShapeParams = computed(() => ["flowAmplitude", "flowFocusPosition", "flowLeftEndWidth", "flowRightEndWidth"]
+  .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+  .filter((item): item is NonNullable<typeof item> => Boolean(item)));
+const generalParamSections = computed(() => (isPanelBorderFlow.value ? [
+  {
+    title: importedSvg.value ? "面板素材" : "面板结构",
+    keys: importedSvg.value
+      ? ["panelWidth", "panelHeight", "radius"]
+      : ["panelWidth", "panelHeight", "cornerLength", "headerWidth", "structureOpacity", "backgroundColor", "structureColor"]
+  },
+  {
+    title: "边框流光（可选）",
+    keys: ["flowEnabled", "direction", "duration", "flowLength", "borderWidth", "glowIntensity", "color"]
+  }
+] : [
+  {
+    title: "素材设置",
+    keys: ["shape", "markerCount", "size", "markerGap", "color", "cornerStyle", "cornerCount", "targetWidth", "targetHeight", "cornerLength", "pathStyle", "endpointStyle", "length", "bend", "borderWidth", "lineWidth", "trackOpacity"]
+  },
+  {
+    title: "运动设置",
+    keys: ["direction", "distance", "speed", "focusDistance", "duration", "pause", "easing", "flowCount"]
+  },
+  {
+    title: "光效设置",
+    keys: ["minOpacity", "glowIntensity", "tailLength", "afterglow"]
+  }
+]).map((section) => ({
+  title: section.title,
+  params: section.keys
+    .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+})).filter((section) => section.params.length));
+const flowTargets = computed(() => svgSource.value?.targets ?? []);
+const previewIntrinsicSize = computed(() => {
+  if (isPanelBorderFlow.value) {
+    return {
+      width: Number(params.panelWidth ?? importedSvg.value?.width ?? 460),
+      height: Number(params.panelHeight ?? importedSvg.value?.height ?? 240)
+    };
+  }
+  if (isSvgFlow.value && svgSource.value) {
+    return { width: svgSource.value.width, height: svgSource.value.height };
+  }
+  if (isLayeredRingDecoration.value && activeRingConfig.value.svg) {
+    if (isStackedEnergyBase.value && activeRingConfig.value.sourceMode === "preset") {
+      const source = activeRingConfig.value.svg;
+      return {
+        width: activeRingConfig.value.overall.size,
+        height: activeRingConfig.value.overall.size * source.height / source.width
+      };
+    }
+    return { width: activeRingConfig.value.svg.width, height: activeRingConfig.value.svg.height };
+  }
+  if (isSubtitleSweep.value && subtitleSweepConfig.value.svg) {
+    return { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height };
+  }
+  return undefined;
+});
+const previewFitStyle = computed(() => {
+  const source = previewIntrinsicSize.value;
+  if (!source) return undefined;
+  const sourceWidth = Math.max(1, source.width);
+  const sourceHeight = Math.max(1, source.height);
+  // 编辑器只负责完整展示素材，交付尺寸仍由 sourceWidth/sourceHeight 保留。
+  // 横向标题类 SVG 留出更多画布边距，避免 1920px 素材在预览中显得被放大或截断。
+  const previewWidthRatio = isSvgFlow.value ? 0.74 : 0.9;
+  const availableWidth = Math.max(1, previewViewport.value.width * previewWidthRatio);
+  const availableHeight = Math.max(1, previewViewport.value.height * 0.78);
+  const decorationPreviewScale = isStackedEnergyBase.value
+    ? 0.62
+    : isLayeredRingDecoration.value && activeRingConfig.value.sourceMode === "imported"
+      ? 0.82
+      : 1;
+  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight) * decorationPreviewScale;
+  return {
+    width: `${sourceWidth * scale}px`,
+    height: `${sourceHeight * scale}px`
+  };
+});
+const hasPreviewBackground = computed(() => Boolean(backgroundBlob.value && backgroundUrl.value));
+const currentMotionPositionKey = computed(() => currentEffect.value.id);
+const currentMotionPosition = computed(() => {
+  const key = currentMotionPositionKey.value;
+  if (!backgroundSettings.positions[key]) {
+    backgroundSettings.positions[key] = {
+      x: backgroundSettings.logicalWidth / 2,
+      y: backgroundSettings.logicalHeight / 2
+    };
+  }
+  return backgroundSettings.positions[key];
+});
+const logicalCanvasScale = computed(() => {
+  if (!hasPreviewBackground.value || backgroundSettings.viewMode === "actual") return 1;
+  const availableWidth = Math.max(1, previewViewport.value.width - 36);
+  const availableHeight = Math.max(1, previewViewport.value.height - 36);
+  return Math.min(
+    1,
+    availableWidth / Math.max(1, backgroundSettings.logicalWidth),
+    availableHeight / Math.max(1, backgroundSettings.logicalHeight)
+  );
+});
+const logicalCanvasFrameStyle = computed(() => ({
+  width: `${Math.max(1, backgroundSettings.logicalWidth) * logicalCanvasScale.value}px`,
+  height: `${Math.max(1, backgroundSettings.logicalHeight) * logicalCanvasScale.value}px`
+}));
+const logicalCanvasStyle = computed(() => ({
+  width: `${Math.max(1, backgroundSettings.logicalWidth)}px`,
+  height: `${Math.max(1, backgroundSettings.logicalHeight)}px`,
+  transform: `scale(${logicalCanvasScale.value})`
+}));
+const backgroundImageStyle = computed(() => backgroundSettings.imageFit === "natural"
+  ? {
+      width: `${backgroundSettings.naturalWidth}px`,
+      height: `${backgroundSettings.naturalHeight}px`,
+      objectFit: "fill" as const
+    }
+  : {
+      width: "100%",
+      height: "100%",
+      objectFit: backgroundSettings.imageFit
+    });
+const logicalMotionPositionStyle = computed(() => ({
+  left: `${currentMotionPosition.value.x}px`,
+  top: `${currentMotionPosition.value.y}px`
+}));
+const logicalMotionSizeStyle = computed(() => {
+  const source = previewIntrinsicSize.value;
+  if (!source) return undefined;
+  return {
+    width: `${Math.max(1, source.width)}px`,
+    height: `${Math.max(1, source.height)}px`
+  };
+});
+const flowDirectionOptions = [
+  { label: "从左到右", value: "ltr" },
+  { label: "从右到左", value: "rtl" },
+  { label: "从上到下", value: "ttb" },
+  { label: "从下到上", value: "btt" }
+] as const;
 
-const cssCode = computed(() => generateDecorationCss(currentEffect.value, params));
-const htmlCss = computed(() => generateDecorationHtmlCss(currentEffect.value, params));
-const vueCode = computed(() => generateDecorationVue(currentEffect.value, params));
-const jsonCode = computed(() => generateDecorationJson(currentEffect.value, params));
-const previewMarkup = computed(() => `<style>${cssCode.value}</style>${generateDecorationMarkup(currentEffect.value)}`);
-const currentCode = computed(() => (activeExport.value === "vue" ? vueCode.value : activeExport.value === "json" ? jsonCode.value : htmlCss.value));
+function hasSectionEffects(section: DecorationSection): boolean {
+  return decorationEffects.some((effect) => effect.section === section);
+}
+
+function triggerBackgroundImport(): void {
+  backgroundFileInput.value?.click();
+}
+
+function setBackgroundObjectUrl(blob?: Blob): void {
+  if (backgroundObjectUrl) URL.revokeObjectURL(backgroundObjectUrl);
+  backgroundObjectUrl = blob ? URL.createObjectURL(blob) : "";
+  backgroundUrl.value = backgroundObjectUrl;
+}
+
+async function readImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  if ("createImageBitmap" in window) {
+    const bitmap = await createImageBitmap(blob);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error("无法读取图片尺寸"));
+      image.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function handleBackgroundUpload(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  const isSupported = ["image/png", "image/jpeg"].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name);
+  if (!isSupported) {
+    ElMessage.error("仅支持 PNG、JPG 或 JPEG 背景图片");
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    ElMessage.error("背景图片不能超过 10MB");
+    return;
+  }
+  try {
+    const dimensions = await readImageDimensions(file);
+    if (!dimensions.width || !dimensions.height) throw new Error("图片尺寸无效");
+    backgroundBlob.value = file;
+    backgroundSettings.fileName = file.name;
+    backgroundSettings.naturalWidth = dimensions.width;
+    backgroundSettings.naturalHeight = dimensions.height;
+    backgroundSettings.logicalWidth = dimensions.width;
+    backgroundSettings.logicalHeight = dimensions.height;
+    backgroundSettings.imageFit = "contain";
+    backgroundSettings.viewMode = "fit";
+    backgroundSettings.showGrid = false;
+    backgroundSettings.positions = {};
+    setBackgroundObjectUrl(file);
+    centerCurrentMotion();
+    await persistPreviewBackground();
+    ElMessage.success(`背景已按 ${dimensions.width} × ${dimensions.height} 逻辑画布载入`);
+  } catch {
+    ElMessage.error("背景图片读取失败，请更换文件后重试");
+  }
+}
+
+async function restorePreviewBackground(): Promise<void> {
+  try {
+    const record = await loadDecorationPreviewBackground();
+    if (!record?.blob) return;
+    backgroundBlob.value = record.blob;
+    backgroundSettings.fileName = record.fileName;
+    backgroundSettings.naturalWidth = record.naturalWidth;
+    backgroundSettings.naturalHeight = record.naturalHeight;
+    backgroundSettings.logicalWidth = record.logicalWidth;
+    backgroundSettings.logicalHeight = record.logicalHeight;
+    backgroundSettings.imageFit = record.imageFit;
+    backgroundSettings.viewMode = record.viewMode;
+    backgroundSettings.dim = record.dim;
+    backgroundSettings.showGrid = record.showGrid;
+    backgroundSettings.positions = record.positions ?? {};
+    setBackgroundObjectUrl(record.blob);
+  } catch {
+    // IndexedDB 不可用时保持当前会话功能可用，不阻断编辑器。
+  }
+}
+
+async function persistPreviewBackground(): Promise<void> {
+  if (!backgroundBlob.value) return;
+  const record: DecorationPreviewBackgroundRecord = {
+    blob: backgroundBlob.value,
+    fileName: backgroundSettings.fileName,
+    naturalWidth: backgroundSettings.naturalWidth,
+    naturalHeight: backgroundSettings.naturalHeight,
+    logicalWidth: backgroundSettings.logicalWidth,
+    logicalHeight: backgroundSettings.logicalHeight,
+    imageFit: backgroundSettings.imageFit,
+    viewMode: backgroundSettings.viewMode,
+    dim: backgroundSettings.dim,
+    showGrid: backgroundSettings.showGrid,
+    positions: JSON.parse(JSON.stringify(backgroundSettings.positions)) as Record<string, PreviewMotionPosition>
+  };
+  try {
+    await saveDecorationPreviewBackground(record);
+  } catch {
+    // 浏览器拒绝持久化时仅影响下次打开恢复，不影响本次预览。
+  }
+}
+
+async function removePreviewBackground(): Promise<void> {
+  backgroundBlob.value = undefined;
+  backgroundSettings.fileName = "";
+  backgroundSettings.positions = {};
+  setBackgroundObjectUrl();
+  try {
+    await removeDecorationPreviewBackground();
+  } catch {
+    // 删除本地记录失败不影响当前画布恢复默认状态。
+  }
+  ElMessage.success("已移除预览背景，导出内容未受影响");
+}
+
+function centerCurrentMotion(): void {
+  backgroundSettings.positions[currentMotionPositionKey.value] = {
+    x: Math.round(backgroundSettings.logicalWidth / 2),
+    y: Math.round(backgroundSettings.logicalHeight / 2)
+  };
+}
+
+function startMotionDrag(event: PointerEvent): void {
+  if (!hasPreviewBackground.value || event.button !== 0) return;
+  draggingMotion = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startX: currentMotionPosition.value.x,
+    startY: currentMotionPosition.value.y
+  };
+  (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function moveMotionDrag(event: PointerEvent): void {
+  if (!draggingMotion || event.pointerId !== draggingMotion.pointerId) return;
+  const scale = Math.max(0.0001, logicalCanvasScale.value);
+  currentMotionPosition.value.x = Math.round(Math.min(backgroundSettings.logicalWidth, Math.max(0, draggingMotion.startX + (event.clientX - draggingMotion.startClientX) / scale)));
+  currentMotionPosition.value.y = Math.round(Math.min(backgroundSettings.logicalHeight, Math.max(0, draggingMotion.startY + (event.clientY - draggingMotion.startClientY) / scale)));
+}
+
+function endMotionDrag(event: PointerEvent): void {
+  if (!draggingMotion || event.pointerId !== draggingMotion.pointerId) return;
+  draggingMotion = undefined;
+}
+
+const cssCode = computed(() => isSubtitleSweep.value
+  ? generateSubtitleSweepCss(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)
+  : isLayeredRingDecoration.value ? generateStarRingCss(activeRingConfig.value)
+  : `${generateDecorationCss(currentEffect.value, params)}${activeParticleEffect.value.enabled ? `\n${generateDecorationParticleCss()}` : ""}`);
+const htmlCss = computed(() => isSubtitleSweep.value
+  ? generateSubtitleSweepHtmlCss(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)
+  : isLayeredRingDecoration.value ? generateStarRingHtmlCss(activeRingConfig.value)
+  : generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle, activeParticleEffect.value));
+const previewMarkup = computed(() => isSubtitleSweep.value
+  ? `<style>${cssCode.value}</style>${generateSubtitleSweepMarkup(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)}`
+  : isLayeredRingDecoration.value ? `<style>${cssCode.value}</style>${generateStarRingMarkup(activeRingConfig.value)}`
+  : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value, "main", activeParticleEffect.value)}`);
+const previewDuration = computed(() => {
+  if (isFlowMarker.value) {
+    return Number(params.distance ?? 240) / Math.max(1, Number(params.speed ?? 120));
+  }
+  if (isSequenceMarker.value || isCornerFocus.value) {
+    return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0)
+      + Number(params.pause ?? currentEffect.value.defaultParams.pause ?? 0);
+  }
+  if (!isLayeredRingDecoration.value && !isSubtitleSweep.value) return Number(params.duration ?? currentEffect.value.defaultParams.duration ?? 0);
+  if (isSubtitleSweep.value) return Number(params.duration ?? 2.8);
+  if (isStackedEnergyBase.value) return Number(activeRingConfig.value.stackedEnergy?.duration ?? 3.2);
+  return Math.max(...Object.values(activeRingConfig.value.layerConfigs)
+    .filter((layer) => layer.visible && layer.motion !== "none")
+    .map((layer) => layer.motion === "basic" ? Number(layer.basicMotionConfig?.duration ?? layer.duration) : layer.duration), 0);
+});
 
 watch(activeSection, () => {
   activeEffectId.value = sectionEffects.value[0]?.id ?? decorationEffects[0].id;
 });
 
-watch(currentEffect, resetParams, { immediate: true });
+watch(() => props.initialEffectId, async (id) => {
+  const effect = decorationEffects.find((item) => item.id === id);
+  if (!effect) return;
+  activeSection.value = effect.section;
+  await nextTick();
+  activeEffectId.value = effect.id;
+});
+
+watch(currentEffect, () => resetParams(false), { immediate: true });
+
+watch([previewMarkup, previewPlaying, previewSpeed], () => {
+  void nextTick(applyPlaybackState);
+});
+
+watch([svgSource, params, particleEffect], () => {
+  if (!isSvgFlow.value || !svgSource.value) return;
+  localStorage.setItem(SVG_FLOW_DRAFT_KEY, JSON.stringify({
+    effectId: currentEffect.value.id,
+    name: currentEffect.value.name,
+    source: svgSource.value,
+    config: { ...params },
+    particleEffect: particleEffect.value
+  }));
+}, { deep: true });
+
+watch(backgroundSettings, () => {
+  if (!backgroundBlob.value) return;
+  clearTimeout(backgroundPersistTimer);
+  backgroundPersistTimer = setTimeout(() => void persistPreviewBackground(), 250);
+}, { deep: true });
+
+watch(
+  () => [backgroundSettings.logicalWidth, backgroundSettings.logicalHeight],
+  () => {
+    Object.values(backgroundSettings.positions).forEach((position) => {
+      position.x = Math.min(backgroundSettings.logicalWidth, Math.max(0, position.x));
+      position.y = Math.min(backgroundSettings.logicalHeight, Math.max(0, position.y));
+    });
+  }
+);
+
+watch(previewCapture, (nextElement, previousElement) => {
+  if (previousElement) previewResizeObserver?.unobserve(previousElement);
+  if (!nextElement) return;
+  previewResizeObserver?.observe(nextElement);
+  previewViewport.value = {
+    width: Math.max(1, nextElement.clientWidth),
+    height: Math.max(1, nextElement.clientHeight)
+  };
+}, { flush: "post" });
+
+onMounted(() => {
+  previewResizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) return;
+    previewViewport.value = {
+      width: Math.max(1, entry.contentRect.width),
+      height: Math.max(1, entry.contentRect.height)
+    };
+  });
+  if (previewCapture.value) previewResizeObserver.observe(previewCapture.value);
+  localStorage.removeItem(SVG_FLOW_LEGACY_DRAFT_KEY);
+  motionStore.loadFromLocal();
+  void restorePreviewBackground();
+  void restoreSvgFlow();
+  window.addEventListener("pointermove", moveMotionDrag);
+  window.addEventListener("pointerup", endMotionDrag);
+  window.addEventListener("pointercancel", endMotionDrag);
+  window.addEventListener("datamotion:import-svg", triggerSvgImport);
+  window.addEventListener("datamotion:save", saveFromToolbar);
+  window.addEventListener("datamotion:export", downloadHtml);
+});
+
+onBeforeUnmount(() => {
+  previewResizeObserver?.disconnect();
+  clearTimeout(backgroundPersistTimer);
+  if (backgroundObjectUrl) URL.revokeObjectURL(backgroundObjectUrl);
+  window.removeEventListener("pointermove", moveMotionDrag);
+  window.removeEventListener("pointerup", endMotionDrag);
+  window.removeEventListener("pointercancel", endMotionDrag);
+  window.removeEventListener("datamotion:import-svg", triggerSvgImport);
+  window.removeEventListener("datamotion:save", saveFromToolbar);
+  window.removeEventListener("datamotion:export", downloadHtml);
+});
 
 function selectEffect(id: string): void {
   activeEffectId.value = id;
 }
 
-function resetParams(): void {
+function createCurrentRingDefault(): StarRingDecorationConfig {
+  if (isChartTechRing.value) return createDefaultChartTechRingConfig();
+  if (isStackedEnergyBase.value) return createDefaultStackedEnergyBaseConfig();
+  if (isRippleFocusBase.value) return createDefaultRippleFocusBaseConfig();
+  return createDefaultStarRingConfig();
+}
+
+function setActiveRingConfig(value: StarRingDecorationConfig): void {
+  if (isChartTechRing.value) chartTechRingConfig.value = value;
+  else if (isStackedEnergyBase.value) stackedEnergyBaseConfig.value = value;
+  else if (isRippleFocusBase.value) rippleFocusBaseConfig.value = value;
+  else starRingConfig.value = value;
+}
+
+function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
+  if (effect.id === "chart-tech-ring-01") {
+    const config = createDefaultChartTechRingConfig();
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  }
+  if (effect.id === "base-particle-star-ring") {
+    const config = createDefaultStarRingConfig();
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  }
+  if (effect.id === "icon-base-stacked-energy") {
+    const config = createDefaultStackedEnergyBaseConfig();
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  }
+  if (effect.id === "icon-base-ripple-focus") {
+    const config = createDefaultRippleFocusBaseConfig();
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  }
+  if (effect.id === "subtitle-orbit-sweep-01") {
+    const config = createDefaultLayeredDecorationConfig("subtitle-sweep");
+    const defaultParams = effect.defaultParams as unknown as SubtitleSweepParams;
+    return `<style>${generateSubtitleSweepCss(config, defaultParams)}</style>${generateSubtitleSweepMarkup(config, defaultParams)}`;
+  }
+  if (effect.generator === "svg-flow") {
+    const source = createSystemSvgFlowSource(effect.id);
+    return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams, source, undefined, "thumb")}`;
+  }
+  return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`;
+}
+
+function resetParams(preservePanelAsset = true): void {
+  if (isLayeredRingDecoration.value) {
+    const current = activeRingConfig.value;
+    if (isChartTechRing.value) {
+      const next = createDefaultChartTechRingConfig();
+      next.chartContentSvg = current.chartContentSvg;
+      chartTechRingConfig.value = next;
+      importedSvg.value = undefined;
+      void replayPreview();
+      return;
+    }
+    if (current.sourceMode === "imported" && current.svg) {
+      const next = createCurrentRingDefault();
+      applyImportedStarRingConfig(next, current.svg, current.layerMapping);
+      next.centerIconSvg = current.centerIconSvg;
+      next.centerIconColorMode = current.centerIconColorMode;
+      next.centerIconColor = current.centerIconColor;
+      next.centerIconSize = current.centerIconSize;
+      next.centerIconX = current.centerIconX;
+      next.centerIconY = current.centerIconY;
+      setActiveRingConfig(next);
+    } else {
+      const next = createCurrentRingDefault();
+      next.centerIconSvg = current.centerIconSvg;
+      next.centerIconColorMode = current.centerIconColorMode;
+      next.centerIconColor = current.centerIconColor;
+      next.centerIconSize = current.centerIconSize;
+      next.centerIconX = current.centerIconX;
+      next.centerIconY = current.centerIconY;
+      setActiveRingConfig(next);
+    }
+    importedSvg.value = undefined;
+    return;
+  }
+  if (isSubtitleSweep.value) {
+    Object.keys(params).forEach((key) => delete params[key]);
+    Object.assign(params, currentEffect.value.defaultParams);
+    if (subtitleSweepConfig.value.sourceMode === "imported" && subtitleSweepConfig.value.svg) {
+      const next = createDefaultLayeredDecorationConfig("subtitle-sweep");
+      applyImportedLayeredDecorationConfig(next, subtitleSweepConfig.value.svg);
+      subtitleSweepConfig.value = next;
+    } else {
+      subtitleSweepConfig.value = createDefaultLayeredDecorationConfig("subtitle-sweep");
+    }
+    void replayPreview();
+    return;
+  }
+  if (isSvgFlow.value) {
+    Object.keys(params).forEach((key) => delete params[key]);
+    Object.assign(params, currentEffect.value.defaultParams);
+    svgSource.value = createSystemSvgFlowSource(currentEffect.value.id);
+    particleEffect.value = createDefaultDecorationParticleConfig();
+    importedSvg.value = undefined;
+    void replayPreview();
+    return;
+  }
+  if (isPanelBorderFlow.value) {
+    const panelAsset = preservePanelAsset ? importedSvg.value : undefined;
+    Object.keys(params).forEach((key) => delete params[key]);
+    Object.assign(params, currentEffect.value.defaultParams);
+    importedSvg.value = panelAsset;
+    if (panelAsset) {
+      params.panelWidth = panelAsset.width;
+      params.panelHeight = panelAsset.height;
+    }
+    particleEffect.value = createDefaultDecorationParticleConfig();
+    void replayPreview();
+    return;
+  }
   Object.keys(params).forEach((key) => delete params[key]);
   Object.assign(params, currentEffect.value.defaultParams);
+  importedSvg.value = undefined;
+  Object.assign(svgStyle, createDefaultSvgStyleConfig());
+  particleEffect.value = createDefaultDecorationParticleConfig();
+}
+
+function togglePreview(): void {
+  previewPlaying.value = !previewPlaying.value;
+  void nextTick(applyPlaybackState);
+}
+
+function setPreviewSpeed(speed: number): void {
+  previewSpeed.value = speed;
+  void nextTick(applyPlaybackState);
+}
+
+async function replayPreview(): Promise<void> {
+  previewPlaying.value = true;
+  previewKey.value += 1;
+  await nextTick();
+  previewCapture.value?.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.currentTime = 0;
+  });
+  previewCapture.value?.querySelectorAll("svg").forEach((svg) => {
+    const animatedSvg = svg as SVGSVGElement & { setCurrentTime?: (seconds: number) => void };
+    animatedSvg.setCurrentTime?.(0);
+  });
+  applyPlaybackState();
+}
+
+function applyPlaybackState(): void {
+  const target = previewCapture.value;
+  if (!target) return;
+  target.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.playbackRate = previewSpeed.value;
+    if (previewPlaying.value) animation.play();
+    else animation.pause();
+  });
+  target.querySelectorAll("svg").forEach((svg) => {
+    const animatedSvg = svg as SVGSVGElement & {
+      pauseAnimations?: () => void;
+      unpauseAnimations?: () => void;
+    };
+    if (previewPlaying.value) animatedSvg.unpauseAnimations?.();
+    else animatedSvg.pauseAnimations?.();
+  });
 }
 
 async function copyCode(): Promise<void> {
-  await navigator.clipboard.writeText(currentCode.value);
+  await navigator.clipboard.writeText(htmlCss.value);
   ElMessage.success("代码已复制");
+}
+
+async function handleSvgUpload(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    if (isChartTechRing.value) {
+      const chartAsset = await readLayeredDecorationSvgFile(file);
+      chartTechRingConfig.value = {
+        ...chartTechRingConfig.value,
+        chartContentSvg: chartAsset
+      };
+      importedSvg.value = undefined;
+      ElMessage.success("图表 SVG 已原样放入中心区域，系统外环保持不变");
+      void replayPreview();
+    } else if (isSubtitleSweep.value) {
+      const asset = await readLayeredDecorationSvgFile(file);
+      const next = createDefaultLayeredDecorationConfig("subtitle-sweep");
+      applyImportedLayeredDecorationConfig(next, asset);
+      subtitleSweepConfig.value = next;
+      importedSvg.value = undefined;
+      ElMessage.success(`已读取 ${asset.mode === "layered" ? asset.layers.length : 1} 个素材图层，并自动添加移动光效`);
+      void replayPreview();
+    } else if (isLayeredRingDecoration.value) {
+      const { asset, mapping } = await readStarRingSvgFile(file, STAR_RING_ROLE_PROFILES[currentRoleProfile.value]);
+      if (asset.mode === "whole") {
+        const previous = activeRingConfig.value;
+        const next = createCurrentRingDefault();
+        applyImportedStarRingConfig(next, asset, mapping);
+        if (isReplaceableIconBase.value) {
+          next.centerIconSvg = previous.centerIconSvg;
+          next.centerIconColorMode = previous.centerIconColorMode;
+          next.centerIconColor = previous.centerIconColor;
+          next.centerIconSize = previous.centerIconSize;
+          next.centerIconX = previous.centerIconX;
+          next.centerIconY = previous.centerIconY;
+        }
+        setActiveRingConfig(next);
+        ElMessage.success("SVG 已按整体素材导入");
+      } else {
+        pendingStarRingAsset.value = asset;
+        pendingStarRingMapping.value = mapping;
+        remappingExistingAsset.value = false;
+        mappingDialogVisible.value = true;
+      }
+      importedSvg.value = undefined;
+    } else if (isSvgFlow.value) {
+      svgSource.value = isBackgroundSweep.value
+        ? await readSvgBackgroundFile(file)
+        : await readSvgFlowFile(file, currentEffect.value.id === "svg-flow-tool-02" ? "double" : "single");
+      importedSvg.value = undefined;
+      ElMessage.success(isBackgroundSweep.value ? "完整 SVG 已作为标题背景读取，水波纹已自动应用" : "SVG 路径已读取");
+    } else if (isPanelBorderFlow.value) {
+      const previewAsset = await readSvgPreviewFile(file);
+      importedSvg.value = previewAsset;
+      params.panelWidth = previewAsset.width;
+      params.panelHeight = previewAsset.height;
+      ElMessage.success("面板 SVG 已替换默认结构，可继续选择是否开启边框流光");
+      void replayPreview();
+    } else if (currentEffect.value.generator === "loading-icon-pulse" || isGeneralSvgDecoration.value) {
+      const previewAsset = await readSvgPreviewFile(file);
+      importedSvg.value = previewAsset;
+      Object.assign(svgStyle, createDefaultSvgStyleConfig(previewAsset.primaryColor));
+      params.color = previewAsset.primaryColor;
+      if (isFlowMarker.value || isSequenceMarker.value) params.shape = "custom-svg";
+      if (isCornerFocus.value) params.cornerStyle = "custom-svg";
+      ElMessage.success(isCornerFocus.value
+        ? "SVG 已作为自定义角标应用"
+        : isGeneralSvgDecoration.value ? "SVG 已作为自定义标记应用" : "SVG 已替换默认加载图标");
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "SVG 上传失败");
+  } finally {
+    input.value = "";
+  }
+}
+
+function updateSvgStyle(value: SvgStyleConfig): void {
+  Object.assign(svgStyle, value);
+}
+
+function updateStarRingConfig(value: StarRingDecorationConfig): void {
+  starRingConfig.value = value;
+  void replayPreview();
+}
+
+function updateLayeredConfig(value: StarRingDecorationConfig): void {
+  if (isSubtitleSweep.value) subtitleSweepConfig.value = value;
+  else setActiveRingConfig(value);
+  void replayPreview();
+}
+
+function removeChartContent(): void {
+  if (!isChartTechRing.value || !chartTechRingConfig.value.chartContentSvg) return;
+  const next = JSON.parse(JSON.stringify(chartTechRingConfig.value)) as StarRingDecorationConfig;
+  delete next.chartContentSvg;
+  chartTechRingConfig.value = next;
+  ElMessage.success("已移除中心图表素材，系统外环保持不变");
+  void replayPreview();
+}
+
+function triggerCenterIconImport(): void {
+  centerIconFileInput.value?.click();
+}
+
+async function handleCenterIconUpload(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || !isReplaceableIconBase.value) return;
+  try {
+    const asset = await readLayeredDecorationSvgFile(file);
+    setActiveRingConfig({
+      ...activeRingConfig.value,
+      centerIconSvg: asset,
+      centerIconColorMode: "original",
+      centerIconColor: asset.primaryColor,
+      centerIconSize: activeRingConfig.value.centerIconSize ?? (isStackedEnergyBase.value ? 47 : 36),
+      centerIconX: activeRingConfig.value.centerIconX ?? 50,
+      centerIconY: activeRingConfig.value.centerIconY ?? (isStackedEnergyBase.value ? 25 : 20)
+    });
+    ElMessage.success("中心图标已替换，底座分层动效保持不变");
+    void replayPreview();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "中心图标读取失败");
+  }
+}
+
+function removeCenterIcon(): void {
+  if (!isReplaceableIconBase.value || !activeRingConfig.value.centerIconSvg) return;
+  const next = JSON.parse(JSON.stringify(activeRingConfig.value)) as StarRingDecorationConfig;
+  delete next.centerIconSvg;
+  delete next.centerIconColorMode;
+  delete next.centerIconColor;
+  setActiveRingConfig(next);
+  ElMessage.success("已恢复案例内置中心图标");
+  void replayPreview();
+}
+
+function restoreLayeredPreset(): void {
+  if (isSubtitleSweep.value) {
+    subtitleSweepConfig.value = createDefaultLayeredDecorationConfig("subtitle-sweep");
+    ElMessage.success("已恢复系统预设素材");
+    void replayPreview();
+    return;
+  }
+  if (isChartTechRing.value) {
+    chartTechRingConfig.value = createDefaultChartTechRingConfig();
+    ElMessage.success("已恢复系统预设素材");
+    void replayPreview();
+    return;
+  }
+  if (isReplaceableIconBase.value) {
+    const previous = activeRingConfig.value;
+    const next = createCurrentRingDefault();
+    next.centerIconSvg = previous.centerIconSvg;
+    next.centerIconColorMode = previous.centerIconColorMode;
+    next.centerIconColor = previous.centerIconColor;
+    next.centerIconSize = previous.centerIconSize;
+    next.centerIconX = previous.centerIconX;
+    next.centerIconY = previous.centerIconY;
+    setActiveRingConfig(next);
+    ElMessage.success("已恢复系统预设底座，顶部图标保持不变");
+    void replayPreview();
+    return;
+  }
+  setActiveRingConfig(createCurrentRingDefault());
+  ElMessage.success("已恢复系统预设素材");
+  void replayPreview();
+}
+
+function updateParticleEffect(value: DecorationParticleConfig): void {
+  if (isLayeredRingDecoration.value) {
+    setActiveRingConfig({ ...activeRingConfig.value, particleEffect: value });
+  } else {
+    particleEffect.value = value;
+  }
+  void replayPreview();
+}
+
+function restoreStarRingPreset(): void {
+  starRingConfig.value = createDefaultStarRingConfig();
+  ElMessage.success("已恢复系统预设素材");
+  void replayPreview();
+}
+
+function openCurrentMapping(): void {
+  const current = activeRingConfig.value;
+  if (!current.svg || current.svg.mode !== "layered") return;
+  pendingStarRingAsset.value = current.svg;
+  pendingStarRingMapping.value = JSON.parse(JSON.stringify(current.layerMapping)) as StarRingLayerMapping;
+  remappingExistingAsset.value = true;
+  mappingDialogVisible.value = true;
+}
+
+function confirmStarRingMapping(mapping: StarRingLayerMapping, labels: Record<string, string>): void {
+  const pendingAsset = pendingStarRingAsset.value;
+  if (!pendingAsset) return;
+  const asset = renameStarRingAssetLayers(pendingAsset, labels);
+  const previous = activeRingConfig.value;
+  const next = createCurrentRingDefault();
+  applyImportedStarRingConfig(next, asset, mapping);
+  if (isReplaceableIconBase.value) {
+    next.centerIconSvg = previous.centerIconSvg;
+    next.centerIconColorMode = previous.centerIconColorMode;
+    next.centerIconColor = previous.centerIconColor;
+    next.centerIconSize = previous.centerIconSize;
+    next.centerIconX = previous.centerIconX;
+    next.centerIconY = previous.centerIconY;
+  }
+  if (remappingExistingAsset.value) {
+    next.particleEffect = previous.particleEffect;
+    if (isStackedEnergyBase.value) {
+      next.stackedEnergy = previous.stackedEnergy;
+      next.overall.size = previous.overall.size;
+    }
+    if (isChartTechRing.value) next.chartContentSize = previous.chartContentSize;
+    Object.keys(next.layerConfigs).forEach((key) => {
+      const old = previous.layerConfigs[key];
+      if (old) next.layerConfigs[key] = { ...old, visible: next.layerConfigs[key].visible };
+    });
+  }
+  setActiveRingConfig(next);
+  pendingStarRingAsset.value = asset;
+  pendingStarRingMapping.value = mapping;
+  remappingExistingAsset.value = false;
+  const matched = new Set(Object.values(mapping).flat()).size;
+  ElMessage.success(`已应用分层素材，映射 ${matched} 个图层`);
+  void replayPreview();
+}
+
+function triggerSvgImport(): void {
+  svgFileInput.value?.click();
+}
+
+async function saveFromToolbar(): Promise<void> {
+  if (isSubtitleSweep.value) {
+    try {
+      const artifact = await createMotionArtifact({ id: currentEffect.value.id, name: currentEffect.value.name, htmlCss: htmlCss.value, previewNode: previewCapture.value });
+      motionStore.saveDecoration(currentEffect.value, { ...params }, artifact, subtitleSweepConfig.value);
+      ElMessage.success("已保存 HTML、预览图和名称");
+    } catch {
+      ElMessage.error("保存失败，无法生成当前动效预览图");
+    }
+    return;
+  }
+  if (isSvgFlow.value && svgSource.value) {
+    await saveSvgFlow();
+    return;
+  }
+
+  try {
+    const artifact = await createMotionArtifact({
+      id: currentEffect.value.id,
+      name: currentEffect.value.name,
+      htmlCss: htmlCss.value,
+      previewNode: previewCapture.value
+    });
+    motionStore.saveDecoration(
+      currentEffect.value,
+      { ...params },
+      artifact,
+      isLayeredRingDecoration.value ? activeRingConfig.value : undefined
+    );
+    ElMessage.success("已保存 HTML、预览图和名称");
+  } catch {
+    ElMessage.error("保存失败，无法生成当前动效预览图");
+  }
+}
+
+async function saveSvgFlow(): Promise<void> {
+  if (!svgSource.value) return;
+  try {
+    const artifact = await createMotionArtifact({
+      id: currentEffect.value.id,
+      name: currentEffect.value.name,
+      htmlCss: htmlCss.value,
+      previewNode: previewCapture.value
+    });
+    motionStore.saveSvgFlow({
+      effectId: currentEffect.value.id,
+      name: currentEffect.value.name,
+      source: svgSource.value,
+      config: {
+        ...createDefaultSvgFlowConfig(),
+        ...params
+      } as ReturnType<typeof createDefaultSvgFlowConfig>,
+      particleEffect: particleEffect.value
+    }, artifact);
+    ElMessage.success("已保存 HTML、预览图和名称");
+  } catch {
+    ElMessage.error("保存失败，无法生成当前动效预览图");
+  }
+}
+
+function downloadHtml(): void {
+  const exportSize = isPanelBorderFlow.value
+    ? {
+        width: Number(params.panelWidth ?? importedSvg.value?.width ?? 460),
+        height: Number(params.panelHeight ?? importedSvg.value?.height ?? 240)
+      }
+    : isSvgFlow.value
+    ? { width: svgSource.value?.width ?? 1920, height: svgSource.value?.height ?? 96 }
+    : isSubtitleSweep.value && subtitleSweepConfig.value.svg
+      ? { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height }
+      : isLayeredRingDecoration.value && activeRingConfig.value.svg
+      ? isStackedEnergyBase.value && activeRingConfig.value.sourceMode === "preset"
+        ? {
+            width: activeRingConfig.value.overall.size,
+            height: activeRingConfig.value.overall.size * activeRingConfig.value.svg.height / activeRingConfig.value.svg.width
+          }
+        : { width: activeRingConfig.value.svg.width, height: activeRingConfig.value.svg.height }
+      : undefined;
+  const bodyStyle = exportSize
+    ? `margin:0;width:${exportSize.width}px;height:${exportSize.height}px;background:#000;overflow:hidden;`
+    : "margin:0;padding:24px;background:#000;";
+  const documentCode = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${displayTitle.value}</title>
+<style>html,body{${bodyStyle}}</style>
+</head>
+<body>
+${htmlCss.value}
+</body>
+</html>`;
+  const blob = new Blob([documentCode], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${isSubtitleSweep.value || currentEffect.value.section === "loading" || isGeneralDecoration.value || isPanelBorderFlow.value
+    ? currentEffect.value.name
+    : isLayeredRingDecoration.value
+      ? isStarRing.value ? "star-ring-base" : currentEffect.value.name
+      : (svgSource.value?.fileName.replace(/\.svg$/i, "") || "path-flow")}.html`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success("HTML 文件已导出");
+}
+
+async function restoreSvgFlow(): Promise<void> {
+  const raw = localStorage.getItem(SVG_FLOW_OPEN_KEY) ?? localStorage.getItem(SVG_FLOW_DRAFT_KEY);
+  if (!raw) return;
+  try {
+    const saved = JSON.parse(raw) as {
+      effectId?: string;
+      source?: SvgFlowSource;
+      config?: Record<string, string | number>;
+      particleEffect?: DecorationParticleConfig;
+    };
+    if (!saved.source || !saved.config) return;
+    activeSection.value = "标题装饰";
+    await nextTick();
+    activeEffectId.value = decorationEffects.some((effect) => effect.id === saved.effectId)
+      ? saved.effectId!
+      : "svg-flow-tool";
+    await nextTick();
+    svgSource.value = saved.source;
+    Object.assign(params, createDefaultSvgFlowConfig(), saved.config);
+    particleEffect.value = normalizeDecorationParticleConfig(saved.particleEffect);
+    localStorage.removeItem(SVG_FLOW_OPEN_KEY);
+  } catch {
+    localStorage.removeItem(SVG_FLOW_OPEN_KEY);
+  }
 }
 </script>
 
 <style scoped>
 .decoration-library {
+  --decoration-blue: #0070f3;
+  --decoration-blue-light: #7ab8ff;
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 330px minmax(520px, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) minmax(190px, 27vh);
-  grid-template-areas:
-    "list preview params"
-    "list export export";
-  gap: 14px;
+  grid-template-columns: 200px minmax(500px, 1fr) 320px;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "list preview params";
+  gap: 16px;
 }
 
 .panel {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--dm-hairline);
+  border: 0;
   border-radius: var(--dm-radius-lg);
-  background: var(--dm-surface-soft);
-  padding: 20px;
-  box-shadow: inset 0 0 0 1px rgba(0, 112, 243, 0.02);
+  background: #111111;
+  padding: 18px;
+  box-shadow: none;
 }
 
 .decoration-list {
@@ -226,29 +1671,34 @@ async function copyCode(): Promise<void> {
 
 .effect-stack {
   display: grid;
-  gap: 10px;
-  padding-right: 8px;
+  gap: 6px;
+  padding-right: 5px;
+}
+
+.subsection-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 4px 2px;
+  color: var(--dm-secondary);
+  font-size: 10px;
 }
 
 .decoration-preview {
   grid-area: preview;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 16px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0;
+  padding: 20px;
 }
+
+.hidden-file-input { display: none; }
 
 .decoration-params {
   grid-area: params;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 16px;
-}
-
-.decoration-export {
-  grid-area: export;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 12px;
+  gap: 14px;
 }
 
 .section-head {
@@ -268,67 +1718,178 @@ async function copyCode(): Promise<void> {
 .section-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 24px;
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 600;
 }
 
 .section-head small {
   color: var(--dm-secondary);
 }
 
+.preview-actions,
+.export-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.svg-import-button {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--dm-hairline-strong);
+  border-radius: var(--dm-radius-md);
+  background: var(--dm-control);
+  color: var(--dm-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.svg-import-button:hover { border-color: var(--dm-secondary); }
+.svg-import-button input { display: none; }
+
 .section-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .section-tabs button {
-  border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-md);
-  background: var(--dm-surface-raised);
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
   color: var(--dm-secondary);
-  padding: 9px;
+  padding: 7px 6px;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .section-tabs button.active {
-  border-color: var(--dm-tertiary);
-  color: var(--dm-primary);
-  background: rgba(0, 112, 243, 0.12);
+  color: var(--dm-tertiary);
+  background: rgba(255, 255, 255, 0.085);
+}
+
+.section-tabs button:disabled {
+  color: rgba(255, 255, 255, 0.22);
+  cursor: default;
 }
 
 .effect-card {
-  display: grid;
-  grid-template-columns: 58px 1fr;
-  gap: 12px;
-  border: 1px solid var(--dm-hairline);
+  min-width: 0;
+  border: 0;
   border-radius: var(--dm-radius-md);
-  padding: 12px;
-  background: var(--dm-surface-raised);
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  padding: 7px;
+  background: rgba(255, 255, 255, 0.025);
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.effect-card:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.045);
 }
 
 .effect-card.active {
-  border-color: var(--dm-tertiary);
-  background: rgba(0, 112, 243, 0.11);
-  box-shadow: inset 0 0 24px rgba(0, 112, 243, 0.045);
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: none;
 }
 
 .effect-thumb {
+  position: relative;
   width: 58px;
-  height: 58px;
+  height: 54px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-md);
-  background: #05080c;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background-color: var(--dm-motion-canvas-background);
+}
+
+.real-effect-thumbnail {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 188px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%) scale(0.24);
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.real-effect-thumbnail.path-flow-thumbnail {
+  top: 50%;
+  width: 1920px;
+  height: 96px;
+  transform: translate(-50%, -50%) scale(0.028);
+}
+
+.real-effect-thumbnail.loading-thumbnail {
+  top: 50%;
+  width: 320px;
+  height: 160px;
+  transform: translate(-50%, -50%) scale(0.18);
+}
+
+.real-effect-thumbnail.flow-marker-thumbnail {
+  top: 50%;
+  width: 280px;
+  height: 88px;
+  transform: translate(-50%, -50%) scale(0.18);
+}
+
+.real-effect-thumbnail.panel-border-thumbnail {
+  top: 50%;
+  width: 460px;
+  height: 240px;
+  transform: translate(-50%, -50%) scale(0.105);
+}
+
+.real-effect-thumbnail.chart-ring-thumbnail {
+  top: 50%;
+  width: 360px;
+  height: 360px;
+  transform: translate(-50%, -50%) scale(0.12);
+}
+
+.generated-preview :deep(.dm-chart-tech-ring__content:empty) {
+  box-sizing: border-box;
+  border: 1px dashed rgba(122, 184, 255, 0.26);
+  background: rgba(0, 112, 243, 0.025);
+  pointer-events: none;
+}
+
+.generated-preview :deep(.dm-chart-tech-ring__content:empty::after) {
+  content: "图表适配区";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.real-effect-thumbnail.loading-thumbnail :deep(.decoration-effect-loading-linear-flow) {
+  transform: scale(0.78);
 }
 
 .effect-thumb span {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--dm-tertiary);
+  border: 1px solid var(--decoration-blue);
   border-radius: 999px;
-  box-shadow: 0 0 12px var(--dm-tertiary);
+  box-shadow: 0 0 12px var(--decoration-blue);
 }
 
 .effect-thumb.linear-flow span {
@@ -346,10 +1907,10 @@ async function copyCode(): Promise<void> {
   position: relative;
   width: 36px;
   height: 16px;
-  border: 1px dashed var(--dm-tertiary);
+  border: 1px dashed var(--decoration-blue);
   border-radius: 50%;
   background: transparent;
-  box-shadow: 0 0 10px rgba(0, 112, 243, 0.72);
+  box-shadow: 0 0 8px rgba(0, 112, 243, 0.38);
   animation: particleBaseThumb 2.4s linear infinite;
 }
 
@@ -371,7 +1932,7 @@ async function copyCode(): Promise<void> {
   top: 1px;
   width: 100%;
   height: 9px;
-  border-bottom: 1px solid var(--dm-tertiary);
+  border-bottom: 1px solid var(--decoration-blue);
   border-radius: 0 0 45% 45%;
   opacity: 0.38;
 }
@@ -384,9 +1945,43 @@ async function copyCode(): Promise<void> {
   width: 3px;
   height: 3px;
   border-radius: 999px;
-  background: var(--dm-on-primary);
-  box-shadow: -6px 0 7px #55e6ff, 0 0 8px #55e6ff;
+  background: var(--decoration-blue-light);
+  box-shadow: -6px 0 7px var(--decoration-blue), 0 0 8px var(--decoration-blue);
   animation: thumbCometFlow 2.8s linear infinite;
+}
+
+.effect-thumb.svg-flow span {
+  position: relative;
+  width: 36px;
+  height: 18px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.effect-thumb.svg-flow span::before {
+  content: "";
+  position: absolute;
+  inset: 6px 0 auto;
+  height: 7px;
+  border-top: 1px solid var(--decoration-blue);
+  border-radius: 50%;
+  opacity: 0.65;
+}
+
+.effect-thumb.svg-flow span::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: -4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--decoration-blue-light);
+  box-shadow: -8px 0 8px var(--decoration-blue), 0 0 8px var(--decoration-blue);
+  animation: thumbLinearFlow 2.2s linear infinite;
 }
 
 @keyframes thumbCometFlow {
@@ -404,7 +1999,7 @@ async function copyCode(): Promise<void> {
 
 .effect-thumb.particle-base span::before {
   inset: 4px 7px;
-  border: 1px solid var(--dm-tertiary);
+  border: 1px solid var(--decoration-blue);
 }
 
 .effect-thumb.particle-base span::after {
@@ -412,11 +2007,11 @@ async function copyCode(): Promise<void> {
   top: -6px;
   width: 3px;
   height: 3px;
-  background: var(--dm-on-primary);
+  background: var(--decoration-blue-light);
   box-shadow:
-    -12px 4px 5px var(--dm-tertiary),
-    10px 7px 5px var(--dm-tertiary),
-    4px -4px 6px var(--dm-tertiary);
+    -12px 4px 5px var(--decoration-blue),
+    10px 7px 5px var(--decoration-blue),
+    4px -4px 6px var(--decoration-blue);
 }
 
 @keyframes particleBaseThumb {
@@ -431,7 +2026,7 @@ async function copyCode(): Promise<void> {
   right: 0;
   top: 4px;
   height: 1px;
-  background: var(--dm-tertiary);
+  background: var(--decoration-blue);
   opacity: 0.32;
 }
 
@@ -443,8 +2038,8 @@ async function copyCode(): Promise<void> {
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: var(--dm-on-primary);
-  box-shadow: 0 0 8px var(--dm-tertiary), -7px 0 6px var(--dm-tertiary);
+  background: var(--decoration-blue-light);
+  box-shadow: 0 0 8px var(--decoration-blue), -7px 0 6px var(--decoration-blue);
   animation: thumbLinearFlow 1.8s linear infinite;
 }
 
@@ -467,23 +2062,288 @@ async function copyCode(): Promise<void> {
 }
 
 .effect-card strong {
+  display: block;
   color: var(--dm-primary);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 600;
 }
 
 .effect-card p {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
+  color: var(--dm-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.effect-card.active strong {
+  color: var(--dm-primary);
+}
+
+.effect-card.active p {
+  color: var(--dm-secondary);
+}
+
+.decoration-workspace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 16px;
+}
+
+.decoration-title-copy {
+  min-width: 0;
+}
+
+.decoration-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.decoration-title-line h2 {
+  margin: 0;
+  color: var(--dm-primary);
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 620;
+}
+
+.decoration-title-copy p {
+  margin: 7px 0 0;
   color: var(--dm-secondary);
   font-size: 12px;
 }
 
+.decoration-view-toolbar {
+  min-height: 46px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--dm-hairline);
+}
+
+.decoration-view-tabs {
+  align-self: stretch;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.decoration-view-tabs button {
+  position: relative;
+  min-width: 84px;
+  padding: 0 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--dm-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.decoration-view-tabs button::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.decoration-view-tabs button:hover {
+  color: var(--dm-primary);
+}
+
+.decoration-view-tabs button.active {
+  color: #1683ff;
+}
+
+.decoration-view-tabs button.active::after {
+  background: #0070f3;
+}
+
+.decoration-workspace-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-bottom: 9px;
+}
+
+.decoration-workspace-actions :deep(.el-button) {
+  border-radius: 4px;
+}
+
+.decoration-workspace-content {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  padding-top: 14px;
+}
+
+.decoration-workspace-content > * {
+  grid-area: 1 / 1;
+}
+
+.preview-surface {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .preview-stage {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 0;
+  height: 100%;
+  border: 1px solid var(--dm-hairline);
+  border-radius: var(--dm-radius-lg) var(--dm-radius-lg) 0 0;
+  overflow: hidden;
+  background-color: var(--dm-motion-canvas-background);
+  box-shadow: inset 0 0 90px rgba(255, 255, 255, 0.015);
+}
+
+.preview-stage.paused :deep(*) {
+  animation-play-state: paused !important;
+}
+
+.preview-stage.has-preview-background {
+  display: block;
+  background-color: #090909;
+}
+
+.preview-stage.has-preview-background.grid-hidden {
+  background-image: none;
+}
+
+.logical-canvas-viewport {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 18px;
+}
+
+.actual-size-view .logical-canvas-viewport {
+  display: block;
+}
+
+.logical-canvas-frame {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: #050505;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.13), 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.actual-size-view .logical-canvas-frame {
+  margin: 0 auto;
+}
+
+.logical-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+.logical-canvas::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.075) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.grid-hidden .logical-canvas::after {
+  display: none;
+}
+
+.logical-canvas-background,
+.logical-canvas-dim {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.logical-canvas-background {
+  z-index: 0;
+  object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.logical-canvas-dim {
+  z-index: 1;
+  pointer-events: none;
+  background: #000;
+}
+
+.logical-motion-layer {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  touch-action: none;
+}
+
+.logical-motion-layer:active {
+  cursor: grabbing;
+}
+
+.logical-motion-layer > .generated-preview {
+  pointer-events: none;
+  user-select: none;
+}
+
+.decoration-code {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  height: 100%;
+  overflow: hidden;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: #020406;
-  box-shadow: inset 0 0 40px rgba(0, 112, 243, 0.035);
+  background: #0d0d0d;
+}
+
+.decoration-code :deep(.code-mirror-host) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+}
+
+.active-svg-name {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: 14px;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  padding: 6px 9px;
+  border: 1px solid var(--dm-hairline-strong);
+  border-radius: var(--dm-radius-md);
+  background: rgba(10, 10, 10, 0.9);
+  color: var(--dm-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .generated-preview {
@@ -491,6 +2351,33 @@ async function copyCode(): Promise<void> {
   place-items: center;
   min-width: 280px;
   min-height: 0;
+}
+
+.generated-preview.path-flow-preview {
+  width: 100%;
+  min-width: 0;
+}
+
+.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-tool),
+.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-tool-02),
+.generated-preview.path-flow-preview :deep(.decoration-effect-svg-flow-double-guide) {
+  width: 100% !important;
+  max-width: none;
+}
+
+.generated-preview.imported-svg-preview {
+  width: 100%;
+  min-width: 0;
+}
+
+.generated-preview.imported-svg-preview :deep(.dm-star-ring) {
+  width: 100% !important;
+  max-width: none;
+  max-height: none;
+}
+
+.generated-preview.size-fitted-preview {
+  min-width: 0;
 }
 
 .effect-meta {
@@ -527,9 +2414,215 @@ async function copyCode(): Promise<void> {
   gap: 14px;
 }
 
+.preview-background-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.preview-background-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-background-head h3 {
+  margin: 0;
+  color: var(--dm-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.preview-background-head p {
+  margin: 5px 0 0;
+  color: var(--dm-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.preview-background-head :deep(.el-button) {
+  flex: 0 0 auto;
+  border-radius: 4px;
+}
+
+.background-file-row,
+.preview-switch-row,
+.preview-background-subhead,
+.preview-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--dm-secondary);
+  font-size: 12px;
+}
+
+.background-file-row {
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.background-file-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-file-row button,
+.preview-background-subhead button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1683ff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.canvas-size-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.canvas-size-row label {
+  display: grid;
+  gap: 7px;
+  color: var(--dm-secondary);
+  font-size: 11px;
+}
+
+.canvas-size-row :deep(.el-input-number) {
+  width: 100%;
+}
+
+.preview-setting-row > span,
+.preview-switch-row > span {
+  flex: 0 0 72px;
+}
+
+.preview-setting-row :deep(.el-select),
+.preview-setting-row :deep(.el-radio-group) {
+  min-width: 0;
+  flex: 1;
+}
+
+.preview-setting-row :deep(.el-radio-button) {
+  flex: 1;
+}
+
+.preview-setting-row :deep(.el-radio-button__inner) {
+  width: 100%;
+}
+
+.preview-background-subhead {
+  padding-top: 4px;
+}
+
+.preview-background-subhead strong {
+  color: var(--dm-primary);
+  font-size: 12px;
+}
+
+.compact-preview-control {
+  gap: 8px;
+}
+
+.preview-background-divider {
+  height: 1px;
+  margin: 20px 0;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.flow-param-stack {
+  display: grid;
+  gap: 22px;
+}
+
+.flow-param-section {
+  display: grid;
+  gap: 14px;
+}
+
+.flow-param-section + .flow-param-section {
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.flow-param-section h3 {
+  margin: 0;
+  color: var(--dm-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.flow-param-note {
+  margin: -6px 0 0;
+  color: var(--dm-tertiary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.flow-param-section-head,
+.flow-path-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flow-param-section-head small {
+  color: var(--dm-secondary);
+  font-size: 11px;
+}
+
+.flow-path-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.flow-path-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dm-primary);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-path-field {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--dm-secondary);
+  font-size: 11px;
+}
+
+.flow-path-field :deep(.el-input-number) {
+  width: 100%;
+}
+
 .param-control {
   display: grid;
   gap: 8px;
+}
+
+.param-control.switch-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.param-control.switch-control label {
+  flex: 1;
 }
 
 .param-control label {
@@ -549,7 +2642,7 @@ async function copyCode(): Promise<void> {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 92px;
+  grid-template-columns: minmax(0, 1fr) var(--dm-param-value-width);
   gap: 10px;
   align-items: center;
 }
@@ -559,8 +2652,8 @@ async function copyCode(): Promise<void> {
 }
 
 .number-row :deep(.el-input-number) {
-  width: 92px;
-  max-width: 92px;
+  width: var(--dm-param-value-width);
+  max-width: var(--dm-param-value-width);
 }
 
 .color-row {
@@ -570,18 +2663,4 @@ async function copyCode(): Promise<void> {
   align-items: center;
 }
 
-.decoration-export :deep(.el-tabs) {
-  height: 100%;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-}
-
-.decoration-export :deep(.el-tabs__content),
-.decoration-export :deep(.el-tab-pane) {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
 </style>
