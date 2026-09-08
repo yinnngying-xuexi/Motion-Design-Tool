@@ -44,7 +44,7 @@ const ROLE_ALIASES: Record<StarRingLayerRole, string[]> = {
   background: ["background", "bg", "base", "背景", "底座"],
   "static-ring": ["staticring", "outerring", "outring", "ringstatic", "静态环", "外环"],
   "rotating-ring": ["rotatingring", "rotatering", "middlering", "innerring", "旋转环", "中间旋转", "内环"],
-  center: ["center", "centericon", "core", "icon", "中心", "中间", "图标"],
+  center: ["center", "centericon", "marker", "markericon", "locationmarker", "pin", "core", "icon", "中心", "中间", "图标", "顶部定位", "定位标记", "定位点"],
   particles: ["particles", "particle", "dots", "spark", "粒子", "光点", "前景"],
   "outer-ring": ["outerring", "outring", "outside", "externalring", "外环", "外围"],
   "inner-ring": ["innerring", "inside", "internalring", "内环", "内圈"],

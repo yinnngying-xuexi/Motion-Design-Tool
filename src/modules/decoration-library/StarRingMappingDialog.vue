@@ -66,7 +66,10 @@ const props = withDefaults(defineProps<{
 }>(), { roleProfile: "star-ring" });
 const emit = defineEmits<{ "update:modelValue": [value: boolean]; confirm: [mapping: StarRingLayerMapping, labels: Record<string, string>] }>();
 const roleOrder = computed(() => STAR_RING_ROLE_PROFILES[props.roleProfile]);
-const roleLabels = STAR_RING_ROLE_LABELS;
+const roleLabels = computed<Record<StarRingLayerRole, string>>(() => ({
+  ...STAR_RING_ROLE_LABELS,
+  center: props.roleProfile === "stacked-energy-base" ? "顶部定位" : STAR_RING_ROLE_LABELS.center
+}));
 const confirmLabel = computed(() => ({
   "star-ring": "应用到星环底座",
   "chart-tech-ring": "应用到饼图环形",

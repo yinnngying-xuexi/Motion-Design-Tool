@@ -3,6 +3,7 @@
     <section class="source-card">
       <div><strong>{{ sourceName }}</strong><small>{{ sourceDescription }}</small></div>
       <div class="source-actions">
+        <button v-if="isStackedEnergyBase" type="button" @click="$emit('replaceBaseSvg')">替换底座</button>
         <button v-if="showImportGuide" type="button" @click="$emit('showImportGuide')"><span aria-hidden="true">ⓘ</span> 导入说明</button>
         <button v-if="modelValue.kind !== 'layered-decoration' && modelValue.sourceMode === 'imported' && modelValue.svg?.mode === 'layered'" type="button" @click="$emit('remap')">重新映射</button>
         <button v-if="modelValue.sourceMode === 'imported'" type="button" @click="$emit('usePreset')">恢复预设</button>
@@ -47,18 +48,31 @@
     </template>
 
     <template v-if="isReplaceableIconBase">
-      <p class="param-group-title">中心图标</p>
+      <p class="param-group-title">{{ isStackedEnergyBase ? "顶部定位" : "中心图标" }}</p>
       <div class="chart-content-source">
         <div>
-          <span>独立替换素材</span>
+          <span>{{ isStackedEnergyBase ? "独立 SVG · 无需图层命名" : "独立替换素材" }}</span>
           <strong :title="modelValue.centerIconSvg?.fileName">{{ modelValue.centerIconSvg?.fileName ?? "使用案例内置图标" }}</strong>
         </div>
         <span class="center-icon-actions">
-          <button type="button" @click="$emit('replaceCenterIcon')">替换</button>
+          <button type="button" @click="$emit('replaceCenterIcon')">{{ modelValue.centerIconSvg ? "替换" : "上传" }}</button>
           <button v-if="modelValue.centerIconSvg" type="button" @click="$emit('removeCenterIcon')">移除</button>
         </span>
       </div>
       <template v-if="modelValue.centerIconSvg">
+        <div class="param-field">
+          <label><span>图标颜色模式</span></label>
+          <el-select :model-value="modelValue.centerIconColorMode ?? 'original'" @change="updateCenterColorMode">
+            <el-option label="保留原色" value="original" />
+            <el-option label="单色覆盖" value="monochrome" />
+          </el-select>
+        </div>
+        <ColorParam
+          v-if="modelValue.centerIconColorMode === 'monochrome'"
+          label="图标颜色"
+          :value="modelValue.centerIconColor ?? modelValue.centerIconSvg.primaryColor"
+          @update="updateCenterColor"
+        />
         <ParamNumber label="图标尺寸" unit="px" :value="modelValue.centerIconSize ?? 40" :min="8" :max="160" :step="1" @update="updateCenterSetting('centerIconSize', $event)" />
         <ParamNumber label="水平位置" unit="%" :value="modelValue.centerIconX ?? 50" :min="0" :max="100" :step="1" @update="updateCenterSetting('centerIconX', $event)" />
         <ParamNumber label="垂直位置" unit="%" :value="modelValue.centerIconY ?? 30" :min="0" :max="100" :step="1" @update="updateCenterSetting('centerIconY', $event)" />
@@ -98,6 +112,22 @@
     </div>
 
     <template v-if="activeLayer">
+        <template v-if="isStackedEnergyBase">
+          <p class="param-group-title">图层样式</p>
+          <div class="param-field">
+            <label><span>颜色模式</span></label>
+            <el-select :model-value="activeLayer.colorMode" @change="updateLayer('colorMode', $event)">
+              <el-option label="保留原色" value="original" />
+              <el-option label="单色覆盖" value="monochrome" />
+            </el-select>
+          </div>
+          <template v-if="activeLayer.colorMode === 'monochrome'">
+            <ColorParam label="填充颜色" :value="activeLayer.fillColor" @update="updateLayer('fillColor', $event)" />
+            <ColorParam label="描边颜色" :value="activeLayer.strokeColor" @update="updateLayer('strokeColor', $event)" />
+            <ParamNumber label="描边宽度" unit="px" :value="activeLayer.strokeWidth" :min="0" :max="12" :step="0.5" @update="updateLayer('strokeWidth', $event)" />
+          </template>
+          <ParamNumber label="图层透明度" :value="activeLayer.opacity" :min="0" :max="1" :step="0.05" @update="updateLayer('opacity', $event)" />
+        </template>
         <p class="param-group-title">图层动效</p>
         <div class="param-field">
           <label><span>动效类型</span></label>
@@ -174,7 +204,7 @@ import type { BasicMotionConfig, BasicMotionParamKey, BasicMotionTemplate, Motio
 const props = withDefaults(defineProps<{ modelValue: StarRingDecorationConfig; showImportGuide?: boolean }>(), {
   showImportGuide: false
 });
-const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: []; showImportGuide: []; removeChartContent: []; replaceCenterIcon: []; removeCenterIcon: [] }>();
+const emit = defineEmits<{ "update:modelValue": [value: StarRingDecorationConfig]; usePreset: []; remap: []; showImportGuide: []; replaceBaseSvg: []; removeChartContent: []; replaceCenterIcon: []; removeCenterIcon: [] }>();
 const activeLayerKey = ref("");
 const activeRoleOrder = computed<readonly StarRingLayerRole[]>(() => {
   const kind = props.modelValue.kind;
@@ -268,6 +298,7 @@ function roleForLayer(key: string): StarRingLayerRole | undefined { return activ
 function layerChineseName(key: string): string {
   if (props.modelValue.kind === "layered-decoration") return "素材图层";
   const role = roleForLayer(key);
+  if (props.modelValue.kind === "stacked-energy-base" && role === "center") return "顶部定位";
   if (role) return STAR_RING_ROLE_LABELS[role];
   return props.modelValue.svg?.mode === "whole" ? "整体素材" : "普通图层";
 }
@@ -292,6 +323,16 @@ function updateChartContentSize(value: number): void {
 function updateCenterSetting(key: "centerIconSize" | "centerIconX" | "centerIconY", value: number): void {
   const next = cloneConfig();
   next[key] = value;
+  emit("update:modelValue", next);
+}
+function updateCenterColorMode(value: "original" | "monochrome"): void {
+  const next = cloneConfig();
+  next.centerIconColorMode = value;
+  emit("update:modelValue", next);
+}
+function updateCenterColor(value: string): void {
+  const next = cloneConfig();
+  next.centerIconColor = value;
   emit("update:modelValue", next);
 }
 function updatePresetSize(value: number): void {
@@ -352,4 +393,5 @@ const ColorParam = defineComponent({
 .star-ring-panel .chart-size-info{display:flex;align-items:center;justify-content:space-between;min-height:36px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,.025);color:var(--dm-secondary);font-size:11px}.star-ring-panel .chart-size-info strong{color:var(--dm-primary);font:500 11px/1.4 "Geist Mono",ui-monospace,monospace}.star-ring-panel .chart-size-note{margin:-4px 0 0;color:#737373;font-size:10px;line-height:1.6}
 .star-ring-panel .chart-content-source{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-radius:6px;background:rgba(0,112,243,.055)}.star-ring-panel .chart-content-source>div{min-width:0;display:grid;gap:3px}.star-ring-panel .chart-content-source span{color:var(--dm-secondary);font-size:10px}.star-ring-panel .chart-content-source strong{overflow:hidden;color:var(--dm-primary);font-size:11px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}.star-ring-panel .chart-content-source button{padding:0;border:0;background:transparent;color:#ff6b6b;font-size:10px;cursor:pointer}
 .star-ring-panel .center-icon-actions{display:flex;align-items:center;gap:8px}.star-ring-panel .center-icon-actions button:first-child{color:#1683ff}.star-ring-panel .center-icon-actions button:last-child:not(:first-child){color:#ff6b6b}
+.star-ring-panel .source-actions{flex-wrap:wrap;justify-content:flex-end}
 </style>

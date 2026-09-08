@@ -144,9 +144,11 @@ function layerCss(layerKey: string, layer: StarRingLayerConfig, isRotatingRing =
   const hidden = layer.visible ? "" : "display:none !important;";
   const particleStrength = Math.min(100, Math.max(0, layer.particleIntensity ?? 70)) / 100;
   const effectiveOpacity = isParticleLayer ? Number((layer.opacity * particleStrength).toFixed(3)) : layer.opacity;
+  const fillTargets = `${target}:is(path,rect,circle,ellipse,polygon),${target} :is(path,rect,circle,ellipse,polygon)`;
+  const strokeTargets = `${target}:is(path,rect,circle,ellipse,polygon,polyline,line),${target} :is(path,rect,circle,ellipse,polygon,polyline,line)`;
   const colorCss = layer.colorMode === "monochrome"
-    ? `${target} :is(path,rect,circle,ellipse,polygon):not([fill="none"]){fill:${layer.fillColor} !important;}
-${target} :is(path,rect,circle,ellipse,polygon,polyline,line){stroke:${layer.strokeColor} !important;stroke-width:${layer.strokeWidth}px !important;}
+    ? `:is(${fillTargets}):not([fill="none"]){fill:${layer.fillColor} !important;}
+:is(${strokeTargets}){stroke:${layer.strokeColor} !important;stroke-width:${layer.strokeWidth}px !important;}
 ${target} :is([fill="none"],line,polyline){fill:none !important;}`
     : "";
   const ringHighlight = usesRingHighlight ? ringHighlightCss(layerKey, layer, segmentCount, className) : "";
@@ -329,8 +331,15 @@ function centerIconMarkupCss(className: string, config: StarRingDecorationConfig
   const size = Math.max(8, config.centerIconSize ?? 40);
   const x = Math.min(100, Math.max(0, config.centerIconX ?? 50));
   const y = Math.min(100, Math.max(0, config.centerIconY ?? 30));
-  return `.${className}__center-icon{position:absolute;z-index:4;left:${x}%;top:${y}%;display:grid;place-items:center;width:${size}px;height:${size}px;transform:translate(-50%,-50%);pointer-events:none;}
-.${className}__center-icon>svg{display:block;width:100%;height:100%;overflow:visible;}`;
+  const color = config.centerIconColor ?? config.centerIconSvg.primaryColor ?? config.overall.color;
+  const monochromeCss = config.centerIconColorMode === "monochrome"
+    ? `
+.${className}__center-icon :is(path,rect,circle,ellipse,polygon):not([fill="none"]){fill:var(--dm-center-icon-color)!important;}
+.${className}__center-icon :is([fill="none"],line,polyline){fill:none!important;}
+.${className}__center-icon :is(path,rect,circle,ellipse,polygon,polyline,line)[stroke]:not([stroke="none"]){stroke:var(--dm-center-icon-color)!important;}`
+    : "";
+  return `.${className}__center-icon{--dm-center-icon-color:${color};position:absolute;z-index:4;left:${x}%;top:${y}%;display:grid;place-items:center;width:${size}px;height:${size}px;transform:translate(-50%,-50%);pointer-events:none;}
+.${className}__center-icon>svg{display:block;width:100%;height:100%;overflow:visible;}${monochromeCss}`;
 }
 
 export function generateStarRingHtmlCss(config: StarRingDecorationConfig): string {

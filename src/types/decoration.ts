@@ -1,9 +1,9 @@
 import type { BasicMotionConfig } from "@/types/motion";
 
 export type DecorationSection = "标题装饰" | "图表装饰" | "图标/点位" | "面板装饰" | "通用装饰" | "loading";
-export type DecorationSubsection = "顶部标题" | "小标题" | "饼图外环" | "图标底座" | "动态标记" | "通用 Loading";
+export type DecorationSubsection = "顶部标题" | "小标题" | "饼图外环" | "图标底座" | "面板边框" | "动态标记" | "通用 Loading";
 
-export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "layered-sweep" | "scan" | "border-glow" | "loading";
+export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "layered-sweep" | "scan" | "border-glow" | "panel-border-flow" | "loading";
 
 export interface DecorationParam {
   key: string;
@@ -26,7 +26,7 @@ export interface DecorationEffectTemplate {
   defaultParams: Record<string, string | number>;
   editableParams: DecorationParam[];
   previewType: DecorationPreviewType;
-  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "flow-marker-sequence" | "corner-focus" | "connection-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring" | "loading-hex-tech-ring";
+  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "flow-marker-sequence" | "corner-focus" | "connection-flow" | "panel-border-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring" | "loading-hex-tech-ring";
 }
 
 export type DecorationParticleStyle = "float" | "twinkle" | "spread";
@@ -148,6 +148,8 @@ export interface StarRingDecorationConfig {
   kind?: "star-ring" | "layered-decoration" | "chart-tech-ring" | "stacked-energy-base" | "ripple-focus-base";
   chartContentSize?: number;
   centerIconSvg?: StarRingSvgAsset;
+  centerIconColorMode?: StarRingColorMode;
+  centerIconColor?: string;
   centerIconSize?: number;
   centerIconX?: number;
   centerIconY?: number;

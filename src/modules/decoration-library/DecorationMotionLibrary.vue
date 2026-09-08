@@ -37,11 +37,12 @@
             >
               <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
                 <div
-                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow' || effect.previewType === 'flow-marker' || effect.previewType === 'loading'"
+                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow' || effect.previewType === 'flow-marker' || effect.previewType === 'panel-border-flow' || effect.previewType === 'loading'"
                   class="real-effect-thumbnail"
                   :class="{
                     'path-flow-thumbnail': effect.previewType === 'svg-flow',
                     'flow-marker-thumbnail': effect.previewType === 'flow-marker',
+                    'panel-border-thumbnail': effect.previewType === 'panel-border-flow',
                     'loading-thumbnail': effect.previewType === 'loading',
                     'chart-ring-thumbnail': effect.id === 'chart-tech-ring-01'
                   }"
@@ -169,7 +170,7 @@
         <div>
           <h2>参数设置</h2>
         </div>
-        <el-button size="small" @click="resetParams">重置</el-button>
+        <el-button size="small" @click="resetParams()">重置</el-button>
       </header>
 
       <el-scrollbar class="param-scroll">
@@ -285,6 +286,7 @@
           @use-preset="restoreLayeredPreset"
           @remap="openCurrentMapping"
           @show-import-guide="starRingGuideVisible = true"
+          @replace-base-svg="triggerSvgImport"
           @remove-chart-content="removeChartContent"
           @replace-center-icon="triggerCenterIconImport"
           @remove-center-icon="removeCenterIcon"
@@ -411,16 +413,28 @@
             </section>
           </div>
         </template>
-        <template v-else-if="isGeneralDecoration">
+        <template v-else-if="isGeneralDecoration || isPanelBorderFlow">
           <div class="flow-param-stack">
             <section v-for="section in generalParamSections" :key="section.title" class="flow-param-section">
               <h3>{{ section.title }}</h3>
-              <div v-for="paramItem in section.params" :key="paramItem.key" class="param-control">
+              <div
+                v-for="paramItem in section.params"
+                :key="paramItem.key"
+                class="param-control"
+                :class="{ 'switch-control': paramItem.key === 'sourceVisibility' }"
+              >
                 <label>
                   <span>{{ paramItem.label }}</span>
                   <small v-if="paramItem.unit">{{ paramItem.unit }}</small>
                 </label>
-                <div v-if="paramItem.type === 'color'" class="color-row">
+                <el-switch
+                  v-if="paramItem.key === 'sourceVisibility'"
+                  v-model="params[paramItem.key]"
+                  active-value="flow-only"
+                  inactive-value="show"
+                  aria-label="隐藏原素材"
+                />
+                <div v-else-if="paramItem.type === 'color'" class="color-row">
                   <el-color-picker v-model="params[paramItem.key]" />
                   <el-input v-model="params[paramItem.key]" />
                 </div>
@@ -492,7 +506,7 @@
             </div>
           </div>
           <SvgStylePanel
-            v-if="importedSvg && !isSvgFlow && !isGeneralSvgDecoration"
+            v-if="importedSvg && !isSvgFlow && !isGeneralSvgDecoration && !isPanelBorderFlow"
             :model-value="svgStyle"
             :primary-color="importedSvg.primaryColor"
             @update:model-value="updateSvgStyle"
@@ -630,9 +644,10 @@ const isSubtitleSweep = computed(() => currentEffect.value.id === "subtitle-orbi
 const isFlowMarker = computed(() => currentEffect.value.generator === "flow-marker");
 const isSequenceMarker = computed(() => currentEffect.value.generator === "flow-marker-sequence");
 const isCornerFocus = computed(() => currentEffect.value.generator === "corner-focus");
+const isPanelBorderFlow = computed(() => currentEffect.value.generator === "panel-border-flow");
 const isGeneralDecoration = computed(() => currentEffect.value.section === "通用装饰");
 const isGeneralSvgDecoration = computed(() => isFlowMarker.value || isSequenceMarker.value || isCornerFocus.value);
-const supportsImportedSvg = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value || isSvgFlow.value || isGeneralSvgDecoration.value || currentEffect.value.generator === "loading-icon-pulse");
+const supportsImportedSvg = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value || isSvgFlow.value || isGeneralSvgDecoration.value || isPanelBorderFlow.value || currentEffect.value.generator === "loading-icon-pulse");
 const supportsParticleEffect = computed(() => currentEffect.value.section !== "loading");
 const isLayeredDecoration = computed(() => isLayeredRingDecoration.value || isSubtitleSweep.value);
 const activeRingConfig = computed(() => isChartTechRing.value
@@ -665,7 +680,18 @@ const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColo
 const flowShapeParams = computed(() => ["flowAmplitude", "flowFocusPosition", "flowLeftEndWidth", "flowRightEndWidth"]
   .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
   .filter((item): item is NonNullable<typeof item> => Boolean(item)));
-const generalParamSections = computed(() => [
+const generalParamSections = computed(() => (isPanelBorderFlow.value ? [
+  {
+    title: importedSvg.value ? "面板素材" : "面板结构",
+    keys: importedSvg.value
+      ? ["panelWidth", "panelHeight", "radius"]
+      : ["panelWidth", "panelHeight", "cornerLength", "headerWidth", "structureOpacity", "backgroundColor", "structureColor"]
+  },
+  {
+    title: "边框流光（可选）",
+    keys: ["flowEnabled", "direction", "duration", "flowLength", "borderWidth", "glowIntensity", "color"]
+  }
+] : [
   {
     title: "素材设置",
     keys: ["shape", "markerCount", "size", "markerGap", "color", "cornerStyle", "cornerCount", "targetWidth", "targetHeight", "cornerLength", "pathStyle", "endpointStyle", "length", "bend", "borderWidth", "lineWidth", "trackOpacity"]
@@ -678,7 +704,7 @@ const generalParamSections = computed(() => [
     title: "光效设置",
     keys: ["minOpacity", "glowIntensity", "tailLength", "afterglow"]
   }
-].map((section) => ({
+]).map((section) => ({
   title: section.title,
   params: section.keys
     .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
@@ -686,6 +712,12 @@ const generalParamSections = computed(() => [
 })).filter((section) => section.params.length));
 const flowTargets = computed(() => svgSource.value?.targets ?? []);
 const previewIntrinsicSize = computed(() => {
+  if (isPanelBorderFlow.value) {
+    return {
+      width: Number(params.panelWidth ?? importedSvg.value?.width ?? 460),
+      height: Number(params.panelHeight ?? importedSvg.value?.height ?? 240)
+    };
+  }
   if (isSvgFlow.value && svgSource.value) {
     return { width: svgSource.value.width, height: svgSource.value.height };
   }
@@ -984,7 +1016,7 @@ watch(() => props.initialEffectId, async (id) => {
   activeEffectId.value = effect.id;
 });
 
-watch(currentEffect, resetParams, { immediate: true });
+watch(currentEffect, () => resetParams(false), { immediate: true });
 
 watch([previewMarkup, previewPlaying, previewSpeed], () => {
   void nextTick(applyPlaybackState);
@@ -1108,7 +1140,7 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
   return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`;
 }
 
-function resetParams(): void {
+function resetParams(preservePanelAsset = true): void {
   if (isLayeredRingDecoration.value) {
     const current = activeRingConfig.value;
     if (isChartTechRing.value) {
@@ -1123,6 +1155,8 @@ function resetParams(): void {
       const next = createCurrentRingDefault();
       applyImportedStarRingConfig(next, current.svg, current.layerMapping);
       next.centerIconSvg = current.centerIconSvg;
+      next.centerIconColorMode = current.centerIconColorMode;
+      next.centerIconColor = current.centerIconColor;
       next.centerIconSize = current.centerIconSize;
       next.centerIconX = current.centerIconX;
       next.centerIconY = current.centerIconY;
@@ -1130,6 +1164,8 @@ function resetParams(): void {
     } else {
       const next = createCurrentRingDefault();
       next.centerIconSvg = current.centerIconSvg;
+      next.centerIconColorMode = current.centerIconColorMode;
+      next.centerIconColor = current.centerIconColor;
       next.centerIconSize = current.centerIconSize;
       next.centerIconX = current.centerIconX;
       next.centerIconY = current.centerIconY;
@@ -1157,6 +1193,19 @@ function resetParams(): void {
     svgSource.value = createSystemSvgFlowSource(currentEffect.value.id);
     particleEffect.value = createDefaultDecorationParticleConfig();
     importedSvg.value = undefined;
+    void replayPreview();
+    return;
+  }
+  if (isPanelBorderFlow.value) {
+    const panelAsset = preservePanelAsset ? importedSvg.value : undefined;
+    Object.keys(params).forEach((key) => delete params[key]);
+    Object.assign(params, currentEffect.value.defaultParams);
+    importedSvg.value = panelAsset;
+    if (panelAsset) {
+      params.panelWidth = panelAsset.width;
+      params.panelHeight = panelAsset.height;
+    }
+    particleEffect.value = createDefaultDecorationParticleConfig();
     void replayPreview();
     return;
   }
@@ -1240,8 +1289,17 @@ async function handleSvgUpload(event: Event): Promise<void> {
     } else if (isLayeredRingDecoration.value) {
       const { asset, mapping } = await readStarRingSvgFile(file, STAR_RING_ROLE_PROFILES[currentRoleProfile.value]);
       if (asset.mode === "whole") {
+        const previous = activeRingConfig.value;
         const next = createCurrentRingDefault();
         applyImportedStarRingConfig(next, asset, mapping);
+        if (isReplaceableIconBase.value) {
+          next.centerIconSvg = previous.centerIconSvg;
+          next.centerIconColorMode = previous.centerIconColorMode;
+          next.centerIconColor = previous.centerIconColor;
+          next.centerIconSize = previous.centerIconSize;
+          next.centerIconX = previous.centerIconX;
+          next.centerIconY = previous.centerIconY;
+        }
         setActiveRingConfig(next);
         ElMessage.success("SVG 已按整体素材导入");
       } else {
@@ -1257,6 +1315,13 @@ async function handleSvgUpload(event: Event): Promise<void> {
         : await readSvgFlowFile(file, currentEffect.value.id === "svg-flow-tool-02" ? "double" : "single");
       importedSvg.value = undefined;
       ElMessage.success(isBackgroundSweep.value ? "完整 SVG 已作为标题背景读取，水波纹已自动应用" : "SVG 路径已读取");
+    } else if (isPanelBorderFlow.value) {
+      const previewAsset = await readSvgPreviewFile(file);
+      importedSvg.value = previewAsset;
+      params.panelWidth = previewAsset.width;
+      params.panelHeight = previewAsset.height;
+      ElMessage.success("面板 SVG 已替换默认结构，可继续选择是否开启边框流光");
+      void replayPreview();
     } else if (currentEffect.value.generator === "loading-icon-pulse" || isGeneralSvgDecoration.value) {
       const previewAsset = await readSvgPreviewFile(file);
       importedSvg.value = previewAsset;
@@ -1313,6 +1378,8 @@ async function handleCenterIconUpload(event: Event): Promise<void> {
     setActiveRingConfig({
       ...activeRingConfig.value,
       centerIconSvg: asset,
+      centerIconColorMode: "original",
+      centerIconColor: asset.primaryColor,
       centerIconSize: activeRingConfig.value.centerIconSize ?? (isStackedEnergyBase.value ? 47 : 36),
       centerIconX: activeRingConfig.value.centerIconX ?? 50,
       centerIconY: activeRingConfig.value.centerIconY ?? (isStackedEnergyBase.value ? 25 : 20)
@@ -1328,6 +1395,8 @@ function removeCenterIcon(): void {
   if (!isReplaceableIconBase.value || !activeRingConfig.value.centerIconSvg) return;
   const next = JSON.parse(JSON.stringify(activeRingConfig.value)) as StarRingDecorationConfig;
   delete next.centerIconSvg;
+  delete next.centerIconColorMode;
+  delete next.centerIconColor;
   setActiveRingConfig(next);
   ElMessage.success("已恢复案例内置中心图标");
   void replayPreview();
@@ -1343,6 +1412,20 @@ function restoreLayeredPreset(): void {
   if (isChartTechRing.value) {
     chartTechRingConfig.value = createDefaultChartTechRingConfig();
     ElMessage.success("已恢复系统预设素材");
+    void replayPreview();
+    return;
+  }
+  if (isReplaceableIconBase.value) {
+    const previous = activeRingConfig.value;
+    const next = createCurrentRingDefault();
+    next.centerIconSvg = previous.centerIconSvg;
+    next.centerIconColorMode = previous.centerIconColorMode;
+    next.centerIconColor = previous.centerIconColor;
+    next.centerIconSize = previous.centerIconSize;
+    next.centerIconX = previous.centerIconX;
+    next.centerIconY = previous.centerIconY;
+    setActiveRingConfig(next);
+    ElMessage.success("已恢复系统预设底座，顶部图标保持不变");
     void replayPreview();
     return;
   }
@@ -1382,12 +1465,16 @@ function confirmStarRingMapping(mapping: StarRingLayerMapping, labels: Record<st
   const previous = activeRingConfig.value;
   const next = createCurrentRingDefault();
   applyImportedStarRingConfig(next, asset, mapping);
-  if (remappingExistingAsset.value) {
-    next.particleEffect = previous.particleEffect;
+  if (isReplaceableIconBase.value) {
     next.centerIconSvg = previous.centerIconSvg;
+    next.centerIconColorMode = previous.centerIconColorMode;
+    next.centerIconColor = previous.centerIconColor;
     next.centerIconSize = previous.centerIconSize;
     next.centerIconX = previous.centerIconX;
     next.centerIconY = previous.centerIconY;
+  }
+  if (remappingExistingAsset.value) {
+    next.particleEffect = previous.particleEffect;
     if (isStackedEnergyBase.value) {
       next.stackedEnergy = previous.stackedEnergy;
       next.overall.size = previous.overall.size;
@@ -1472,7 +1559,12 @@ async function saveSvgFlow(): Promise<void> {
 }
 
 function downloadHtml(): void {
-  const exportSize = isSvgFlow.value
+  const exportSize = isPanelBorderFlow.value
+    ? {
+        width: Number(params.panelWidth ?? importedSvg.value?.width ?? 460),
+        height: Number(params.panelHeight ?? importedSvg.value?.height ?? 240)
+      }
+    : isSvgFlow.value
     ? { width: svgSource.value?.width ?? 1920, height: svgSource.value?.height ?? 96 }
     : isSubtitleSweep.value && subtitleSweepConfig.value.svg
       ? { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height }
@@ -1503,7 +1595,7 @@ ${htmlCss.value}
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${isSubtitleSweep.value || currentEffect.value.section === "loading" || isGeneralDecoration.value
+  anchor.download = `${isSubtitleSweep.value || currentEffect.value.section === "loading" || isGeneralDecoration.value || isPanelBorderFlow.value
     ? currentEffect.value.name
     : isLayeredRingDecoration.value
       ? isStarRing.value ? "star-ring-base" : currentEffect.value.name
@@ -1754,6 +1846,13 @@ async function restoreSvgFlow(): Promise<void> {
   width: 280px;
   height: 88px;
   transform: translate(-50%, -50%) scale(0.18);
+}
+
+.real-effect-thumbnail.panel-border-thumbnail {
+  top: 50%;
+  width: 460px;
+  height: 240px;
+  transform: translate(-50%, -50%) scale(0.105);
 }
 
 .real-effect-thumbnail.chart-ring-thumbnail {

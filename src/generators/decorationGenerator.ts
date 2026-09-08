@@ -2,6 +2,7 @@ import type { DecorationEffectTemplate, DecorationParticleConfig } from "@/types
 import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
 import { generateDecorationParticleCss, generateDecorationParticleMarkup } from "@/generators/decorationParticleGenerator";
 import { generateBackgroundSweepCss, generateBackgroundSweepMarkup } from "@/generators/backgroundSweepGenerator";
+import { BORDER_FLOW_DASH_GAP, BORDER_FLOW_DASH_LENGTH, borderFlowTrailSegments } from "@/utils/borderFlowTrail";
 
 export type DecorationParams = Record<string, string | number>;
 
@@ -468,6 +469,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
     const ringSize = Number(size);
     const ringWidth = Number(borderWidth);
     const glowStrength = Number(param(params, "glowIntensity", 64)) / 100;
+    const centerOpacity = Math.max(0, Math.min(1, Number(param(params, "centerOpacity", 100)) / 100));
     const glowRadius = Math.max(0, ringSize * 0.045 * glowStrength);
     const glowFilter = glowRadius > 0
       ? `drop-shadow(-${Math.max(0.5, glowRadius * 0.16).toFixed(1)}px -${Math.max(0.5, glowRadius * 0.16).toFixed(1)}px ${Math.max(1, glowRadius * 0.55).toFixed(1)}px color-mix(in srgb,${color} 78%,transparent)) drop-shadow(0 0 ${glowRadius.toFixed(1)}px color-mix(in srgb,${color} 34%,transparent))`
@@ -477,6 +479,7 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
 .${cls}__ring{fill:none;transform-box:fill-box;transform-origin:center;will-change:transform}
 .${cls}__ring--inner{stroke:${color};stroke-width:${Math.max(6, ringWidth * 8).toFixed(1)};stroke-dasharray:${Math.max(7, ringWidth * 5).toFixed(1)} ${Math.max(3, ringWidth * 2.4).toFixed(1)};opacity:.9;animation:${kf}Inner ${Number(duration).toFixed(2)}s linear infinite}
 .${cls}__ring--outer{stroke:color-mix(in srgb,${color} 64%,#0071bc);stroke-width:${Math.max(4, ringWidth * 6).toFixed(1)};stroke-dasharray:${Math.max(1.5, ringWidth).toFixed(1)} ${Math.max(8, ringWidth * 8).toFixed(1)};opacity:.82;animation:${kf}Outer ${Number(duration).toFixed(2)}s linear infinite}
+.${cls}__cells{opacity:${centerOpacity.toFixed(2)}}
 .${cls}__cell{fill:${color};stroke:color-mix(in srgb,${color} 26%,white);stroke-width:${Math.max(1, ringWidth * 0.5).toFixed(1)};transform-box:fill-box;transform-origin:center;animation:${kf}Cell 2s linear infinite;animation-delay:calc(var(--cell-index) * .4s)}
 @keyframes ${kf}Inner{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
 @keyframes ${kf}Outer{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
@@ -858,6 +861,41 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
 }`;
   }
 
+  if (template.generator === "panel-border-flow") {
+    const panelWidth = Math.max(160, Number(param(params, "panelWidth", 460)));
+    const panelHeight = Math.max(100, Number(param(params, "panelHeight", 240)));
+    const structureColor = String(param(params, "structureColor", "#1681FF"));
+    const backgroundColor = String(param(params, "backgroundColor", "#080E17"));
+    const structureOpacity = Math.max(0.1, Math.min(1, Number(param(params, "structureOpacity", 76)) / 100));
+    const glowIntensity = Math.max(0, Math.min(100, Number(param(params, "glowIntensity", 32)))) / 100;
+    const flowEnabled = String(param(params, "flowEnabled", "on")) !== "off";
+    const flowDirection = String(param(params, "direction", "clockwise")) === "counterclockwise" ? "reverse" : "normal";
+    const glowBlur = Math.max(1, Number(borderWidth) * (1.5 + glowIntensity * 4));
+    const flowCss = flowEnabled
+      ? `
+.${cls}__flow-track,.${cls}__flow-segment{fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round}
+.${cls}__flow-track{stroke:${structureColor};stroke-width:.7;opacity:${(structureOpacity * .2).toFixed(3)}}
+.${cls}__flow-segment{stroke:${color};stroke-width:var(--panel-flow-width);stroke-dasharray:${BORDER_FLOW_DASH_LENGTH} ${BORDER_FLOW_DASH_GAP};stroke-dashoffset:var(--panel-flow-start);opacity:var(--panel-flow-opacity);animation:${kf} ${duration}s linear infinite ${flowDirection}}
+.${cls}__flow-segment--head{stroke:color-mix(in srgb,${color} 82%,white 18%);filter:drop-shadow(0 0 ${glowBlur.toFixed(1)}px color-mix(in srgb,${color} ${Math.round(36 + glowIntensity * 42)}%,transparent))}
+@keyframes ${kf}{to{stroke-dashoffset:calc(var(--panel-flow-start) - 100px)}}`
+      : "";
+
+    return `.${cls}{position:relative;width:${panelWidth}px;height:${panelHeight}px;overflow:visible;isolation:isolate;color:${color}}
+.${cls}__source{position:absolute;inset:0;display:grid;place-items:center;overflow:visible;pointer-events:none}
+.${cls}__source svg{display:block;width:100%;height:100%;overflow:visible}
+.${cls}__svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.${cls}__frame-shell{fill:${backgroundColor};fill-opacity:.96;stroke:${structureColor};stroke-opacity:${(structureOpacity * .72).toFixed(3)};stroke-width:1.15;vector-effect:non-scaling-stroke}
+.${cls}__frame-inner{fill:none;stroke:${structureColor};stroke-opacity:${(structureOpacity * .34).toFixed(3)};stroke-width:.8;vector-effect:non-scaling-stroke}
+.${cls}__frame-plate{fill:color-mix(in srgb,${structureColor} 14%,${backgroundColor});stroke:${structureColor};stroke-opacity:${Math.min(1, structureOpacity * .95).toFixed(3)};stroke-width:1;vector-effect:non-scaling-stroke}
+.${cls}__frame-rail{fill:color-mix(in srgb,${structureColor} 9%,${backgroundColor});stroke:${structureColor};stroke-opacity:${(structureOpacity * .72).toFixed(3)};stroke-width:1;vector-effect:non-scaling-stroke}
+.${cls}__frame-corner{fill:none;stroke:${structureColor};stroke-opacity:${Math.min(1, structureOpacity * 1.18).toFixed(3)};stroke-width:1.6;vector-effect:non-scaling-stroke}
+.${cls}__frame-accent{fill:none;stroke:${structureColor};stroke-opacity:${Math.min(1, structureOpacity * .9).toFixed(3)};stroke-width:1.1;vector-effect:non-scaling-stroke}
+.${cls}__frame-tick{stroke:${structureColor};stroke-opacity:${(structureOpacity * .68).toFixed(3)};stroke-width:1;vector-effect:non-scaling-stroke}
+.${cls}__frame-block{fill:${structureColor};fill-opacity:${(structureOpacity * .72).toFixed(3)}}
+.${cls}__frame-node{fill:${structureColor};fill-opacity:${Math.min(1, structureOpacity * 1.08).toFixed(3)};filter:drop-shadow(0 0 3px color-mix(in srgb,${structureColor} 55%,transparent))}
+${flowCss}`;
+  }
+
   if (template.generator === "border-glow") {
     return `.${cls} {
   position: relative;
@@ -972,6 +1010,73 @@ ${particleEffect?.enabled ? generateDecorationParticleCss() : ""}
 }
 
 export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset, instanceId = "main", particleEffect?: DecorationParticleConfig): string {
+  if (template.generator === "panel-border-flow") {
+    const cls = decorationClassName(template);
+    const panelWidth = Math.max(160, Number(param(params, "panelWidth", 460)));
+    const panelHeight = Math.max(100, Number(param(params, "panelHeight", 240)));
+    const radius = Math.max(0, Number(param(params, "radius", 6)));
+    const cornerLength = Math.max(8, Math.min(48, Number(param(params, "cornerLength", 18)), panelWidth * .14, panelHeight * .24));
+    const headerWidth = Math.max(60, Math.min(Number(param(params, "headerWidth", 160)), panelWidth * .52));
+    const flowLength = Math.max(8, Math.min(48, Number(param(params, "flowLength", 24))));
+    const lineWidth = Math.max(.5, Number(param(params, "borderWidth", 1.4)));
+    const glowRatio = Math.max(0, Math.min(1, Number(param(params, "glowIntensity", 32)) / 100));
+    const flowEnabled = String(param(params, "flowEnabled", "on")) !== "off";
+    const inset = Math.max(2, lineWidth * 1.5);
+    const cut = Number(cornerLength.toFixed(2));
+    const frameLeft = Math.max(12, inset + 9);
+    const frameRight = panelWidth - Math.max(12, inset + 7);
+    const frameTop = Math.max(18, inset + 16);
+    const frameBottom = panelHeight - Math.max(12, inset + 9);
+    const outerPath = `M ${frameLeft + cut} ${frameTop} H ${frameRight - cut * 1.35} L ${frameRight} ${frameTop + cut} V ${frameBottom - cut} L ${frameRight - cut} ${frameBottom} H ${frameLeft + cut * .72} L ${frameLeft} ${frameBottom - cut * .72} V ${frameTop + cut} Z`;
+    const innerInset = 8;
+    const innerCut = Math.max(5, cut - 5);
+    const innerPath = `M ${frameLeft + innerInset + innerCut} ${frameTop + innerInset} H ${frameRight - innerInset - innerCut * 1.25} L ${frameRight - innerInset} ${frameTop + innerInset + innerCut} V ${frameBottom - innerInset - innerCut} L ${frameRight - innerInset - innerCut} ${frameBottom - innerInset} H ${frameLeft + innerInset + innerCut * .7} L ${frameLeft + innerInset} ${frameBottom - innerInset - innerCut * .7} V ${frameTop + innerInset + innerCut} Z`;
+    const rectRadius = Math.max(0, Math.min(radius, (panelWidth - inset * 2) / 2, (panelHeight - inset * 2) / 2));
+    const importedFlowPath = `M ${inset + rectRadius} ${inset} H ${panelWidth - inset - rectRadius} Q ${panelWidth - inset} ${inset} ${panelWidth - inset} ${inset + rectRadius} V ${panelHeight - inset - rectRadius} Q ${panelWidth - inset} ${panelHeight - inset} ${panelWidth - inset - rectRadius} ${panelHeight - inset} H ${inset + rectRadius} Q ${inset} ${panelHeight - inset} ${inset} ${panelHeight - inset - rectRadius} V ${inset + rectRadius} Q ${inset} ${inset} ${inset + rectRadius} ${inset} Z`;
+    const headerStart = frameLeft + 18;
+    const headerEnd = Math.min(frameRight - cut - 72, headerStart + headerWidth);
+    const statusStart = Math.max(headerEnd + 48, frameRight - cut - 78);
+    const bottomStart = Math.max(frameLeft + cut + 56, panelWidth * .58);
+    const leftRailTop = frameTop + Math.max(40, panelHeight * .23);
+    const leftRailBottom = frameBottom - Math.max(34, panelHeight * .18);
+    const rightRailTop = frameTop + Math.max(62, panelHeight * .34);
+    const rightRailBottom = Math.min(frameBottom - 34, rightRailTop + Math.max(42, panelHeight * .22));
+    const defaultStructure = `<svg class="${cls}__structure" viewBox="0 0 ${panelWidth} ${panelHeight}" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path class="${cls}__frame-shell" d="${outerPath}"></path>
+    <path class="${cls}__frame-inner" d="${innerPath}"></path>
+    <path class="${cls}__frame-plate" d="M ${headerStart} ${frameTop} H ${headerStart + 14} L ${headerStart + 25} 5 H ${headerEnd} L ${headerEnd + 18} ${frameTop} Z"></path>
+    <path class="${cls}__frame-plate" d="M ${bottomStart} ${frameBottom} H ${frameRight - cut - 20} L ${frameRight - 2} ${frameBottom - 22} H ${bottomStart + 48} Z"></path>
+    <path class="${cls}__frame-rail" d="M 3 ${leftRailTop + 9} L ${frameLeft} ${leftRailTop} V ${leftRailBottom} L 7 ${leftRailBottom - 12} Z"></path>
+    <path class="${cls}__frame-rail" d="M ${frameRight} ${rightRailTop} L ${panelWidth - 3} ${rightRailTop + 12} V ${rightRailBottom - 8} L ${frameRight} ${rightRailBottom} Z"></path>
+    <path class="${cls}__frame-corner" d="M ${frameLeft} ${frameTop + cut + 18} V ${frameTop + cut} L ${frameLeft + cut} ${frameTop} H ${frameLeft + cut + 24} M ${frameRight - cut - 22} ${frameTop} H ${frameRight - cut * 1.35} L ${frameRight} ${frameTop + cut} V ${frameTop + cut + 18} M ${frameRight} ${frameBottom - cut - 18} V ${frameBottom - cut} L ${frameRight - cut} ${frameBottom} H ${frameRight - cut - 24} M ${frameLeft + cut + 22} ${frameBottom} H ${frameLeft + cut * .72} L ${frameLeft} ${frameBottom - cut * .72} V ${frameBottom - cut - 18}"></path>
+    <path class="${cls}__frame-accent" d="M ${headerEnd + 28} ${frameTop + 8} H ${statusStart - 12} M ${frameLeft + 13} ${frameBottom - 16} H ${bottomStart - 26} L ${bottomStart - 14} ${frameBottom - 6} M ${frameRight - 17} ${frameTop + cut + 34} V ${rightRailTop - 15}"></path>
+    <g class="${cls}__frame-tick"><path d="M ${statusStart} ${frameTop + 8} h 13 M ${statusStart + 19} ${frameTop + 8} h 8 M ${statusStart + 33} ${frameTop + 8} h 4"></path><path d="M 7 ${leftRailTop + 25} h 6 M 7 ${leftRailTop + 39} h 6 M 7 ${leftRailTop + 53} h 6"></path><path d="M ${frameRight + 2} ${rightRailTop + 20} h 6 M ${frameRight + 2} ${rightRailTop + 32} h 6"></path></g>
+    <rect class="${cls}__frame-block" x="${headerStart + 34}" y="10" width="${Math.max(28, (headerEnd - headerStart) * .28)}" height="3" rx="1.5"></rect>
+    <rect class="${cls}__frame-block" x="${bottomStart + 18}" y="${frameBottom - 8}" width="32" height="2" rx="1"></rect>
+    <circle class="${cls}__frame-node" cx="${headerStart + 16}" cy="${frameTop - 7}" r="2.5"></circle>
+    <circle class="${cls}__frame-node" cx="${statusStart - 20}" cy="${frameTop + 8}" r="2"></circle>
+    <circle class="${cls}__frame-node" cx="${frameLeft + 7}" cy="${frameBottom - 17}" r="2"></circle>
+  </svg>`;
+    const sourceMarkup = asset?.markup ?? defaultStructure;
+    const flowPath = asset ? importedFlowPath : outerPath;
+    const lastSegment = Math.max(1, borderFlowTrailSegments.length - 1);
+    const flowSegments = borderFlowTrailSegments.map((segment, index) => {
+      const progress = index / lastSegment;
+      const opacity = segment.opacity * (.34 + glowRatio * .66);
+      const width = Math.max(.45, lineWidth * segment.widthFactor * .52);
+      return `<path class="${cls}__flow-segment${segment.isHead ? ` ${cls}__flow-segment--head` : ""}" d="${flowPath}" pathLength="100" style="--panel-flow-start:${(progress * flowLength).toFixed(3)}px;--panel-flow-opacity:${opacity.toFixed(3)};--panel-flow-width:${width.toFixed(2)}px"></path>`;
+    }).join("\n    ");
+    const flowMarkup = flowEnabled ? `<svg class="${cls}__svg" viewBox="0 0 ${panelWidth} ${panelHeight}" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path class="${cls}__flow-track" d="${flowPath}"></path>
+    ${flowSegments}
+  </svg>` : "";
+    return `<div class="${cls}" aria-label="${escapeHtml(template.name)}">
+  <div class="${cls}__source">${sourceMarkup}</div>
+  ${flowMarkup}
+  ${generateDecorationParticleMarkup(particleEffect, String(param(params, "color", DECORATION_BLUE)))}
+</div>`;
+  }
+
   if (template.generator === "flow-marker") {
     const cls = decorationClassName(template);
     const requestedShape = String(param(params, "shape", "triangle"));
@@ -1086,7 +1191,7 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
       ].map((point) => point.map((value) => value.toFixed(2)).join(",")).join(" ");
       return `<polygon class="${cls}__cell" style="--cell-index:${index}" points="${points}"></polygon>`;
     }).join("");
-    return `<div class="${cls}" role="status" aria-label="加载中"><svg class="${cls}__svg" viewBox="0 0 415.04 415.04" aria-hidden="true"><circle class="${cls}__ring ${cls}__ring--inner" cx="207.52" cy="207.52" r="198"></circle><circle class="${cls}__ring ${cls}__ring--outer" cx="207.52" cy="207.52" r="174"></circle><g>${cells}</g></svg></div>`;
+    return `<div class="${cls}" role="status" aria-label="加载中"><svg class="${cls}__svg" viewBox="0 0 415.04 415.04" aria-hidden="true"><circle class="${cls}__ring ${cls}__ring--inner" cx="207.52" cy="207.52" r="198"></circle><circle class="${cls}__ring ${cls}__ring--outer" cx="207.52" cy="207.52" r="174"></circle><g class="${cls}__cells">${cells}</g></svg></div>`;
   }
 
   if (template.id === "svg-flow-double-guide") {

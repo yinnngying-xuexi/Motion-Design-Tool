@@ -100,6 +100,7 @@ const loadingParams = {
   glowIntensity: { key: "glowIntensity", label: "发光强度", type: "number" as const, min: 0, max: 100, step: 5, unit: "%" },
   techRotationSpeed: { key: "duration", label: "旋转速度", type: "number" as const, min: 2, max: 20, step: 0.5, unit: "s" },
   techSize: { key: "size", label: "尺寸", type: "number" as const, min: 80, max: 320, step: 10, unit: "px" },
+  centerOpacity: { key: "centerOpacity", label: "中心图形透明度", type: "number" as const, min: 0, max: 100, step: 5, unit: "%" },
   centerText: { key: "centerText", label: "中心文字", type: "text" as const },
   color: { key: "color", label: "主色", type: "color" as const },
   trackColor: { key: "trackColor", label: "轨道颜色", type: "color" as const },
@@ -261,6 +262,40 @@ const connectionFlowParams = {
   duration: { key: "duration", label: "流动时长", type: "number" as const, min: 0.6, max: 8, step: 0.1, unit: "s" },
   flowCount: { key: "flowCount", label: "流光数量", type: "number" as const, min: 1, max: 5, step: 1 },
   trailLength: { key: "trailLength", label: "流光长度", type: "number" as const, min: 4, max: 30, step: 1, unit: "%" }
+};
+
+const panelBorderFlowParams = {
+  panelWidth: { key: "panelWidth", label: "面板宽度", type: "number" as const, min: 160, max: 1280, step: 10, unit: "px" },
+  panelHeight: { key: "panelHeight", label: "面板高度", type: "number" as const, min: 100, max: 720, step: 10, unit: "px" },
+  radius: { key: "radius", label: "边框圆角", type: "number" as const, min: 0, max: 40, step: 1, unit: "px" },
+  cornerLength: { key: "cornerLength", label: "切角尺寸", type: "number" as const, min: 8, max: 48, step: 2, unit: "px" },
+  headerWidth: { key: "headerWidth", label: "顶部舱条长度", type: "number" as const, min: 60, max: 360, step: 10, unit: "px" },
+  structureOpacity: { key: "structureOpacity", label: "结构线强度", type: "number" as const, min: 10, max: 100, step: 5, unit: "%" },
+  backgroundColor: { key: "backgroundColor", label: "面板底色", type: "color" as const },
+  structureColor: { key: "structureColor", label: "结构颜色", type: "color" as const },
+  flowEnabled: {
+    key: "flowEnabled",
+    label: "边框流光",
+    type: "select" as const,
+    options: [
+      { label: "开启", value: "on" },
+      { label: "关闭", value: "off" }
+    ]
+  },
+  direction: {
+    key: "direction",
+    label: "流动方向",
+    type: "select" as const,
+    options: [
+      { label: "顺时针", value: "clockwise" },
+      { label: "逆时针", value: "counterclockwise" }
+    ]
+  },
+  duration: { key: "duration", label: "流动时长", type: "number" as const, min: 1, max: 12, step: 0.1, unit: "s" },
+  flowLength: { key: "flowLength", label: "流光长度", type: "number" as const, min: 8, max: 48, step: 1, unit: "%" },
+  borderWidth: { key: "borderWidth", label: "流光线宽", type: "number" as const, min: 1, max: 6, step: 0.5, unit: "px" },
+  glowIntensity: { key: "glowIntensity", label: "发光强度", type: "number" as const, min: 0, max: 100, step: 5, unit: "%" },
+  color: { key: "color", label: "流光颜色", type: "color" as const }
 };
 
 export const decorationSections: DecorationSection[] = [
@@ -487,6 +522,50 @@ export const decorationEffects: DecorationEffectTemplate[] = [
     ],
     previewType: "layered-sweep",
     generator: "layered-sweep"
+  },
+  {
+    id: "panel-border-flow-01",
+    name: "科技面板边框01",
+    section: "面板装饰",
+    subsection: "面板边框",
+    description: "非对称科技面板由切角主框、顶部舱条、侧边功能轨、底部接口槽和状态刻度组成，边框流光可按需开启。",
+    scene: "数据面板、图表卡片、详情弹窗",
+    defaultParams: {
+      panelWidth: 460,
+      panelHeight: 240,
+      radius: 6,
+      cornerLength: 18,
+      headerWidth: 160,
+      structureOpacity: 76,
+      backgroundColor: "#080E17",
+      structureColor: "#1681FF",
+      flowEnabled: "on",
+      direction: "clockwise",
+      duration: 4.8,
+      flowLength: 28,
+      borderWidth: 1.4,
+      glowIntensity: 32,
+      color: DECORATION_BLUE
+    },
+    editableParams: [
+      panelBorderFlowParams.panelWidth,
+      panelBorderFlowParams.panelHeight,
+      panelBorderFlowParams.radius,
+      panelBorderFlowParams.cornerLength,
+      panelBorderFlowParams.headerWidth,
+      panelBorderFlowParams.structureOpacity,
+      panelBorderFlowParams.backgroundColor,
+      panelBorderFlowParams.structureColor,
+      panelBorderFlowParams.flowEnabled,
+      panelBorderFlowParams.direction,
+      panelBorderFlowParams.duration,
+      panelBorderFlowParams.flowLength,
+      panelBorderFlowParams.borderWidth,
+      panelBorderFlowParams.glowIntensity,
+      panelBorderFlowParams.color
+    ],
+    previewType: "panel-border-flow",
+    generator: "panel-border-flow"
   },
   {
     id: "flow-marker-01",
@@ -786,6 +865,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
       size: 200,
       borderWidth: 2,
       glowIntensity: 64,
+      centerOpacity: 100,
       color: DECORATION_BLUE
     },
     editableParams: [
@@ -793,6 +873,7 @@ export const decorationEffects: DecorationEffectTemplate[] = [
       loadingParams.techSize,
       loadingParams.lineWidth,
       loadingParams.glowIntensity,
+      loadingParams.centerOpacity,
       loadingParams.color
     ],
     previewType: "loading",
