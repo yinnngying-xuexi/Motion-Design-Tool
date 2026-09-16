@@ -6,13 +6,13 @@
           <h2>自定义素材库</h2>
         </div>
         <el-upload accept=".css,text/css" :show-file-list="false" :before-upload="handleCssUpload">
-          <el-button type="primary">上传 CSS</el-button>
+          <el-button class="dm-blue-action" type="primary">上传 CSS</el-button>
         </el-upload>
       </header>
 
       <div class="paste-box">
         <el-input v-model="templateName" placeholder="模板名称" />
-        <el-input v-model="cssDraft" type="textarea" :rows="8" placeholder="粘贴变量化 CSS 模板，例如 :root { --motion-color: #0070F3; }" />
+        <el-input v-model="cssDraft" type="textarea" :rows="8" placeholder="粘贴变量化 CSS 模板，例如 :root { --motion-color: #D8D8D4; }" />
         <el-button :disabled="!cssDraft.trim()" @click="createFromDraft">保存为素材</el-button>
       </div>
 
@@ -40,20 +40,31 @@
         <div>
           <h2>{{ currentAsset?.name ?? "等待上传 CSS" }}</h2>
         </div>
-        <el-tag effect="dark">用户上传</el-tag>
       </header>
 
-      <div class="preview-stage">
-        <div v-if="currentAsset" class="preview-host" v-html="previewMarkup"></div>
-        <div v-else class="empty-state">
-          <strong>上传或粘贴 CSS 模板</strong>
-          <p>第一版支持变量化 CSS。建议模板使用 `.custom-asset-target` 作为预览选择器。</p>
+      <div class="preview-surface">
+        <div
+          ref="previewCapture"
+          :key="`${currentAssetId}-${previewKey}`"
+          class="preview-stage dm-motion-canvas"
+          :class="{ paused: !previewPlaying }"
+        >
+          <div v-if="currentAsset" class="preview-host" v-html="previewMarkup"></div>
+          <div v-else class="empty-state">
+            <strong>上传或粘贴 CSS 模板</strong>
+            <p>第一版支持变量化 CSS。建议模板使用 `.custom-asset-target` 作为预览选择器。</p>
+          </div>
         </div>
+        <PreviewPlaybackControls
+          :disabled="!currentAsset"
+          :duration="previewDuration"
+          @replay="replayPreview"
+        />
       </div>
 
       <div class="template-rule">
         <span>模板规则</span>
-        <p>系统会读取 CSS 中的自定义变量，例如 <code>--motion-color: #0070F3;</code>，并将变量映射为右侧参数控件。</p>
+        <p>系统会读取 CSS 中的自定义变量，例如 <code>--motion-color: #D8D8D4;</code>，并将变量映射为右侧参数控件。</p>
       </div>
     </main>
 
@@ -105,7 +116,10 @@
         <div>
           <h2>导出代码</h2>
         </div>
-        <el-button type="primary" :disabled="!currentAsset" @click="copyCode">复制</el-button>
+        <div class="export-actions">
+          <el-button size="small" :disabled="!currentAsset" @click="downloadHtml">导出 HTML</el-button>
+          <el-button type="primary" size="small" :disabled="!currentAsset" @click="copyCode">复制代码</el-button>
+        </div>
       </header>
 
       <el-tabs v-model="activeExport">
@@ -126,9 +140,10 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
 import type { UploadRawFile } from "element-plus";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import type { CssVariableParam } from "@/types/decoration";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
+import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 
 interface CustomCssAsset {
   id: string;
@@ -142,7 +157,7 @@ interface CustomCssAsset {
 const STORAGE_KEY = "visual-motion-custom-css-assets";
 const defaultDraft = `:root {
   --motion-size: 140px;
-  --motion-color: #0070F3;
+  --motion-color: #D8D8D4;
   --motion-duration: 2.4s;
   --motion-glow: 24px;
 }
@@ -165,6 +180,10 @@ const currentAssetId = ref("");
 const templateName = ref("自定义 CSS 模板");
 const cssDraft = ref(defaultDraft);
 const activeExport = ref<"html" | "css" | "json">("html");
+const previewCapture = ref<HTMLElement>();
+const previewKey = ref(0);
+const previewPlaying = ref(true);
+const previewSpeed = ref(1);
 const variableValues = reactive<Record<string, string>>({});
 
 const currentAsset = computed(() => assets.value.find((asset) => asset.id === currentAssetId.value) ?? null);
@@ -174,6 +193,14 @@ const currentCss = computed(() => {
 });
 const previewClass = computed(() => findPreviewClass(currentCss.value));
 const previewMarkup = computed(() => `<style>${currentCss.value}</style><div class="${previewClass.value}"></div>`);
+const previewDuration = computed(() => {
+  const durationVariable = currentAsset.value?.variables.find((variable) => /duration/i.test(variable.name));
+  if (!durationVariable) return 0;
+  const rawValue = variableValues[durationVariable.name] ?? durationVariable.value;
+  const numericValue = Number.parseFloat(rawValue);
+  if (!Number.isFinite(numericValue)) return 0;
+  return durationVariable.unit === "ms" ? numericValue / 1000 : numericValue;
+});
 const htmlCssCode = computed(() => {
   if (!currentAsset.value) return "";
   return `<div class="${previewClass.value}"></div>
@@ -197,10 +224,24 @@ const jsonCode = computed(() => {
 });
 const currentCode = computed(() => (activeExport.value === "json" ? jsonCode.value : activeExport.value === "css" ? currentCss.value : htmlCssCode.value));
 
-onMounted(loadAssets);
+onMounted(() => {
+  loadAssets();
+  window.addEventListener("datamotion:export", downloadHtml);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("datamotion:export", downloadHtml);
+});
 
 watch(currentAsset, () => {
   resetVariables();
+  previewPlaying.value = true;
+  previewSpeed.value = 1;
+  previewKey.value += 1;
+});
+
+watch([previewMarkup, previewPlaying, previewSpeed], () => {
+  void nextTick(applyPlaybackState);
 });
 
 watch(
@@ -275,6 +316,36 @@ function resetVariables(): void {
   });
 }
 
+function togglePreview(): void {
+  previewPlaying.value = !previewPlaying.value;
+  void nextTick(applyPlaybackState);
+}
+
+function setPreviewSpeed(speed: number): void {
+  previewSpeed.value = speed;
+  void nextTick(applyPlaybackState);
+}
+
+async function replayPreview(): Promise<void> {
+  previewPlaying.value = true;
+  previewKey.value += 1;
+  await nextTick();
+  previewCapture.value?.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.currentTime = 0;
+  });
+  applyPlaybackState();
+}
+
+function applyPlaybackState(): void {
+  const target = previewCapture.value;
+  if (!target) return;
+  target.getAnimations({ subtree: true }).forEach((animation) => {
+    animation.playbackRate = previewSpeed.value;
+    if (previewPlaying.value) animation.play();
+    else animation.pause();
+  });
+}
+
 function updateNumberVariable(name: string, value: number | number[], unit: string): void {
   const nextValue = Array.isArray(value) ? value[0] : value;
   variableValues[name] = `${nextValue}${unit}`;
@@ -339,6 +410,41 @@ async function copyCode(): Promise<void> {
   await navigator.clipboard.writeText(currentCode.value);
   ElMessage.success("代码已复制");
 }
+
+function downloadHtml(): void {
+  if (!currentAsset.value) {
+    ElMessage.info("请先选择一个自定义素材");
+    return;
+  }
+
+  const documentCode = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${currentAsset.value.name}</title>
+<style>
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: #000000;
+  }
+</style>
+</head>
+<body>
+${htmlCssCode.value}
+</body>
+</html>`;
+  const url = URL.createObjectURL(new Blob([documentCode], { type: "text/html;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${currentAsset.value.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, "-") || "custom-motion"}.html`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success("HTML 文件已导出");
+}
 </script>
 
 <style scoped>
@@ -346,12 +452,12 @@ async function copyCode(): Promise<void> {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 340px minmax(520px, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) minmax(190px, 27vh);
+  grid-template-columns: 236px minmax(440px, 1fr) 360px;
+  grid-template-rows: minmax(360px, 1fr) minmax(236px, 34vh);
   grid-template-areas:
     "list preview params"
-    "list export export";
-  gap: 14px;
+    "list export params";
+  gap: 12px;
 }
 
 .panel {
@@ -360,9 +466,9 @@ async function copyCode(): Promise<void> {
   overflow: hidden;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: var(--dm-surface-soft);
-  padding: 20px;
-  box-shadow: inset 0 0 0 1px rgba(0, 112, 243, 0.02);
+  background: linear-gradient(145deg, rgba(17, 18, 18, 0.98), rgba(10, 11, 11, 0.98));
+  padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
 }
 
 .asset-list {
@@ -410,7 +516,15 @@ async function copyCode(): Promise<void> {
 .section-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 24px;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .paste-box {
@@ -443,26 +557,55 @@ async function copyCode(): Promise<void> {
   justify-content: space-between;
   gap: 12px;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-lg);
-  padding: 12px;
+  border-radius: var(--dm-radius-md);
+  padding: 10px 12px;
   background: var(--dm-surface-raised);
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.asset-card:hover:not(.active) {
+  border-color: var(--dm-secondary);
 }
 
 .asset-card.active {
   border-color: var(--dm-tertiary);
-  background: rgba(0, 112, 243, 0.11);
-  box-shadow: inset 0 0 24px rgba(0, 112, 243, 0.045);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: none;
 }
 
 .asset-card strong {
+  display: block;
   color: var(--dm-primary);
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
 }
 
 .asset-card p {
-  margin: 4px 0 0;
+  margin: 3px 0 0;
   color: var(--dm-secondary);
   font-size: 12px;
+  line-height: 1.4;
+}
+
+.asset-card.active strong {
+  color: var(--dm-primary);
+}
+
+.asset-card.active p {
+  color: var(--dm-secondary);
+}
+
+.asset-card.active :deep(.el-button) {
+  color: var(--dm-secondary);
+}
+
+.preview-surface {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .preview-stage {
@@ -470,9 +613,13 @@ async function copyCode(): Promise<void> {
   place-items: center;
   min-height: 0;
   border: 1px solid var(--dm-hairline);
-  border-radius: var(--dm-radius-lg);
-  background: #020406;
-  box-shadow: inset 0 0 40px rgba(0, 112, 243, 0.035);
+  border-radius: var(--dm-radius-lg) var(--dm-radius-lg) 0 0;
+  background-color: var(--dm-motion-canvas-background);
+  box-shadow: inset 0 0 90px rgba(255, 255, 255, 0.015);
+}
+
+.preview-stage.paused :deep(*) {
+  animation-play-state: paused !important;
 }
 
 .preview-host {
@@ -535,7 +682,7 @@ async function copyCode(): Promise<void> {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 116px;
+  grid-template-columns: minmax(0, 1fr) var(--dm-param-value-width);
   gap: 10px;
   align-items: center;
 }

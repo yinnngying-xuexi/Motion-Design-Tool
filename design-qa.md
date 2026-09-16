@@ -1,36 +1,46 @@
-**Design QA**
+# DataMotion V2 UI 验证记录
 
-- Source visual truth: `C:\Users\asus\Downloads\ChatGPT Image 2026年6月29日 10_17_37.png`
-- Implementation: `http://127.0.0.1:5173/`
-- Target viewport: `1813 x 868`
-- State: 基础动效库，默认选中“淡入”
-- Full-view comparison evidence: source image opened successfully; an implementation capture was reviewed after the first styling pass, but the final Browser capture repeatedly timed out after the last polish pass.
-- Focused comparison evidence: DOM and computed-style checks confirmed the dark input surface, blue primary action, three-column structure, and viewport-contained layout. A final focused image capture was unavailable.
+日期：2026-09-15。分支：codex/ui-redesign-v2。仅本地预览，未提交、推送、部署。
 
-**Findings**
+## 设计依据
 
-- [P1] Final visual capture unavailable
-  Location: final implementation screenshot.
-  Evidence: Browser DOM and computed styles are available, but final screenshot capture timed out repeatedly.
-  Impact: the final pixel-level comparison cannot be completed reliably.
-  Fix: reopen or refresh the in-app Browser capture session, then recapture at `1813 x 868` and compare with the source image.
+- 首页：已确认第二套暗色风格。
+- 编辑器：已确认分类折叠目录效果图。
+- 以用户实施计划中的尺寸和交互规则为准，保留 Vue、Element Plus 及真实动效。
 
-**Patches Made**
+## 五项视觉检查
 
-- Matched the reference sidebar width, topbar height, three-column proportions, and panel spacing.
-- Replaced bright form surfaces with dark editor controls.
-- Unified panel, card, selected, preview, button, tag, and scrollbar styling across all four modules.
-- Preserved the Vercel Ink single-blue accent and avoided gradients.
-- Verified all modules remain contained within one viewport with internal scrolling only.
+1. 全局框架：顶部品牌与三项导航，当前栏目蓝色下划线；不再挂载自定义素材页面。
+2. 首页：1680px 下四列，每列 382px，完整页面无横向溢出；主标题缩小，真实预览保留。
+3. 基础目录：四类真实计数 4/5/4/2，单组展开，选中态和键盘焦点可区分。
+4. 编辑工作区：1680px 下目录 260px、画布栏 1120px、参数栏 300px；直角连续三栏。
+5. 参数区：1440px 下数值框实测 60px；1280px 下三栏及顶部操作无重叠。
 
-**Implementation Checklist**
+实际截图已通过本次会话的浏览器截图展示，包括首页、基础编辑器、装饰编辑器；未另存本地截图文件。
 
-- Recapture the final basic motion page at the target viewport.
-- Compare typography, spacing, panel borders, controls, and selected states.
-- Mark the report passed when no actionable P0/P1/P2 visual differences remain.
+## 交互回归
 
-**Follow-up Polish**
+- 首页案例单击进入基础编辑器：通过。
+- 展开其他分类不改变当前动效：基础、装饰均通过。
+- 搜索仅展示匹配分类及案例，清空恢复原展开分类：通过。
+- Enter 选择基础动效：通过。
+- 装饰目录保留六类及组内轻量细分类标题：通过。
+- 分层 SVG 导入：仓库 star-ring-layer-template.svg 成功识别四层并应用。
+- 复制 Loading 和分层 SVG 代码：包含真实动效/SVG，未混入编辑器目录 CSS。
+- 保存到我的动效并打开记录预览：通过；本地保留此次星环示例测试记录。
+- HTML 下载：调用按钮后自动化未收到 download 事件，文件落盘验证未完成；导出实现未改动。
+- 控制台错误检查：未发现错误。
+- 生产构建：通过；保留既有大包体积、第三方纯注释警告。
+- git diff --check：通过。
+- 本地预览 http://127.0.0.1:5174/：HTTP 200。
 
-- None recorded until the final capture is available.
+## 迭代记录
+
+- 用顶部导航替换左侧一级导航，移除自定义素材入口但不删除数据。
+- 用独立展开状态替换原分类切换状态，避免展开分类重置当前动效。
+- 清理旧分类标签样式，补充搜索清空后的选中定位。
+- 复查并移除补丁过程中误插入预览/导出字符串的 UI 样式，最终生成器和下载实现保持原状。
 
 final result: blocked
+
+界面、构建和上述交互检查已通过；严格完整交付仍缺少下载文件落盘验证及单独保存的截图文件，不能将完整验证标为通过。

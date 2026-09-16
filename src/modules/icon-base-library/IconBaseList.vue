@@ -118,7 +118,7 @@ async function remove(id: string): Promise<void> {
 
 .asset-card.active {
   border-color: var(--dm-tertiary);
-  background: rgba(0, 112, 243, 0.12);
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .asset-thumb {
@@ -177,7 +177,7 @@ async function remove(id: string): Promise<void> {
   display: inline-flex;
   padding: 3px 7px;
   border-radius: 999px;
-  background: rgba(0, 112, 243, 0.16);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--dm-primary);
   font-size: 12px;
 }

@@ -1,0 +1,31 @@
+<svg width="153" height="132" viewBox="0 0 153 132" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g id="stacked-energy-base">
+    <g id="base-back">
+      <path d="M76.0156 85.3076C76.3243 85.1713 76.6757 85.1713 76.9844 85.3076L126.591 107.211L76.8311 130.652C76.5062 130.805 76.1301 130.804 75.8057 130.65L26.4023 107.214L76.0156 85.3076Z" fill="url(#stack-fill-back)" stroke="url(#stack-stroke-back)" stroke-width="2"/>
+    </g>
+    <g id="base-middle">
+      <path d="M76.0059 63.3203C76.3198 63.1786 76.6802 63.1786 76.9941 63.3203L138.629 91.1387L77.0186 120.643C76.6909 120.799 76.3091 120.799 75.9814 120.643L14.3711 91.1387L76.0059 63.3203Z" fill="url(#stack-fill-middle)" stroke="url(#stack-stroke-middle)" stroke-width="2"/>
+    </g>
+    <g id="base-front">
+      <path d="M76.0098 41.3145C76.3215 41.1751 76.6785 41.1751 76.9902 41.3145L150.593 74.2256L76.7432 108.658C76.4207 108.809 76.0476 108.808 75.7256 108.657L2.40039 74.2285L76.0098 41.3145Z" fill="url(#stack-fill-front)" stroke="url(#stack-stroke-front)" stroke-width="2"/>
+    </g>
+    <g id="marker">
+      <path opacity=".32" fill-rule="evenodd" clip-rule="evenodd" d="M53 23.1C53 40.425 76.5 66 76.5 66C76.5 66 100 40.425 100 23.1C99.9999 10.3455 89.4753 0 76.5 0C63.5247 0 53 10.3455 53 23.1ZM68.1072 23.1C68.1072 18.546 71.8671 14.85 76.5 14.85C81.1329 14.85 84.8928 18.546 84.8928 23.1C84.8928 27.6541 81.1329 31.35 76.5 31.35C71.8671 31.35 68.1072 27.6541 68.1072 23.1Z" fill="url(#stack-pin-shadow)"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M53 26.1C53 43.425 76.5 69 76.5 69C76.5 69 100 43.425 100 26.1C99.9999 13.3455 89.4753 3 76.5 3C63.5247 3 53 13.3455 53 26.1ZM68.1072 26.1C68.1072 21.546 71.8671 17.85 76.5 17.85C81.1329 17.85 84.8928 21.546 84.8928 26.1C84.8928 30.6541 81.1329 34.35 76.5 34.35C71.8671 34.35 68.1072 30.6541 68.1072 26.1Z" fill="url(#stack-pin)"/>
+    </g>
+    <g id="glow" filter="url(#stack-glow)">
+      <ellipse cx="76.5" cy="80" rx="18.5" ry="5" fill="#0F5CD8" opacity=".7"/>
+    </g>
+  </g>
+  <defs>
+    <filter id="stack-glow" x="47" y="64" width="59" height="32" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="5.4"/></filter>
+    <linearGradient id="stack-fill-back" x1="76" y1="85" x2="76" y2="132" gradientUnits="userSpaceOnUse"><stop stop-color="#001551" stop-opacity=".78"/><stop offset="1" stop-color="#00375E"/></linearGradient>
+    <linearGradient id="stack-stroke-back" x1="76" y1="84" x2="76" y2="132" gradientUnits="userSpaceOnUse"><stop stop-color="#9AB9FF" stop-opacity=".1"/><stop offset="1" stop-color="#8CB5FF" stop-opacity=".7"/></linearGradient>
+    <linearGradient id="stack-fill-middle" x1="76" y1="63" x2="76" y2="122" gradientUnits="userSpaceOnUse"><stop stop-color="#001551" stop-opacity=".78"/><stop offset="1" stop-color="#00375E"/></linearGradient>
+    <linearGradient id="stack-stroke-middle" x1="76" y1="62" x2="76" y2="122" gradientUnits="userSpaceOnUse"><stop stop-color="#9AB9FF" stop-opacity=".1"/><stop offset="1" stop-color="#8CB5FF" stop-opacity=".7"/></linearGradient>
+    <linearGradient id="stack-fill-front" x1="76" y1="41" x2="76" y2="110" gradientUnits="userSpaceOnUse"><stop stop-color="#054DA8"/><stop offset="1" stop-color="#1679BD"/></linearGradient>
+    <linearGradient id="stack-stroke-front" x1="76" y1="40" x2="76" y2="110" gradientUnits="userSpaceOnUse"><stop stop-color="#9AF7FF" stop-opacity=".25"/><stop offset="1" stop-color="#8CF1FF"/></linearGradient>
+    <linearGradient id="stack-pin-shadow" x1="76" y1="0" x2="76" y2="66" gradientUnits="userSpaceOnUse"><stop stop-color="#50D1FF"/><stop offset="1" stop-color="#002D63"/></linearGradient>
+    <linearGradient id="stack-pin" x1="76" y1="3" x2="76" y2="69" gradientUnits="userSpaceOnUse"><stop stop-color="#96E3FF"/><stop offset="1" stop-color="#2085FF"/></linearGradient>
+  </defs>
+</svg>

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Figma Motion Component</title>
+  <style>
+    :root {
+      --component-width: 410px;
+      --component-height: 40px;
+      --motion-duration: 2s;
+      --light-easing: cubic-bezier(0.42, 0, 0.58, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+    }
+
+    .figma-motion-component {
+      position: relative;
+      width: var(--component-width);
+      height: var(--component-height);
+      overflow: hidden;
+      background: transparent;
+    }
+
+    .node,
+    .asset {
+      position: absolute;
+      display: block;
+      max-width: none;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .asset {
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+    }
+
+    .mask {
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+      -webkit-mask-mode: alpha;
+      mask-mode: alpha;
+    }
+
+    .background {
+      left: 11px;
+      top: 3px;
+      width: 400px;
+      height: 34px;
+    }
+
+    .group-5 {
+      left: 28px;
+      top: 3px;
+      width: 382px;
+      height: 34px;
+      overflow: hidden;
+      -webkit-mask-image: url("assets/group-mask.png");
+      mask-image: url("assets/group-mask.png");
+      -webkit-mask-position: 0 0;
+      mask-position: 0 0;
+      -webkit-mask-size: 382px 34px;
+      mask-size: 382px 34px;
+    }
+
+    .light-motion {
+      left: 35px;
+      top: 14px;
+      width: 123px;
+      height: 28px;
+      animation: figma-light-sweep var(--motion-duration) var(--light-easing) both;
+      will-change: transform;
+    }
+
+    .light-inner {
+      left: -20px;
+      top: -20px;
+      width: 163px;
+      height: 68px;
+    }
+
+    .line {
+      left: 11px;
+      top: 36px;
+      width: 292px;
+      height: 1px;
+    }
+
+    .icon-base,
+    .icon-fill-mask,
+    .icon-17-mask {
+      left: 1.111px;
+      top: 0;
+      width: 41.111px;
+      height: 40px;
+    }
+
+    .icon-fill-mask,
+    .icon-17-mask {
+      overflow: hidden;
+      -webkit-mask-image: url("assets/icon-mask.png");
+      mask-image: url("assets/icon-mask.png");
+      -webkit-mask-position: -4px -4px;
+      mask-position: -4px -4px;
+      -webkit-mask-size: 48px 48px;
+      mask-size: 48px 48px;
+    }
+
+    .icon-fill {
+      left: -4px;
+      top: -4px;
+      width: 49.333px;
+      height: 48px;
+    }
+
+    .icon-17 {
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      animation: figma-rotate-17 var(--motion-duration) linear both;
+      transform-origin: center;
+      will-change: transform;
+    }
+
+    .icon-inner {
+      left: 0;
+      top: 5.556px;
+      width: 31.119px;
+      height: 31.112px;
+    }
+
+    .icon-center {
+      left: 11.111px;
+      top: 16.668px;
+      width: 8.897px;
+      height: 8.888px;
+    }
+
+    .icon-center-image {
+      left: -8.007px;
+      top: -7.999px;
+      width: 24.911px;
+      height: 24.886px;
+    }
+
+    @keyframes figma-light-sweep {
+      from { transform: translateX(-63px); }
+      to { transform: translateX(177px); }
+    }
+
+    @keyframes figma-rotate-17 {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .light-motion,
+      .icon-17 {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="figma-motion-component" data-figma-node-id="88:40">
+    <div class="node background">
+      <img class="asset" alt="" src="assets/background.png" />
+    </div>
+
+    <div class="node group-5 mask" data-figma-node-id="88:42">
+      <div class="node light-motion" data-figma-node-id="88:44">
+        <div class="node light-inner">
+          <img class="asset" alt="" src="assets/light.png" />
+        </div>
+      </div>
+    </div>
+
+    <div class="node line">
+      <img class="asset" alt="" src="assets/line.png" />
+    </div>
+
+    <div class="node icon-base">
+      <img class="asset" alt="" src="assets/icon-base.png" />
+    </div>
+
+    <div class="node icon-fill-mask mask">
+      <div class="node icon-fill">
+        <img class="asset" alt="" src="assets/icon-fill.png" />
+      </div>
+    </div>
+
+    <div class="node icon-17-mask mask" data-figma-node-id="88:54">
+      <div class="node icon-17">
+        <img class="asset" alt="" src="assets/icon-17.png" />
+      </div>
+    </div>
+
+    <div class="node icon-inner">
+      <img class="asset" alt="" src="assets/icon-inner.png" />
+    </div>
+
+    <div class="node icon-center">
+      <div class="node icon-center-image">
+        <img class="asset" alt="" src="assets/icon-center.png" />
+      </div>
+    </div>
+  </div>
+</body>
+</html>

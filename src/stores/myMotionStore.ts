@@ -1,6 +1,8 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import type { BasicMotionTemplate, SavedMotion } from "@/types/motion";
+import type { DecorationEffectTemplate, StarRingDecorationConfig } from "@/types/decoration";
+import type { BasicMotionTemplate, SavedMotion, SavedMotionArtifact } from "@/types/motion";
+import type { SavedSvgFlowMotion } from "@/types/svgFlow";
 
 const STORAGE_KEY = "visual-motion-my-motions";
 
@@ -23,15 +25,48 @@ export const useMyMotionStore = defineStore("my-motion", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedMotions.value));
   }
 
-  function saveMotion(template: BasicMotionTemplate): void {
-    const exists = savedMotions.value.some((motion) => motion.id === template.id);
-    if (exists) return;
-
-    savedMotions.value.unshift({
+  function saveMotion(template: BasicMotionTemplate, artifact: SavedMotionArtifact): void {
+    const motion: SavedMotion = {
       ...template,
       savedAt: new Date().toISOString(),
-      source: "basic-library"
-    });
+      source: "basic-library",
+      artifact
+    };
+    const index = savedMotions.value.findIndex((item) => item.id === template.id);
+    if (index >= 0) savedMotions.value.splice(index, 1, motion);
+    else savedMotions.value.unshift(motion);
+    saveToLocal();
+  }
+
+  function saveDecoration(template: DecorationEffectTemplate, params: Record<string, string | number>, artifact: SavedMotionArtifact, starRing?: StarRingDecorationConfig): void {
+    const id = "decoration-" + template.id;
+    const motion: SavedMotion = {
+      id,
+      name: template.name,
+      category: "强调动效",
+      scene: template.scene,
+      description: template.description,
+      previewType: ["linear-flow", "comet-flow", "svg-flow", "scan"].includes(template.previewType) ? "scan" : "glow",
+      duration: starRing
+        ? starRing.kind === "layered-decoration"
+          ? Number(params.duration ?? 2.8)
+          : Math.max(...Object.values(starRing.layerConfigs).filter((layer) => layer.visible && layer.motion !== "none").map((layer) => layer.duration), 0)
+        : Number(params.duration ?? 2.4),
+      timingFunction: "linear",
+      iteration: "infinite",
+      editableParams: template.editableParams.map((param) => param.key),
+      savedAt: new Date().toISOString(),
+      source: "decoration-library",
+      decoration: {
+        effectId: template.id,
+        params: { ...params },
+        starRing: starRing ? JSON.parse(JSON.stringify(starRing)) as StarRingDecorationConfig : undefined
+      },
+      artifact
+    };
+    const index = savedMotions.value.findIndex((item) => item.id === id);
+    if (index >= 0) savedMotions.value.splice(index, 1, motion);
+    else savedMotions.value.unshift(motion);
     saveToLocal();
   }
 
@@ -40,10 +75,39 @@ export const useMyMotionStore = defineStore("my-motion", () => {
     saveToLocal();
   }
 
+  function saveSvgFlow(svgFlow: SavedSvgFlowMotion, artifact: SavedMotionArtifact): void {
+    const id = svgFlow.effectId
+      ? `decoration-${svgFlow.effectId}`
+      : `svg-flow-${svgFlow.source.fileName.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase() || "custom"}`;
+    const name = svgFlow.name ?? "路径流光";
+    const motion: SavedMotion = {
+      id,
+      name,
+      category: "强调动效",
+      scene: "自定义 SVG 路径",
+      description: `${name}：${svgFlow.source.fileName}`,
+      previewType: "scan",
+      duration: svgFlow.config.duration,
+      timingFunction: "linear",
+      iteration: "infinite",
+      editableParams: [],
+      savedAt: new Date().toISOString(),
+      source: "svg-flow",
+      svgFlow,
+      artifact
+    };
+    const index = savedMotions.value.findIndex((item) => item.id === id);
+    if (index >= 0) savedMotions.value.splice(index, 1, motion);
+    else savedMotions.value.unshift(motion);
+    saveToLocal();
+  }
+
   return {
     savedMotions,
     loadFromLocal,
     saveMotion,
+    saveDecoration,
+    saveSvgFlow,
     deleteMotion
   };
 });
