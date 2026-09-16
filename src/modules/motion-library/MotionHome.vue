@@ -5,8 +5,8 @@
         <header class="collection-header">
           <div class="collection-title">
             <span>Motion library</span>
-            <h1>动效预设</h1>
-            <p>浏览动效案例，悬停查看效果，点击进入编辑。</p>
+            <h1>动效库</h1>
+            <p>浏览基础动效与装饰组件，搜索并选择案例开始编辑。</p>
           </div>
 
           <div class="collection-tools">
@@ -99,6 +99,9 @@ import { Search } from "@element-plus/icons-vue";
 import { basicMotions } from "@/data/basicMotions";
 import { decorationEffects } from "@/data/decorationEffects";
 import { generateDecorationCss, generateDecorationMarkup } from "@/generators/decorationGenerator";
+import { generateStarRingCss, generateStarRingMarkup } from "@/generators/starRingGenerator";
+import { createDefaultStarRingConfig, createDefaultStackedEnergyBaseConfig, createDefaultRippleFocusBaseConfig, createDefaultChartTechRingConfig } from "@/utils/starRingDecoration";
+import type { DecorationEffectTemplate } from "@/types/decoration";
 import { createSystemSvgFlowSource } from "@/utils/svgFlow";
 import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
 import type { BasicMotionConfig } from "@/types/motion";
@@ -189,25 +192,50 @@ const searchableDecorationMotions: HomeMotion[] = decorationEffects.map((effect)
   iteration: "infinite",
   timingFunction: "linear",
   previewConfig: {},
-  previewHtml: `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(
+  previewHtml: homeDecorationMarkup(effect),
+  previewScale: effect.id === "svg-flow-tool-02" ? "0.14" : effect.id === "chart-tech-ring-01" ? "0.5" : decorationPreviewScale(effect.previewType)
+}));
+
+function homeDecorationMarkup(effect: DecorationEffectTemplate): string {
+  const config = effect.id === "base-particle-star-ring" ? createDefaultStarRingConfig()
+    : effect.id === "icon-base-stacked-energy" ? createDefaultStackedEnergyBaseConfig()
+    : effect.id === "icon-base-ripple-focus" ? createDefaultRippleFocusBaseConfig()
+    : effect.id === "chart-tech-ring-01" ? createDefaultChartTechRingConfig() : undefined;
+  if (config) return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(
     effect,
     effect.defaultParams,
     effect.generator === "svg-flow" ? createSystemSvgFlowSource(effect.id) : undefined,
     undefined,
     `home-${effect.id}`
-  )}`,
-  previewScale: decorationPreviewScale(effect.previewType)
-}));
+  )}`;
+}
+
+// 精选区保留基础案例，并插入一排可直接进入编辑的真实装饰预览。
+const featuredDecorationIds = ["chart-tech-ring-01", "flow-marker-02", "corner-focus-01", "loading-hex-tech-ring"];
+const featuredDecorations = featuredDecorationIds.flatMap((id) => {
+  const motion = searchableDecorationMotions.find((item) => item.targetId === id);
+  return motion ? [motion] : [];
+});
+const homeFeaturedMotions = [
+  ...["base-particle-star-ring", "icon-base-stacked-energy", "icon-base-ripple-focus", "svg-flow-tool-02"].flatMap((id) => {
+    const motion = searchableDecorationMotions.find((item) => item.targetId === id);
+    return motion ? [motion] : [];
+  }),
+  ...featuredDecorations,
+  ...featuredMotions.slice(4)
+];
 
 const filteredMotions = computed(() => {
   const query = keyword.value.trim().toLowerCase();
-  if (!query) return featuredMotions;
+  if (!query) return homeFeaturedMotions;
   return [...searchableBasicMotions, ...searchableDecorationMotions].filter((motion) =>
     `${motion.name} ${motion.english} ${motion.description} ${motion.scene}`.toLowerCase().includes(query)
   );
 });
 
 function decorationPreviewScale(previewType: string): string {
+  if (previewType === "panel-border-flow") return "0.55";
   if (previewType === "comet-flow") return "0.44";
   if (previewType === "linear-flow" || previewType === "svg-flow") return "0.52";
   if (previewType === "particle-base") return "0.72";
@@ -243,16 +271,16 @@ function stopMotion(id: string): void {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #0c0c0c;
+  background: #0d0e10;
 }
 
 .home-scroll { height: 100%; }
 
 .home-wrap {
-  width: min(1460px, calc(100% - 72px));
+  width: calc(100% - 80px);
   min-height: 100%;
   margin: 0 auto;
-  padding: 54px 0 76px;
+  padding: 40px 0 60px;
 }
 
 .collection-header {
@@ -277,16 +305,16 @@ function stopMotion(id: string): void {
 .collection-title h1 {
   margin: 0;
   color: #f2f2ef;
-  font-size: clamp(46px, 4.2vw, 68px);
+  font-size: 34px;
   line-height: 0.98;
   font-weight: 640;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.025em;
 }
 
 .collection-title p {
-  margin: 24px 0 0;
+  margin: 14px 0 0;
   color: #888884;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.7;
 }
 
@@ -298,7 +326,7 @@ function stopMotion(id: string): void {
 
 .collection-tools :deep(.el-input__wrapper) {
   min-height: 44px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: #151515;
   box-shadow: none;
 }
@@ -317,7 +345,7 @@ function stopMotion(id: string): void {
 .motion-home-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 44px 18px;
+  gap: 36px 24px;
 }
 
 .home-motion-card {
@@ -333,9 +361,9 @@ function stopMotion(id: string): void {
 
 .motion-visual {
   position: relative;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 2;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 0;
   background-color: var(--dm-motion-canvas-background);
   transition: background-color 220ms ease, transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -360,6 +388,8 @@ function stopMotion(id: string): void {
   width: 560px;
   height: 280px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   transform: translate(-50%, -50%) scale(var(--home-decoration-scale, 0.7));
   transform-origin: center;
@@ -372,7 +402,7 @@ function stopMotion(id: string): void {
 .home-motion-card:hover .motion-visual,
 .home-motion-card:focus-visible .motion-visual {
   background-color: #1a1a1a;
-  transform: translateY(-4px);
+  transform: none;
 }
 
 .home-motion-card:focus-visible .motion-visual {

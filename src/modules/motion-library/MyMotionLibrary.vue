@@ -226,14 +226,14 @@ function downloadBlob(blob: Blob, fileName: string): void {
   overflow: hidden;
   border: 1px solid var(--dm-hairline);
   border-radius: var(--dm-radius-lg);
-  background: linear-gradient(145deg, #121313, #0d0e0e);
+  background: #111214;
   transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 
 .saved-card:hover {
   border-color: rgba(255, 255, 255, 0.16);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.2);
-  transform: translateY(-2px);
+  box-shadow: none;
+  transform: none;
 }
 
 .motion-image {

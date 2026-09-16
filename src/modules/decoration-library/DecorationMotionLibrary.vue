@@ -5,25 +5,21 @@
         <div>
           <h2>装饰组件</h2>
         </div>
-        <small>{{ sectionEffects.length }} / {{ decorationEffects.length }}</small>
+        <small>{{ matchingEffects.length }} / {{ decorationEffects.length }}</small>
       </header>
 
-      <div class="section-tabs">
-        <button
-          v-for="section in decorationSections"
-          :key="section"
-          type="button"
-          :class="{ active: activeSection === section }"
-          :disabled="!hasSectionEffects(section)"
-          @click="activeSection = section"
-        >
-          {{ section }}
-        </button>
-      </div>
 
       <el-scrollbar class="effect-scroll">
         <div class="effect-stack">
-          <template v-for="group in sectionGroups" :key="group.name">
+          <p v-if="!matchingEffects.length" class="directory-empty" role="status">没有匹配的装饰组件，请尝试其他关键词。</p>
+          <section v-for="section in directorySections" :key="section.name" class="directory-group">
+            <button class="directory-heading" type="button" :aria-expanded="isSectionOpen(section.name)"
+              @click="toggleSection(section.name)">
+              <span>{{ section.name }}</span><small>{{ section.count }}</small>
+              <el-icon class="directory-arrow" :class="{ expanded: isSectionOpen(section.name) }"><ArrowRight /></el-icon>
+            </button>
+            <div v-show="isSectionOpen(section.name)" class="directory-items">
+          <template v-for="group in section.groups" :key="group.name">
             <div class="subsection-title">
               <span>{{ group.name }}</span>
               <small>{{ group.effects.length }}</small>
@@ -31,7 +27,7 @@
             <article
               v-for="effect in group.effects"
               :key="effect.id"
-              class="effect-card"
+              class="effect-card" role="button" tabindex="0" :aria-pressed="currentEffect.id === effect.id" @keydown.enter="selectEffect(effect.id)" @keydown.space.prevent="selectEffect(effect.id)"
               :class="{ active: currentEffect.id === effect.id }"
               @click="selectEffect(effect.id)"
             >
@@ -56,6 +52,8 @@
               </div>
             </article>
           </template>
+            </div>
+          </section>
         </div>
       </el-scrollbar>
     </aside>
@@ -536,7 +534,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
-import { Download } from "@element-plus/icons-vue";
+import { ArrowRight, Download } from "@element-plus/icons-vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { decorationEffects, decorationSections } from "@/data/decorationEffects";
 import {
@@ -622,14 +620,38 @@ const backgroundSettings = reactive({
 const motionStore = useMyMotionStore();
 
 const sectionEffects = computed(() => decorationEffects.filter((effect) => effect.section === activeSection.value));
-const sectionGroups = computed(() => {
-  const groups = new Map<string, DecorationEffectTemplate[]>();
-  sectionEffects.value.forEach((effect) => {
-    const effects = groups.get(effect.subsection) ?? [];
-    effects.push(effect);
-    groups.set(effect.subsection, effects);
-  });
-  return [...groups].map(([name, effects]) => ({ name, effects }));
+const keyword = ref("");
+const expandedSection = ref<DecorationSection | null>(activeSection.value);
+const matchingEffects = computed(() => {
+  const query = keyword.value.trim().toLowerCase();
+  return decorationEffects.filter((effect) => !query || [effect.name, effect.id, effect.description, effect.scene, effect.section, effect.subsection].join(" ").toLowerCase().includes(query));
+});
+const directorySections = computed(() => decorationSections.map((name) => {
+  const effects = matchingEffects.value.filter((effect) => effect.section === name);
+  const groups = [...new Set(effects.map((effect) => effect.subsection))]
+    .map((group) => ({ name: group, effects: effects.filter((effect) => effect.subsection === group) }));
+  return { name, count: effects.length, groups };
+}).filter((section) => !keyword.value.trim() || section.count));
+function toggleSection(name: DecorationSection): void {
+  if (!keyword.value.trim()) expandedSection.value = expandedSection.value === name ? null : name;
+}
+function isSectionOpen(name: DecorationSection): boolean {
+  return Boolean(keyword.value.trim()) || expandedSection.value === name;
+}
+function handleDirectorySearch(event: Event): void {
+  keyword.value = String((event as CustomEvent).detail ?? "");
+}
+watch(keyword, async (value) => {
+  if (!value.trim()) { await nextTick(); revealSelectedEffect(); }
+});
+function revealSelectedEffect(): void {
+  document.querySelector(".decoration-list .effect-card.active")?.scrollIntoView({ block: "nearest" });
+}
+watch(activeEffectId, async (id) => {
+  const effect = decorationEffects.find((item) => item.id === id);
+  if (effect) { activeSection.value = effect.section; if (!keyword.value.trim()) expandedSection.value = effect.section; }
+  await nextTick();
+  revealSelectedEffect();
 });
 const currentEffect = computed(() => decorationEffects.find((effect) => effect.id === activeEffectId.value) ?? sectionEffects.value[0] ?? decorationEffects[0]);
 const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
@@ -818,9 +840,6 @@ const flowDirectionOptions = [
   { label: "从下到上", value: "btt" }
 ] as const;
 
-function hasSectionEffects(section: DecorationSection): boolean {
-  return decorationEffects.some((effect) => effect.section === section);
-}
 
 function triggerBackgroundImport(): void {
   backgroundFileInput.value?.click();
@@ -1004,9 +1023,6 @@ const previewDuration = computed(() => {
     .map((layer) => layer.motion === "basic" ? Number(layer.basicMotionConfig?.duration ?? layer.duration) : layer.duration), 0);
 });
 
-watch(activeSection, () => {
-  activeEffectId.value = sectionEffects.value[0]?.id ?? decorationEffects[0].id;
-});
 
 watch(() => props.initialEffectId, async (id) => {
   const effect = decorationEffects.find((item) => item.id === id);
@@ -1060,6 +1076,8 @@ watch(previewCapture, (nextElement, previousElement) => {
 }, { flush: "post" });
 
 onMounted(() => {
+  window.addEventListener('datamotion:search', handleDirectorySearch);
+  void nextTick(revealSelectedEffect);
   previewResizeObserver = new ResizeObserver((entries) => {
     const entry = entries[0];
     if (!entry) return;
@@ -1082,6 +1100,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('datamotion:search', handleDirectorySearch);
   previewResizeObserver?.disconnect();
   clearTimeout(backgroundPersistTimer);
   if (backgroundObjectUrl) URL.revokeObjectURL(backgroundObjectUrl);
@@ -1639,10 +1658,10 @@ async function restoreSvgFlow(): Promise<void> {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 200px minmax(500px, 1fr) 320px;
+  grid-template-columns: 260px minmax(0, 1fr) 300px;
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "list preview params";
-  gap: 16px;
+  gap: 0;
 }
 
 .panel {
@@ -1659,7 +1678,7 @@ async function restoreSvgFlow(): Promise<void> {
 .decoration-list {
   grid-area: list;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   align-content: start;
   overflow: hidden;
@@ -1752,31 +1771,9 @@ async function restoreSvgFlow(): Promise<void> {
 .svg-import-button:hover { border-color: var(--dm-secondary); }
 .svg-import-button input { display: none; }
 
-.section-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
 
-.section-tabs button {
-  border: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
-  color: var(--dm-secondary);
-  padding: 7px 6px;
-  font-size: 11px;
-  cursor: pointer;
-}
 
-.section-tabs button.active {
-  color: var(--dm-tertiary);
-  background: rgba(255, 255, 255, 0.085);
-}
 
-.section-tabs button:disabled {
-  color: rgba(255, 255, 255, 0.22);
-  cursor: default;
-}
 
 .effect-card {
   min-width: 0;
@@ -2091,7 +2088,7 @@ async function restoreSvgFlow(): Promise<void> {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 0;
   padding: 0 0 16px;
 }
 
@@ -2124,7 +2121,7 @@ async function restoreSvgFlow(): Promise<void> {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 0;
   border-bottom: 1px solid var(--dm-hairline);
 }
 
@@ -2618,7 +2615,7 @@ async function restoreSvgFlow(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 0;
 }
 
 .param-control.switch-control label {
@@ -2663,4 +2660,17 @@ async function restoreSvgFlow(): Promise<void> {
   align-items: center;
 }
 
+.decoration-list { padding: 24px 16px; background: #111214; border-right: 1px solid rgba(255,255,255,.06); }
+.decoration-preview { padding: 24px; background: #0d0e10; }
+.decoration-params { padding: 24px 20px; background: #111214; border-left: 1px solid rgba(255,255,255,.06); }
+.effect-stack { gap: 0; padding-right: 0; }
+.effect-card { border-radius: 0; background: transparent; border: 0; border-left: 2px solid transparent; }
+.effect-card.active { border-left-color: #0070f3; background: #1b1e23; }
+.effect-card:hover { background: #191b1f; }
+.effect-thumb { border-radius: 0; }
+@media (max-width: 1280px) {
+  .decoration-library { grid-template-columns: 240px minmax(0, 1fr) 280px; }
+  .decoration-preview { padding: 20px; }
+  .decoration-params { padding: 24px 16px; }
+}
 </style>

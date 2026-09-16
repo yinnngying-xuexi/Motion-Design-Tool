@@ -3,29 +3,26 @@
     <aside class="motion-sidebar panel">
       <header class="library-head">
         <div>
-          <h2>{{ activeCategory === "全部" ? "基础动效" : activeCategory }}</h2>
+          <h2>基础动效</h2>
         </div>
         <small>{{ filteredMotions.length }} / {{ basicMotions.length }}</small>
       </header>
 
-      <div class="category-tabs">
-        <button
-          v-for="category in categories"
-          :key="category"
-          type="button"
-          :class="{ active: activeCategory === category }"
-          @click="activeCategory = category"
-        >
-          {{ category }}
-        </button>
-      </div>
 
       <el-scrollbar class="motion-list-scroll">
         <div class="motion-list">
+          <p v-if="!filteredMotions.length" class="directory-empty" role="status">没有匹配的动效，请尝试其他关键词。</p>
+          <section v-for="group in motionGroups" :key="group.name" class="directory-group">
+            <button class="directory-heading" type="button" :aria-expanded="isGroupOpen(group.name)"
+              @click="toggleCategory(group.name)">
+              <span>{{ group.name }}</span><small>{{ group.items.length }}</small>
+              <el-icon class="directory-arrow" :class="{ expanded: isGroupOpen(group.name) }"><ArrowRight /></el-icon>
+            </button>
+            <div v-show="isGroupOpen(group.name)" class="directory-items">
           <article
-            v-for="motion in filteredMotions"
+            v-for="motion in group.items"
             :key="motion.id"
-            class="motion-card"
+            class="motion-card" role="button" tabindex="0" :data-motion-id="motion.id" :aria-pressed="selectedMotion.id === motion.id" @keydown.enter="selectedMotionId = motion.id" @keydown.space.prevent="selectedMotionId = motion.id"
             :class="{ active: selectedMotion.id === motion.id }"
             @click="selectedMotionId = motion.id"
           >
@@ -53,6 +50,8 @@
               <p>{{ motion.duration }}s · {{ motion.scene }}</p>
             </div>
           </article>
+            </div>
+          </section>
         </div>
       </el-scrollbar>
     </aside>
@@ -238,7 +237,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
-import { Download } from "@element-plus/icons-vue";
+import { ArrowRight, Download } from "@element-plus/icons-vue";
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, resolveComponent, watch } from "vue";
 import { basicMotions } from "@/data/basicMotions";
 import {
@@ -264,7 +263,7 @@ type MotionEditorConfig = BasicMotionConfig;
 const props = defineProps<{ initialMotionId?: string }>();
 const store = useMyMotionStore();
 const keyword = ref("");
-const activeCategory = ref<"全部" | MotionCategory>("全部");
+const expandedCategory = ref<MotionCategory | null>(basicMotions.find((motion) => motion.id === props.initialMotionId)?.category ?? basicMotions[0].category);
 const selectedMotionId = ref(basicMotions.some((motion) => motion.id === props.initialMotionId) ? props.initialMotionId! : basicMotions[0].id);
 const previewKey = ref(0);
 type PreviewState = "idle" | "playing" | "paused" | "ended";
@@ -282,17 +281,28 @@ let previewLastTick = 0;
 let parameterReplayTimer = 0;
 let suppressTimelineRestart = false;
 
-const categories = computed(() => ["全部", ...new Set(basicMotions.map((motion) => motion.category))] as Array<"全部" | MotionCategory>);
-
-const filteredMotions = computed(() =>
-  basicMotions.filter((motion) => {
-    const matchesCategory = activeCategory.value === "全部" || motion.category === activeCategory.value;
-    const query = keyword.value.trim();
-    const matchesKeyword = !query || motion.name.includes(query) || motion.scene.includes(query);
-    return matchesCategory && matchesKeyword;
-  })
-);
-
+const filteredMotions = computed(() => {
+  const query = keyword.value.trim().toLowerCase();
+  return basicMotions.filter((motion) => !query || [motion.name, motion.id, motion.description, motion.scene, motion.category].join(" ").toLowerCase().includes(query));
+});
+const motionGroups = computed(() => [...new Set(basicMotions.map((motion) => motion.category))]
+  .map((name) => ({ name, items: filteredMotions.value.filter((motion) => motion.category === name) }))
+  .filter((group) => group.items.length));
+function toggleCategory(name: MotionCategory): void {
+  if (!keyword.value.trim()) expandedCategory.value = expandedCategory.value === name ? null : name;
+}
+function isGroupOpen(name: MotionCategory): boolean {
+  return Boolean(keyword.value.trim()) || expandedCategory.value === name;
+}
+watch(keyword, async (value) => {
+  if (!value.trim()) { await nextTick(); revealSelectedMotion(); }
+});
+function revealSelectedMotion(): void {
+  document.querySelector(".motion-sidebar .motion-card.active")?.scrollIntoView({ block: "nearest" });
+}
+watch(() => props.initialMotionId, (id) => {
+  if (basicMotions.some((motion) => motion.id === id)) selectedMotionId.value = id!;
+});
 const selectedMotion = computed(() => basicMotions.find((motion) => motion.id === selectedMotionId.value) ?? basicMotions[0]);
 const motionConfig = reactive<MotionEditorConfig>(createDefaultConfig());
 const htmlCssCode = computed(() => generateBasicMotionHtmlCss(selectedMotion.value, motionConfig, svgAsset.value, svgStyle));
@@ -317,7 +327,7 @@ onMounted(() => {
   window.addEventListener("datamotion:save", saveSelected);
   window.addEventListener("datamotion:export", downloadHtml);
   window.addEventListener("datamotion:search", handleGlobalSearch);
-  void nextTick(restartTimelinePlayback);
+  void nextTick(() => { restartTimelinePlayback(); revealSelectedMotion(); });
 });
 
 onBeforeUnmount(() => {
@@ -332,12 +342,14 @@ onBeforeUnmount(() => {
 watch(selectedMotionId, async (nextId, previousId) => {
   if (previousId) motionConfigMemory.set(previousId, { ...motionConfig });
   const nextTemplate = basicMotions.find((motion) => motion.id === nextId) ?? basicMotions[0];
+  if (!keyword.value.trim()) expandedCategory.value = nextTemplate.category;
   suppressTimelineRestart = true;
   Object.assign(motionConfig, motionConfigMemory.get(nextId) ?? createDefaultConfig(nextTemplate));
   previewKey.value += 1;
   stopTimelineAtStart();
   await nextTick();
   suppressTimelineRestart = false;
+  revealSelectedMotion();
   restartTimelinePlayback();
 });
 
@@ -665,10 +677,10 @@ const NumberControl = defineComponent({
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 200px minmax(500px, 1fr) 320px;
+  grid-template-columns: 260px minmax(0, 1fr) 300px;
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "list preview params";
-  gap: 16px;
+  gap: 0;
 }
 
 .motion-sidebar,
@@ -682,7 +694,7 @@ const NumberControl = defineComponent({
 .motion-sidebar {
   grid-area: list;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -728,7 +740,7 @@ const NumberControl = defineComponent({
   align-items: center;
   padding: 0 12px;
   border: 1px solid var(--dm-hairline-strong);
-  border-radius: var(--dm-radius-md);
+  border-radius: 4px;
   background: var(--dm-control);
   color: var(--dm-primary);
   font-size: 12px;
@@ -738,26 +750,8 @@ const NumberControl = defineComponent({
 .svg-import-button:hover { border-color: var(--dm-secondary); }
 .svg-import-button input { display: none; }
 
-.category-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
 
-.category-tabs button {
-  border: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
-  color: var(--dm-secondary);
-  padding: 7px 6px;
-  font-size: 11px;
-  cursor: pointer;
-}
 
-.category-tabs button.active {
-  color: var(--dm-tertiary);
-  background: rgba(255, 255, 255, 0.085);
-}
 
 .motion-list-scroll {
   min-height: 0;
@@ -772,7 +766,7 @@ const NumberControl = defineComponent({
 .motion-card {
   min-width: 0;
   border: 0;
-  border-radius: var(--dm-radius-md);
+  border-radius: 4px;
   min-height: 70px;
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
@@ -798,7 +792,7 @@ const NumberControl = defineComponent({
   height: 54px;
   display: grid;
   place-items: center;
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
   background: #101010;
   color: var(--dm-tertiary);
@@ -852,7 +846,7 @@ const NumberControl = defineComponent({
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 0;
   padding: 0 0 16px;
 }
 
@@ -890,7 +884,7 @@ const NumberControl = defineComponent({
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 0;
   border-bottom: 1px solid var(--dm-hairline);
 }
 
@@ -1337,5 +1331,17 @@ const NumberControl = defineComponent({
 @keyframes motionScan {
   from { transform: translateY(-8px); }
   to { transform: translateY(160px); }
+}
+.motion-sidebar { padding: 24px 16px; background: #111214; border-right: 1px solid rgba(255,255,255,.06); }
+.motion-preview-panel { padding: 24px; background: #0d0e10; border-radius: 0; }
+.motion-info { padding: 24px 20px; background: #111214; border-left: 1px solid rgba(255,255,255,.06); }
+.motion-list { gap: 0; padding-right: 0; }
+.motion-card { border-radius: 0; background: transparent; border: 0; border-left: 2px solid transparent; }
+.motion-card.active { border-left-color: #0070f3; background: #1b1e23; }
+.motion-card:hover { background: #191b1f; }
+@media (max-width: 1280px) {
+  .motion-library { grid-template-columns: 240px minmax(0, 1fr) 280px; }
+  .motion-preview-panel { padding: 20px; }
+  .motion-info { padding: 24px 16px; }
 }
 </style>
