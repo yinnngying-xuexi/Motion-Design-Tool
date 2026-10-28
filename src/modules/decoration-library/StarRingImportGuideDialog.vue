@@ -71,7 +71,7 @@ const guides = {
   },
   "stacked-energy-base": {
     title: "层叠能量底座",
-    intro: "底座主体使用三层同级编组；顶部定位推荐命名为 marker，也可以在右侧作为独立 SVG 上传。",
+    intro: "可直接上传未命名的完整 SVG；底板与顶部图标轮廓清晰时，会按位置和尺寸自动分层并套用动效。以下名称用于复杂素材的准确识别。",
     layers: [
       { label: "底层底板", name: "base-back" },
       { label: "中层底板", name: "base-middle" },
@@ -79,7 +79,7 @@ const guides = {
       { label: "顶部定位", name: "marker", optional: true },
       { label: "底部光效", name: "glow", optional: true }
     ],
-    note: "单独上传顶部定位时不要求内部命名；整套导入时兼容旧名称 center，三层底板会自动套用错峰推进动效。",
+    note: "无法准确区分图层时，可按示例命名或在导入后手动映射。单独上传顶部定位无需内部命名；整套导入兼容旧名称 center。",
     href: "/examples/icon-base-stacked-energy-layer-template.svg",
     downloadName: "层叠能量底座-分层示例.svg"
   },

@@ -1,3 +1,4 @@
+import { parseSafeSvg as sanitizeSvg } from "@/utils/svgSanitize";
 import type {
   StarRingDecorationConfig,
   StarRingLayerConfig,
@@ -9,6 +10,7 @@ import { basicMotions, createBasicMotionConfig } from "@/data/basicMotions";
 import starRingSvgMarkup from "@/assets/star-ring.svg?raw";
 import chartTechRingSvgMarkup from "@/assets/chart-tech-ring-01.svg?raw";
 import subtitleSweepSvgMarkup from "@/assets/subtitle-orbit-sweep-01.svg?raw";
+import subtitleLightArcSvgMarkup from "@/assets/subtitle-light-arc-01.svg?raw";
 import stackedEnergyBaseSvgMarkup from "@/assets/icon-base-stacked-energy.svg?raw";
 import rippleFocusBaseSvgMarkup from "@/assets/icon-base-ripple-focus.svg?raw";
 import { createDefaultDecorationParticleConfig } from "@/utils/decorationParticles";
@@ -239,18 +241,33 @@ export function createDefaultRippleFocusBaseConfig(): StarRingDecorationConfig {
   return config;
 }
 
-export function createDefaultLayeredDecorationConfig(preset: "star-ring" | "subtitle-sweep" = "star-ring"): StarRingDecorationConfig {
+export function createDefaultLayeredDecorationConfig(preset: "star-ring" | "subtitle-sweep" | "subtitle-light-arc" = "star-ring"): StarRingDecorationConfig {
   if (preset === "star-ring") return createDefaultStarRingConfig();
   const config: StarRingDecorationConfig = {
     version: 1,
     kind: "layered-decoration",
     sourceMode: "preset",
-    overall: { size: 410, offsetX: 0, offsetY: 0, opacity: 1, color: "#4DC9FF" },
+    overall: { size: preset === "subtitle-light-arc" ? 443 : 410, offsetX: 0, offsetY: 0, opacity: 1, color: "#4DC9FF" },
     layerMapping: emptyStarRingLayerMapping(),
     layerConfigs: {},
     particleEffect: createDefaultDecorationParticleConfig(false, "#4DC9FF")
   };
-  const source = sanitizeSvg(subtitleSweepSvgMarkup);
+  const source = sanitizeSvg(preset === "subtitle-light-arc" ? subtitleLightArcSvgMarkup : subtitleSweepSvgMarkup);
+  if (preset === "subtitle-light-arc") {
+    // 原始 SVG 未分组：将可见内容作为一个完整底板图层，保留其绘制顺序与渐变定义。
+    const baseLayer = source.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
+    baseLayer.setAttribute("data-dm-layer-name", "title-base");
+    [...source.children].filter((element) => element.tagName.toLowerCase() !== "defs").forEach((element) => baseLayer.appendChild(element));
+    source.appendChild(baseLayer);
+    const { asset, mapping } = createStarRingAssetFromMarkup(new XMLSerializer().serializeToString(source), "H2_001.svg", "dm-subtitle-light-arc-layer");
+    applyStarRingAssetConfig(config, asset, mapping, "preset");
+    Object.values(config.layerConfigs).forEach((layer) => {
+      layer.motion = "none";
+      layer.basicMotionId = undefined;
+      layer.basicMotionConfig = undefined;
+    });
+    return config;
+  }
   const sourceRoot = source.querySelector<SVGGElement>(":scope > g") ?? source;
   [...sourceRoot.children].find((element) => element.getAttribute("id") === "5")?.remove();
   [...sourceRoot.children].find((element) => element.getAttribute("id") === "7")?.remove();
@@ -271,26 +288,6 @@ export function createDefaultLayeredDecorationConfig(preset: "star-ring" | "subt
   return config;
 }
 
-function sanitizeSvg(text: string): SVGSVGElement {
-  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
-  const svg = doc.querySelector("svg");
-  if (!svg || doc.querySelector("parsererror")) throw new Error("无法读取这个 SVG 文件");
-
-  svg.querySelectorAll("script,style,link,foreignObject,iframe,object,embed").forEach((node) => node.remove());
-  [svg, ...svg.querySelectorAll("*")].forEach((element) => {
-    [...element.attributes].forEach((attribute) => {
-      const name = attribute.name.toLowerCase();
-      const value = attribute.value.trim().toLowerCase();
-      const externalReference = (name === "href" || name === "xlink:href") && value && !value.startsWith("#");
-      const unsafeUrl = /url\s*\(\s*(?!['"]?#)/i.test(attribute.value) || /javascript:|expression\s*\(/i.test(attribute.value);
-      if (name.startsWith("on") || externalReference || unsafeUrl || value.startsWith("javascript:")) {
-        element.removeAttribute(attribute.name);
-      }
-    });
-  });
-  svg.setAttribute("aria-hidden", "true");
-  return svg;
-}
 
 function svgDimensions(svg: SVGSVGElement): { width: number; height: number } {
   const viewBox = svg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
@@ -454,6 +451,71 @@ function selectImportedLayerElements(svg: SVGSVGElement): Element[] {
   }
   const namedGroups = removeDuplicateRoleDescendants(groups.filter((group) => isMeaningfulLayerName(resolveImportedLayerName(group))));
   return namedGroups.length ? namedGroups : rootGroups.length ? rootGroups : groups;
+}
+
+// Infer a clear unnamed Figma export: large plate shapes followed by a smaller center icon.
+// Ambiguous artwork still uses the existing whole-SVG or manual mapping flow.
+function inferUnnamedStackedEnergyLayers(markup: string): string | undefined {
+  if (typeof document === "undefined") return;
+  const svg = sanitizeSvg(markup);
+  const rootGroups = [...svg.querySelectorAll<SVGGElement>(":scope > g")];
+  const artwork = rootGroups.length === 1 ? rootGroups[0] : svg;
+  const candidates = [...artwork.children].filter((element): element is SVGGraphicsElement =>
+    /^(g|path|rect|circle|ellipse|polygon|polyline)$/i.test(element.tagName)
+  );
+  if (candidates.length < 3 || candidates.length > 6) return;
+  if (candidates.some((element) => isMeaningfulLayerName(resolveImportedLayerName(element)))) return;
+
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-10000px;top:-10000px;visibility:hidden;pointer-events:none;";
+  host.appendChild(svg);
+  document.body.appendChild(host);
+  let measured: { element: SVGGraphicsElement; width: number; height: number; centerX: number; centerY: number }[];
+  try {
+    measured = candidates.map((element) => {
+      const box = element.getBBox();
+      return {
+        element,
+        width: box.width,
+        height: box.height,
+        centerX: box.x + box.width / 2,
+        centerY: box.y + box.height / 2
+      };
+    });
+  } catch {
+    return;
+  } finally {
+    host.remove();
+  }
+  const maxWidth = Math.max(...measured.map((item) => item.width));
+  const maxHeight = Math.max(...measured.map((item) => item.height));
+  if (maxWidth <= 0 || maxHeight <= 0) return;
+  const plates = measured.filter((item) => item.width >= maxWidth * .72 && item.height >= maxHeight * .72);
+  if (plates.length < 2 || plates.length > 3) return;
+  const others = measured.filter((item) => !plates.includes(item));
+  if (others.length > 1) return;
+  const center = others[0];
+  const plateCenter = plates.reduce((sum, item) => sum + item.centerX, 0) / plates.length;
+  if (center && (center.width > maxWidth * .65 || center.height > maxHeight * .75
+    || Math.abs(center.centerX - plateCenter) > maxWidth * .2)) return;
+
+  const roles = plates.length === 3
+    ? ["base-back", "base-middle", "base-front"]
+    : ["base-back", "base-front"];
+  plates.forEach((item, index) => item.element.setAttribute("data-dm-layer-name", roles[index]));
+  if (center) {
+    const front = plates[plates.length - 1];
+    const offsetX = Number((front.centerX - center.centerX).toFixed(3));
+    const offsetY = Number((front.centerY - center.centerY).toFixed(3));
+    const wrapper = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
+    wrapper.setAttribute("data-dm-layer-name", "center");
+    wrapper.setAttribute("transform", "translate(" + offsetX + " " + offsetY + ")");
+    center.element.parentNode?.insertBefore(wrapper, center.element);
+    wrapper.appendChild(center.element);
+  }
+  // The export's canvas-sized clip would otherwise cut off the pushed plates and glow.
+  artwork.removeAttribute("clip-path");
+  return new XMLSerializer().serializeToString(svg);
 }
 
 function emptyStarRingLayerMapping(): StarRingLayerMapping {
@@ -626,13 +688,18 @@ function completeChartRingMappingByStructure(
 export async function readStarRingSvgFile(
   file: File,
   roleOrder: readonly StarRingLayerRole[] = STAR_RING_ROLE_PROFILES["star-ring"]
-): Promise<{ asset: StarRingSvgAsset; mapping: StarRingLayerMapping }> {
+): Promise<{ asset: StarRingSvgAsset; mapping: StarRingLayerMapping; autoRecognized?: boolean }> {
   if (!file.name.toLowerCase().endsWith(".svg") || file.type && file.type !== "image/svg+xml") {
     throw new Error("只允许上传 SVG 文件");
   }
   if (file.size > 2 * 1024 * 1024) throw new Error("SVG 文件不能超过 2MB");
 
-  return createStarRingAssetFromMarkup(await file.text(), file.name, "dm-svg-layer", roleOrder);
+  const markup = await file.text();
+  const original = createStarRingAssetFromMarkup(markup, file.name, "dm-svg-layer", roleOrder);
+  if (roleOrder !== STAR_RING_ROLE_PROFILES["stacked-energy-base"] || original.asset.mode !== "whole") return original;
+  const inferred = inferUnnamedStackedEnergyLayers(markup);
+  if (!inferred) return original;
+  return { ...createStarRingAssetFromMarkup(inferred, file.name, "dm-svg-layer", roleOrder), autoRecognized: true };
 }
 
 export async function readLayeredDecorationSvgFile(file: File): Promise<StarRingSvgAsset> {

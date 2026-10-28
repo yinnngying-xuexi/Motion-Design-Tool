@@ -52,6 +52,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { motionScaleFactor } from "@/utils/motionScale";
 import {
   BORDER_FLOW_DASH_GAP,
   BORDER_FLOW_DASH_LENGTH,
@@ -60,6 +61,7 @@ import {
 } from "@/utils/borderFlowTrail";
 
 interface Props {
+  overallScale?: number;
   motionId: string;
   alt?: string;
   playing?: boolean;
@@ -194,7 +196,7 @@ const effectiveDuration = computed(() => {
   return props.duration;
 });
 const isConfiguredLoop = computed(() =>
-  ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate"].includes(props.motionId)
+  ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate", "alert-blink", "pulse-spread"].includes(props.motionId)
 );
 const previewIteration = computed(() => isConfiguredLoop.value ? "infinite" : props.iteration);
 const previewTimingFunction = computed(() => props.motionId === "slow-rotate" ? "linear" : props.timingFunction);
@@ -261,11 +263,16 @@ function borderFlowSegmentStyle(segment: BorderFlowTrailSegment): Record<string,
 
 const targetStyle = computed(() => {
   const baseStyle: Record<string, string | number> = {
+    zoom: motionScaleFactor(props.overallScale),
     opacity: 1,
     transform: "translate(0, 0) scale(1)",
     filter: "none"
   };
-  if (!props.svgMarkup) return baseStyle;
+  if (!props.svgMarkup) return props.overallScale === undefined ? baseStyle : {
+    ...baseStyle,
+    width: `${showsRipple.value ? 180 : 176}px`,
+    height: `${showsRipple.value ? 180 : 110}px`
+  };
 
   const sourceWidth = Math.max(1, props.svgWidth);
   const sourceHeight = Math.max(1, props.svgHeight);

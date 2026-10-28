@@ -33,13 +33,16 @@
             >
               <div class="effect-thumb dm-motion-canvas" :class="effect.previewType">
                 <div
-                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'svg-flow' || effect.previewType === 'flow-marker' || effect.previewType === 'panel-border-flow' || effect.previewType === 'loading'"
+                  v-if="effect.previewType === 'particle-base' || effect.previewType === 'chart-base' || effect.previewType === 'svg-flow' || effect.previewType === 'flow-marker' || effect.previewType === 'panel-border-flow' || effect.previewType === 'layered-sweep' || effect.previewType === 'loading' || effect.previewType === 'light'"
                   class="real-effect-thumbnail"
+                  :style="effect.generator === 'point-reference' ? pointThumbnailStyle(effect.id) : effect.generator === 'light-decoration' || effect.generator === 'reference-loading' ? lightThumbnailStyle(effect.id) : undefined"
                   :class="{
                     'path-flow-thumbnail': effect.previewType === 'svg-flow',
                     'flow-marker-thumbnail': effect.previewType === 'flow-marker',
                     'panel-border-thumbnail': effect.previewType === 'panel-border-flow',
                     'loading-thumbnail': effect.previewType === 'loading',
+                    'chart-base-thumbnail': effect.previewType === 'chart-base',
+                    'subtitle-thumbnail': effect.previewType === 'layered-sweep',
                     'chart-ring-thumbnail': effect.id === 'chart-tech-ring-01'
                   }"
                   v-html="effectThumbnailMarkup(effect)"
@@ -97,7 +100,12 @@
             <el-icon><Download /></el-icon>
             {{ isChartTechRing ? "导入图表 SVG" : "导入 SVG" }}
           </el-button>
-          <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
+          <el-dropdown v-if="supportsSourcePackage" split-button size="small" @click="downloadHtml" @command="downloadSourceZip">
+            导出 HTML
+            <template #dropdown><el-dropdown-menu><el-dropdown-item command="source">下载前端源码 ZIP</el-dropdown-item></el-dropdown-menu></template>
+          </el-dropdown>
+          <el-button v-else size="small" @click="downloadHtml">导出 HTML</el-button>
+          <el-button size="small" :disabled="Boolean(svgUnsupportedReason)" :loading="copyingSvg" :title="svgUnsupportedReason || MOTION_SVG_COPY_HINT" @click="copySvg">复制 SVG</el-button>
           <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
         </div>
       </div>
@@ -110,6 +118,7 @@
             class="preview-stage dm-motion-canvas"
             :class="{
               paused: !previewPlaying,
+              'webgl-preview-stage': isWebglEffect,
               'has-preview-background': hasPreviewBackground,
               'grid-hidden': hasPreviewBackground && !backgroundSettings.showGrid,
               'actual-size-view': hasPreviewBackground && backgroundSettings.viewMode === 'actual'
@@ -133,7 +142,7 @@
                         'imported-svg-preview': isLayeredRingDecoration && activeRingConfig.sourceMode === 'imported',
                         'size-fitted-preview': Boolean(previewIntrinsicSize)
                       }"
-                      :style="logicalMotionSizeStyle"
+                      :style="[logicalMotionSizeStyle, { zoom: overallScaleFactor }]"
                       v-html="previewMarkup"
                     ></div>
                   </div>
@@ -148,7 +157,7 @@
                 'imported-svg-preview': isLayeredRingDecoration && activeRingConfig.sourceMode === 'imported',
                 'size-fitted-preview': Boolean(previewIntrinsicSize)
               }"
-              :style="previewFitStyle"
+              :style="[previewFitStyle, { zoom: overallScaleFactor }]"
               v-html="previewMarkup"
             ></div>
           </div>
@@ -158,7 +167,7 @@
           />
         </div>
         <section v-show="activeWorkspaceView === 'code'" class="decoration-code" role="tabpanel">
-          <CodeMirrorViewer :code="htmlCss" language="html" />
+          <CodeMirrorViewer v-if="!isReferenceLoading || activeWorkspaceView === 'code'" :code="htmlCss" language="html" />
         </section>
       </div>
     </main>
@@ -168,7 +177,7 @@
         <div>
           <h2>参数设置</h2>
         </div>
-        <el-button size="small" @click="resetParams()">重置</el-button>
+        <el-button size="small" title="恢复当前组件的系统原始素材和默认参数" @click="resetCurrentEffect">重置</el-button>
       </header>
 
       <el-scrollbar class="param-scroll">
@@ -192,7 +201,7 @@
               </label>
               <label>
                 <span>画布高度</span>
-                <el-input-number v-model="backgroundSettings.logicalHeight" :min="180" :max="16384" :step="1" :controls="false" />
+                <el-input-number v-model="backgroundSettings.logicalHeight" :min="1" :max="16384" :step="1" :controls="false" />
               </label>
             </div>
             <div class="preview-setting-row">
@@ -205,10 +214,10 @@
             </div>
             <div class="preview-setting-row">
               <span>查看比例</span>
-              <el-radio-group v-model="backgroundSettings.viewMode" size="small">
-                <el-radio-button label="fit">适应画布</el-radio-button>
-                <el-radio-button label="actual">100%</el-radio-button>
-              </el-radio-group>
+              <div class="canvas-view-switch" role="group" aria-label="查看比例">
+                <button type="button" :aria-pressed="backgroundSettings.viewMode === 'fit'" :class="{ active: backgroundSettings.viewMode === 'fit' }" @click="backgroundSettings.viewMode = 'fit'">适应画布</button>
+                <button type="button" :aria-pressed="backgroundSettings.viewMode === 'actual'" :class="{ active: backgroundSettings.viewMode === 'actual' }" @click="backgroundSettings.viewMode = 'actual'">100%</button>
+              </div>
             </div>
             <div class="param-control compact-preview-control">
               <label><span>背景压暗</span><small>%</small></label>
@@ -242,6 +251,14 @@
           </template>
         </section>
         <div class="preview-background-divider"></div>
+        <MotionScaleControl
+          v-if="!flowSizeParams.length"
+          :model-value="Number(params.overallScale ?? 100)"
+          :width="previewIntrinsicSize?.width"
+          :height="previewIntrinsicSize?.height"
+          @update:model-value="params.overallScale = $event"
+          @commit="replayPreview"
+        />
         <template v-if="isSubtitleSweep">
           <section class="flow-param-section subtitle-sweep-params">
             <h3>移动光效</h3>
@@ -260,6 +277,7 @@
                 inactive-value="show"
                 aria-label="隐藏原素材"
               />
+              <el-input v-else-if="paramItem.type === 'text'" v-model="params[paramItem.key]" />
               <div v-else-if="paramItem.type === 'color'" class="color-row">
                 <el-color-picker v-model="params[paramItem.key]" />
                 <el-input v-model="params[paramItem.key]" />
@@ -291,6 +309,30 @@
         />
         <template v-else-if="isSvgFlow">
           <div class="flow-param-stack">
+            <section v-if="flowSizeParams.length" class="flow-param-section">
+              <h3>标题尺寸</h3>
+              <div v-for="paramItem in flowSizeParams" :key="paramItem.key" class="param-control">
+                <label><span>{{ paramItem.label }}</span><small v-if="paramItem.unit">{{ paramItem.unit }}</small></label>
+                <div class="number-row">
+                  <el-slider
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    @input="params[paramItem.key] = Array.isArray($event) ? $event[0] : $event"
+                  />
+                  <el-input-number
+                    :model-value="Number(params[paramItem.key])"
+                    :min="paramItem.min"
+                    :max="paramItem.max"
+                    :step="paramItem.step"
+                    :controls="false"
+                    @change="params[paramItem.key] = Number($event ?? params[paramItem.key])"
+                  />
+                </div>
+              </div>
+              <p class="flow-param-note">高度等比调整；只需一条可见路径，背景可选，无需命名图层。</p>
+            </section>
             <section class="flow-param-section">
               <h3>流动设置</h3>
               <div
@@ -411,7 +453,7 @@
             </section>
           </div>
         </template>
-        <template v-else-if="isGeneralDecoration || isPanelBorderFlow">
+        <template v-else-if="isGeneralDecoration || isPanelBorderFlow || isChartOrbitBase || isLightDecoration">
           <div class="flow-param-stack">
             <section v-for="section in generalParamSections" :key="section.title" class="flow-param-section">
               <h3>{{ section.title }}</h3>
@@ -463,12 +505,13 @@
         </template>
         <template v-else-if="!isLayeredDecoration">
           <div class="param-stack">
-            <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control">
+            <div v-for="paramItem in currentEffect.editableParams" :key="paramItem.key" class="param-control" :class="{ 'switch-control': paramItem.key === 'showText', 'loading-text-control': paramItem.key === 'centerText' }">
             <label>
               <span>{{ paramItem.label }}</span>
               <small v-if="paramItem.unit">{{ paramItem.unit }}</small>
             </label>
-            <template v-if="paramItem.type === 'color'">
+            <el-switch v-if="paramItem.key === 'showText'" v-model="params[paramItem.key]" class="loading-text-toggle" active-value="on" inactive-value="off" aria-label="显示文字" />
+            <template v-else-if="paramItem.type === 'color'">
               <div class="color-row">
                 <el-color-picker v-model="params[paramItem.key]" />
                 <el-input v-model="params[paramItem.key]" />
@@ -480,7 +523,7 @@
               </el-select>
             </template>
             <template v-else-if="paramItem.type === 'text'">
-              <el-input v-model="params[paramItem.key]" maxlength="24" />
+              <el-input v-model="params[paramItem.key]" maxlength="24" :disabled="paramItem.key === 'centerText' && params.showText === 'off'" />
             </template>
             <template v-else>
               <div class="number-row">
@@ -510,6 +553,30 @@
             @update:model-value="updateSvgStyle"
           />
         </template>
+        <section v-if="isPointReference" class="flow-param-section chart-base-guide">
+          <h3>实际素材图层</h3>
+          <div v-for="layer in pointLayerRows" :key="layer.key" class="point-layer-row">
+            <div><span>{{ layer.role }}</span><code>{{ layer.name }}</code></div>
+            <el-switch v-model="params[layer.key]" active-value="on" inactive-value="off" :aria-label="`显示${layer.role}`" />
+          </div>
+          <p>{{ pointReferenceLayers(currentEffect.id).file }}。底座与图标分别保留，关闭运动后仍是完整装饰。复制代码与导出 HTML 使用原生 SVG / CSS，可离线嵌入页面，无动画库或 GIF。</p>
+        </section>
+        <section v-if="isChartOrbitBase" class="flow-param-section chart-base-guide">
+          <h3>图表叠放</h3>
+          <p>底座尺寸 {{ chartOrbitBaseSize(params).width }} × {{ chartOrbitBaseSize(params).height }} px。复制代码或导出 HTML 后，将底座放在图表下方并对齐中心；图表不跟随光弧旋转。</p>
+        </section>
+        <section v-if="isLightDecoration" class="flow-param-section chart-base-guide">
+          <h3>光效使用</h3>
+          <p v-if="currentEffect.id === 'light-electric-beam'">程序化生成细密电丝、分支亮芯和窄幅柔光，无图片素材，四周自然透明。修改颜色和整体缩放即可叠放到按钮或标题附近。</p>
+          <p v-else-if="currentEffect.id === 'light-particle-band'">程序化生成疏密不同的细小光点，错峰闪动并带窄幅光晕，无图片素材。支持颜色、强度、循环时长、静态显示及整体缩放。</p>
+          <p v-else>这是可独立叠加的透明光效，无需上传素材。用整体缩放调整大小，再叠放到按钮、标题或图表附近；光晕扩散底座用于图表下方，不包含中心图表。只调整颜色、强度和节奏即可使用。</p>
+          <p v-if="isWebglEffect">此案例使用 WebGL 实时光纹理，交付代码包含最小运行脚本，无外链依赖。请使用“复制代码”或“导出 HTML”；不支持动态 SVG。需要支持 WebGL 的浏览器。</p>
+        </section>
+        <section v-if="isReferenceLoading" class="flow-param-section chart-base-guide">
+          <h3>代码生成 loading</h3>
+          <p>按参考形态用数学轨迹和程序化光纹理重建，不使用 GIF、WebP 或 Base64 图片。背景透明，颜色控制整个光效；文字可修改或隐藏。</p>
+          <p>复制代码与导出 HTML 包含当前效果和最小 WebGL 运行器，可离线使用，不依赖编辑器或第三方库。前端动态挂载后需执行初始化脚本；不支持动态 SVG。</p>
+        </section>
         <DecorationParticlePanel
           v-if="supportsParticleEffect"
           :model-value="activeParticleEffect"
@@ -536,6 +603,7 @@
 import { ElMessage } from "element-plus";
 import { ArrowRight, Download } from "@element-plus/icons-vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { isWebglLight, type LightRendererElement } from "@/utils/lightWebgl";
 import { decorationEffects, decorationSections } from "@/data/decorationEffects";
 import {
   generateDecorationCss,
@@ -544,14 +612,24 @@ import {
   generateDecorationMarkup
 } from "@/generators/decorationGenerator";
 import { generateStarRingCss, generateStarRingHtmlCss, generateStarRingMarkup } from "@/generators/starRingGenerator";
-import { generateSubtitleSweepCss, generateSubtitleSweepHtmlCss, generateSubtitleSweepMarkup, type SubtitleSweepParams } from "@/generators/subtitleSweepGenerator";
+import { generateSubtitleSweepCss, generateSubtitleSweepHtmlCss, generateSubtitleSweepMarkup, type SubtitleSweepParams, type SubtitleSweepVariant } from "@/generators/subtitleSweepGenerator";
 import { generateDecorationParticleCss } from "@/generators/decorationParticleGenerator";
+import { chartOrbitBaseSize } from "@/generators/chartOrbitBaseGenerator";
+import { pointReferenceSize } from "@/data/pointReferenceBases";
+import { pointReferenceLayers } from "@/generators/pointReferenceGenerator";
+import { lightDecorationSize } from "@/generators/lightDecorationGenerator";
+import { referenceLoadingSize, referenceLoadingSpecs } from "@/data/referenceLoadings";
+import { lightSourceZip } from "@/utils/lightSourcePackage";
 import type { DecorationEffectTemplate, DecorationParticleConfig, DecorationSection } from "@/types/decoration";
 import type { StarRingDecorationConfig, StarRingLayerMapping, StarRingSvgAsset } from "@/types/decoration";
 import type { SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
-import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, createSystemSvgFlowSource, readSvgBackgroundFile, readSvgFlowFile, readSvgPreviewFile } from "@/utils/svgFlow";
+import { SVG_FLOW_DRAFT_KEY, SVG_FLOW_LEGACY_DRAFT_KEY, SVG_FLOW_OPEN_KEY, createDefaultSvgFlowConfig, createDefaultSvgStyleConfig, createSystemSvgFlowSource, readSvgBackgroundFile, readSvgFlowFile, readSvgPreviewFile, svgFlowDisplaySize } from "@/utils/svgFlow";
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import { createMotionArtifact } from "@/utils/motionArtifact";
+import { motionScaleFactor, withMotionScale } from "@/utils/motionScale";
+import MotionScaleControl from "@/modules/motion-library/MotionScaleControl.vue";
+import { copyMotionCode } from "@/utils/clipboard";
+import { createAnimatedMotionSvg, MOTION_SVG_COPY_HINT, motionSvgUnsupportedReason } from "@/utils/motionSvg";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
@@ -577,14 +655,17 @@ const activeSection = ref<DecorationSection>(initialEffect?.section ?? decoratio
 const activeEffectId = ref(initialEffect?.id ?? decorationEffects[0].id);
 const activeWorkspaceView = ref<"preview" | "code">("preview");
 const previewKey = ref(0);
+const copyingSvg = ref(false);
 const previewPlaying = ref(true);
 const previewSpeed = ref(1);
 const params = reactive<Record<string, string | number>>({});
+const overallScaleFactor = computed(() => motionScaleFactor(params.overallScale));
 const starRingConfig = ref<StarRingDecorationConfig>(createDefaultStarRingConfig());
 const chartTechRingConfig = ref<StarRingDecorationConfig>(createDefaultChartTechRingConfig());
 const stackedEnergyBaseConfig = ref<StarRingDecorationConfig>(createDefaultStackedEnergyBaseConfig());
 const rippleFocusBaseConfig = ref<StarRingDecorationConfig>(createDefaultRippleFocusBaseConfig());
 const subtitleSweepConfig = ref<StarRingDecorationConfig>(createDefaultLayeredDecorationConfig("subtitle-sweep"));
+const subtitleLightArcConfig = ref<StarRingDecorationConfig>(createDefaultLayeredDecorationConfig("subtitle-light-arc"));
 const pendingStarRingAsset = ref<StarRingSvgAsset>();
 const pendingStarRingMapping = ref<StarRingLayerMapping>(createDefaultStarRingConfig().layerMapping);
 const mappingDialogVisible = ref(false);
@@ -594,6 +675,15 @@ const svgSource = ref<SvgFlowSource>(createSystemSvgFlowSource(initialEffect?.id
 const importedSvg = ref<SvgPreviewAsset>();
 const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
 const particleEffect = ref<DecorationParticleConfig>(createDefaultDecorationParticleConfig());
+interface EffectSessionState {
+  params: Record<string, string | number>;
+  source: SvgFlowSource;
+  asset?: SvgPreviewAsset;
+  style: SvgStyleConfig;
+  particle: DecorationParticleConfig;
+}
+const effectSessionMemory = new Map<string, EffectSessionState>();
+function snapshot<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 const svgFileInput = ref<HTMLInputElement>();
 const centerIconFileInput = ref<HTMLInputElement>();
 const backgroundFileInput = ref<HTMLInputElement>();
@@ -655,14 +745,42 @@ watch(activeEffectId, async (id) => {
 });
 const currentEffect = computed(() => decorationEffects.find((effect) => effect.id === activeEffectId.value) ?? sectionEffects.value[0] ?? decorationEffects[0]);
 const isSvgFlow = computed(() => currentEffect.value.generator === "svg-flow");
+const isSingleSvgFlow = computed(() => currentEffect.value.id === "svg-flow-tool");
+function normalizeTitleWidthScale(): void {
+  if (!isSingleSvgFlow.value) return;
+  const scale = motionScaleFactor(params.overallScale);
+  if (scale === 1) return;
+  params.titleWidth = Number(params.titleWidth ?? svgSource.value?.width ?? 1920) * scale;
+  params.overallScale = 100;
+}
 const isBackgroundSweep = computed(() => currentEffect.value.id === "svg-flow-double-guide");
 const isStarRing = computed(() => currentEffect.value.id === "base-particle-star-ring");
+const isPointReference = computed(() => currentEffect.value.generator === "point-reference");
+const pointLayerRows = computed(() => {
+  if (!isPointReference.value) return [];
+  const layers = pointReferenceLayers(currentEffect.value.id);
+  return [{ key: "showBase", role: "底座", name: layers.base }, { key: "showIcon", role: "图标", name: layers.icon }];
+});
 const isChartTechRing = computed(() => currentEffect.value.id === "chart-tech-ring-01");
+const isChartOrbitBase = computed(() => currentEffect.value.generator === "chart-orbit-base");
+const isLightDecoration = computed(() => currentEffect.value.generator === "light-decoration");
+const isReferenceLoading = computed(() => currentEffect.value.generator === "reference-loading");
+const supportsSourcePackage = computed(() => ["light-electric-beam", "light-particle-band"].includes(currentEffect.value.id));
+const isWebglEffect = computed(() => isWebglLight(currentEffect.value.id));
+const svgUnsupportedReason = computed(() => motionSvgUnsupportedReason(htmlCss.value));
 const isStackedEnergyBase = computed(() => currentEffect.value.id === "icon-base-stacked-energy");
 const isRippleFocusBase = computed(() => currentEffect.value.id === "icon-base-ripple-focus");
 const isReplaceableIconBase = computed(() => isStackedEnergyBase.value || isRippleFocusBase.value);
 const isLayeredRingDecoration = computed(() => isStarRing.value || isChartTechRing.value || isReplaceableIconBase.value);
-const isSubtitleSweep = computed(() => currentEffect.value.id === "subtitle-orbit-sweep-01");
+const isSubtitleSweep = computed(() => currentEffect.value.generator === "layered-sweep");
+const isSubtitleLightArc = computed(() => currentEffect.value.id === "subtitle-light-arc-01");
+const subtitlePreset = computed(() => isSubtitleLightArc.value ? "subtitle-light-arc" as const : "subtitle-sweep" as const);
+const subtitleVariant = computed<SubtitleSweepVariant>(() => isSubtitleLightArc.value ? "light-arc" : "sweep");
+const activeSubtitleConfig = computed(() => isSubtitleLightArc.value ? subtitleLightArcConfig.value : subtitleSweepConfig.value);
+function setActiveSubtitleConfig(config: StarRingDecorationConfig): void {
+  if (isSubtitleLightArc.value) subtitleLightArcConfig.value = config;
+  else subtitleSweepConfig.value = config;
+}
 const isFlowMarker = computed(() => currentEffect.value.generator === "flow-marker");
 const isSequenceMarker = computed(() => currentEffect.value.generator === "flow-marker-sequence");
 const isCornerFocus = computed(() => currentEffect.value.generator === "corner-focus");
@@ -688,11 +806,12 @@ const currentRoleProfile = computed<StarRingRoleProfile>(() => isChartTechRing.v
       : "star-ring");
 const currentImportGuideType = computed<"star-ring" | "stacked-energy-base" | "ripple-focus-base">(() =>
   isStackedEnergyBase.value ? "stacked-energy-base" : isRippleFocusBase.value ? "ripple-focus-base" : "star-ring");
-const activeLayeredConfig = computed(() => isSubtitleSweep.value ? subtitleSweepConfig.value : activeRingConfig.value);
+const activeLayeredConfig = computed(() => isSubtitleSweep.value ? activeSubtitleConfig.value : activeRingConfig.value);
 const activeParticleEffect = computed(() => isLayeredRingDecoration.value
   ? normalizeDecorationParticleConfig(activeRingConfig.value.particleEffect, isStarRing.value, activeRingConfig.value.overall.color)
   : particleEffect.value);
 const displayTitle = computed(() => currentEffect.value.name);
+const flowSizeParams = computed(() => currentEffect.value.editableParams.filter((item) => item.key === "titleWidth"));
 const flowMotionParams = computed(() => ["duration", "pause", "easing", "sourceVisibility", ...(flowTargets.value.length > 1 ? [] : ["direction"])]
   .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
   .filter((item): item is NonNullable<typeof item> => Boolean(item)));
@@ -702,7 +821,14 @@ const flowLightParams = computed(() => ["tail", "borderWidth", "glow", "headColo
 const flowShapeParams = computed(() => ["flowAmplitude", "flowFocusPosition", "flowLeftEndWidth", "flowRightEndWidth"]
   .map((key) => currentEffect.value.editableParams.find((item) => item.key === key))
   .filter((item): item is NonNullable<typeof item> => Boolean(item)));
-const generalParamSections = computed(() => (isPanelBorderFlow.value ? [
+const generalParamSections = computed(() => (isLightDecoration.value ? [
+  { title: "光效设置", keys: ["color", "lightIntensity", "lineWidth", "curvature", "waveCount"] },
+  { title: "播放设置", keys: ["duration", "direction", "motionEnabled"] }
+] : isChartOrbitBase.value ? [
+  { title: "底座结构", keys: ["size", "perspective", "color", "trackOpacity", "surfaceOpacity"] },
+  { title: "环绕运动", keys: ["motionEnabled", "direction", "duration"] },
+  { title: "光弧设置", keys: ["flowLength", "borderWidth", "lightIntensity", "glowIntensity"] }
+] : isPanelBorderFlow.value ? [
   {
     title: importedSvg.value ? "面板素材" : "面板结构",
     keys: importedSvg.value
@@ -734,6 +860,10 @@ const generalParamSections = computed(() => (isPanelBorderFlow.value ? [
 })).filter((section) => section.params.length));
 const flowTargets = computed(() => svgSource.value?.targets ?? []);
 const previewIntrinsicSize = computed(() => {
+  if (isPointReference.value) return pointReferenceSize(currentEffect.value.id);
+  if (isReferenceLoading.value) return referenceLoadingSize(currentEffect.value.id);
+  if (isLightDecoration.value) return lightDecorationSize(currentEffect.value.id);
+  if (isChartOrbitBase.value) return chartOrbitBaseSize(params);
   if (isPanelBorderFlow.value) {
     return {
       width: Number(params.panelWidth ?? importedSvg.value?.width ?? 460),
@@ -741,7 +871,9 @@ const previewIntrinsicSize = computed(() => {
     };
   }
   if (isSvgFlow.value && svgSource.value) {
-    return { width: svgSource.value.width, height: svgSource.value.height };
+    return isSingleSvgFlow.value
+      ? svgFlowDisplaySize(svgSource.value, params.titleWidth)
+      : { width: svgSource.value.width, height: svgSource.value.height };
   }
   if (isLayeredRingDecoration.value && activeRingConfig.value.svg) {
     if (isStackedEnergyBase.value && activeRingConfig.value.sourceMode === "preset") {
@@ -753,8 +885,8 @@ const previewIntrinsicSize = computed(() => {
     }
     return { width: activeRingConfig.value.svg.width, height: activeRingConfig.value.svg.height };
   }
-  if (isSubtitleSweep.value && subtitleSweepConfig.value.svg) {
-    return { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height };
+  if (isSubtitleSweep.value && activeSubtitleConfig.value.svg) {
+    return { width: activeSubtitleConfig.value.svg.width, height: activeSubtitleConfig.value.svg.height };
   }
   return undefined;
 });
@@ -773,7 +905,9 @@ const previewFitStyle = computed(() => {
     : isLayeredRingDecoration.value && activeRingConfig.value.sourceMode === "imported"
       ? 0.82
       : 1;
-  const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight) * decorationPreviewScale;
+  const referenceSpec = isReferenceLoading.value ? referenceLoadingSpecs[currentEffect.value.id] : undefined;
+  const fitSource = isSingleSvgFlow.value && svgSource.value ? svgSource.value : referenceSpec?.visualWidth ? { width: referenceSpec.visualWidth, height: referenceSpec.height } : source;
+  const scale = Math.min(isChartOrbitBase.value ? 1 : Infinity, availableWidth / fitSource.width, availableHeight / fitSource.height) * decorationPreviewScale;
   return {
     width: `${sourceWidth * scale}px`,
     height: `${sourceHeight * scale}px`
@@ -996,15 +1130,15 @@ function endMotionDrag(event: PointerEvent): void {
 }
 
 const cssCode = computed(() => isSubtitleSweep.value
-  ? generateSubtitleSweepCss(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)
+  ? generateSubtitleSweepCss(activeSubtitleConfig.value, params as unknown as SubtitleSweepParams, subtitleVariant.value)
   : isLayeredRingDecoration.value ? generateStarRingCss(activeRingConfig.value)
   : `${generateDecorationCss(currentEffect.value, params)}${activeParticleEffect.value.enabled ? `\n${generateDecorationParticleCss()}` : ""}`);
-const htmlCss = computed(() => isSubtitleSweep.value
-  ? generateSubtitleSweepHtmlCss(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)
+const htmlCss = computed(() => withMotionScale(isSubtitleSweep.value
+  ? generateSubtitleSweepHtmlCss(activeSubtitleConfig.value, params as unknown as SubtitleSweepParams, subtitleVariant.value)
   : isLayeredRingDecoration.value ? generateStarRingHtmlCss(activeRingConfig.value)
-  : generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle, activeParticleEffect.value));
+  : generateDecorationHtmlCss(currentEffect.value, params, svgSource.value, importedSvg.value, svgStyle, activeParticleEffect.value), params.overallScale));
 const previewMarkup = computed(() => isSubtitleSweep.value
-  ? `<style>${cssCode.value}</style>${generateSubtitleSweepMarkup(subtitleSweepConfig.value, params as unknown as SubtitleSweepParams)}`
+  ? `<style>${cssCode.value}</style>${generateSubtitleSweepMarkup(activeSubtitleConfig.value, params as unknown as SubtitleSweepParams, subtitleVariant.value)}`
   : isLayeredRingDecoration.value ? `<style>${cssCode.value}</style>${generateStarRingMarkup(activeRingConfig.value)}`
   : `<style>${cssCode.value}${generateDecorationCompositionCss(importedSvg.value, svgStyle)}</style>${generateDecorationMarkup(currentEffect.value, params, svgSource.value, importedSvg.value, "main", activeParticleEffect.value)}`);
 const previewDuration = computed(() => {
@@ -1032,7 +1166,23 @@ watch(() => props.initialEffectId, async (id) => {
   activeEffectId.value = effect.id;
 });
 
-watch(currentEffect, () => resetParams(false), { immediate: true });
+watch(currentEffect, (next, previous) => {
+  if (previous) effectSessionMemory.set(previous.id, snapshot({
+    params: { ...params }, source: svgSource.value, asset: importedSvg.value,
+    style: { ...svgStyle }, particle: particleEffect.value
+  }));
+  const saved = effectSessionMemory.get(next.id);
+  if (saved) {
+    Object.keys(params).forEach((key) => delete params[key]);
+    Object.assign(params, snapshot(saved.params));
+    svgSource.value = snapshot(saved.source);
+    normalizeTitleWidthScale();
+    importedSvg.value = saved.asset ? snapshot(saved.asset) : undefined;
+    Object.assign(svgStyle, saved.style);
+    particleEffect.value = snapshot(saved.particle);
+    void replayPreview();
+  } else resetParams();
+}, { immediate: true });
 
 watch([previewMarkup, previewPlaying, previewSpeed], () => {
   void nextTick(applyPlaybackState);
@@ -1131,26 +1281,29 @@ function setActiveRingConfig(value: StarRingDecorationConfig): void {
 }
 
 function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
+  if (effect.defaultParticleEffect?.enabled) return generateDecorationHtmlCss(effect, effect.defaultParams);
+  if (effect.generator === "light-decoration" || effect.generator === "reference-loading") return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams, undefined, undefined, `thumb-${effect.id}`)}`;
   if (effect.id === "chart-tech-ring-01") {
     const config = createDefaultChartTechRingConfig();
-    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config, `thumb-${effect.id}`)}`;
   }
   if (effect.id === "base-particle-star-ring") {
     const config = createDefaultStarRingConfig();
-    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config, `thumb-${effect.id}`)}`;
   }
   if (effect.id === "icon-base-stacked-energy") {
     const config = createDefaultStackedEnergyBaseConfig();
-    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config, `thumb-${effect.id}`)}`;
   }
   if (effect.id === "icon-base-ripple-focus") {
     const config = createDefaultRippleFocusBaseConfig();
-    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+    return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config, `thumb-${effect.id}`)}`;
   }
-  if (effect.id === "subtitle-orbit-sweep-01") {
-    const config = createDefaultLayeredDecorationConfig("subtitle-sweep");
+  if (effect.generator === "layered-sweep") {
+    const variant = effect.id === "subtitle-light-arc-01" ? "light-arc" : "sweep";
+    const config = createDefaultLayeredDecorationConfig(variant === "light-arc" ? "subtitle-light-arc" : "subtitle-sweep");
     const defaultParams = effect.defaultParams as unknown as SubtitleSweepParams;
-    return `<style>${generateSubtitleSweepCss(config, defaultParams)}</style>${generateSubtitleSweepMarkup(config, defaultParams)}`;
+    return `<style>${generateSubtitleSweepCss(config, defaultParams, variant)}</style>${generateSubtitleSweepMarkup(config, defaultParams, variant, `thumb-${effect.id}`)}`;
   }
   if (effect.generator === "svg-flow") {
     const source = createSystemSvgFlowSource(effect.id);
@@ -1159,80 +1312,39 @@ function effectThumbnailMarkup(effect: DecorationEffectTemplate): string {
   return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(effect, effect.defaultParams)}`;
 }
 
-function resetParams(preservePanelAsset = true): void {
-  if (isLayeredRingDecoration.value) {
-    const current = activeRingConfig.value;
-    if (isChartTechRing.value) {
-      const next = createDefaultChartTechRingConfig();
-      next.chartContentSvg = current.chartContentSvg;
-      chartTechRingConfig.value = next;
-      importedSvg.value = undefined;
-      void replayPreview();
-      return;
-    }
-    if (current.sourceMode === "imported" && current.svg) {
-      const next = createCurrentRingDefault();
-      applyImportedStarRingConfig(next, current.svg, current.layerMapping);
-      next.centerIconSvg = current.centerIconSvg;
-      next.centerIconColorMode = current.centerIconColorMode;
-      next.centerIconColor = current.centerIconColor;
-      next.centerIconSize = current.centerIconSize;
-      next.centerIconX = current.centerIconX;
-      next.centerIconY = current.centerIconY;
-      setActiveRingConfig(next);
-    } else {
-      const next = createCurrentRingDefault();
-      next.centerIconSvg = current.centerIconSvg;
-      next.centerIconColorMode = current.centerIconColorMode;
-      next.centerIconColor = current.centerIconColor;
-      next.centerIconSize = current.centerIconSize;
-      next.centerIconX = current.centerIconX;
-      next.centerIconY = current.centerIconY;
-      setActiveRingConfig(next);
-    }
-    importedSvg.value = undefined;
-    return;
-  }
-  if (isSubtitleSweep.value) {
-    Object.keys(params).forEach((key) => delete params[key]);
-    Object.assign(params, currentEffect.value.defaultParams);
-    if (subtitleSweepConfig.value.sourceMode === "imported" && subtitleSweepConfig.value.svg) {
-      const next = createDefaultLayeredDecorationConfig("subtitle-sweep");
-      applyImportedLayeredDecorationConfig(next, subtitleSweepConfig.value.svg);
-      subtitleSweepConfig.value = next;
-    } else {
-      subtitleSweepConfig.value = createDefaultLayeredDecorationConfig("subtitle-sweep");
-    }
-    void replayPreview();
-    return;
-  }
-  if (isSvgFlow.value) {
-    Object.keys(params).forEach((key) => delete params[key]);
-    Object.assign(params, currentEffect.value.defaultParams);
-    svgSource.value = createSystemSvgFlowSource(currentEffect.value.id);
-    particleEffect.value = createDefaultDecorationParticleConfig();
-    importedSvg.value = undefined;
-    void replayPreview();
-    return;
-  }
-  if (isPanelBorderFlow.value) {
-    const panelAsset = preservePanelAsset ? importedSvg.value : undefined;
-    Object.keys(params).forEach((key) => delete params[key]);
-    Object.assign(params, currentEffect.value.defaultParams);
-    importedSvg.value = panelAsset;
-    if (panelAsset) {
-      params.panelWidth = panelAsset.width;
-      params.panelHeight = panelAsset.height;
-    }
-    particleEffect.value = createDefaultDecorationParticleConfig();
-    void replayPreview();
-    return;
-  }
+function lightThumbnailStyle(id: string): Record<string, string> {
+  const { width, height } = referenceLoadingSpecs[id] ? referenceLoadingSize(id) : lightDecorationSize(id);
+  const scale = motionScaleFactor(decorationEffects.find((effect) => effect.id === id)?.defaultParams.overallScale);
+  return { top: "50%", width: `${width}px`, height: `${height}px`, transform: `translate(-50%,-50%) scale(${Math.min(54 / width, 42 / height) * scale})` };
+}
+
+function pointThumbnailStyle(id: string): Record<string, string> {
+  const { width, height } = pointReferenceSize(id);
+  return { top: "50%", width: `${width}px`, height: `${height}px`, transform: `translate(-50%,-50%) scale(${Math.min(54 / width, 46 / height)})` };
+}
+
+function resetCurrentEffect(): void {
+  resetParams();
+  if (hasPreviewBackground.value) centerCurrentMotion();
+  else delete backgroundSettings.positions[currentMotionPositionKey.value];
+  ElMessage.success("已恢复当前组件的系统原始素材和默认参数");
+}
+
+function resetParams(): void {
   Object.keys(params).forEach((key) => delete params[key]);
-  Object.assign(params, currentEffect.value.defaultParams);
+  Object.assign(params, { overallScale: 100 }, currentEffect.value.defaultParams);
   importedSvg.value = undefined;
   Object.assign(svgStyle, createDefaultSvgStyleConfig());
-  particleEffect.value = createDefaultDecorationParticleConfig();
+  particleEffect.value = normalizeDecorationParticleConfig(currentEffect.value.defaultParticleEffect);
+  if (isLayeredRingDecoration.value) {
+    setActiveRingConfig(createCurrentRingDefault());
+  } else if (isSubtitleSweep.value) {
+    setActiveSubtitleConfig(createDefaultLayeredDecorationConfig(subtitlePreset.value));
+  } else if (isSvgFlow.value) {
+    svgSource.value = createSystemSvgFlowSource(currentEffect.value.id);
+    if (isSingleSvgFlow.value) params.titleWidth = svgSource.value.width;
+  }
+  void replayPreview();
 }
 
 function togglePreview(): void {
@@ -1262,6 +1374,7 @@ async function replayPreview(): Promise<void> {
 function applyPlaybackState(): void {
   const target = previewCapture.value;
   if (!target) return;
+  target.querySelectorAll<LightRendererElement>("dm-light-renderer").forEach((item) => item.setPlayback(previewPlaying.value, previewSpeed.value));
   target.getAnimations({ subtree: true }).forEach((animation) => {
     animation.playbackRate = previewSpeed.value;
     if (previewPlaying.value) animation.play();
@@ -1278,8 +1391,18 @@ function applyPlaybackState(): void {
 }
 
 async function copyCode(): Promise<void> {
-  await navigator.clipboard.writeText(htmlCss.value);
-  ElMessage.success("代码已复制");
+  try { await copyMotionCode(htmlCss.value); ElMessage.success("代码已复制"); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : "代码复制失败"); }
+}
+
+async function copySvg(): Promise<void> {
+  if (copyingSvg.value) return;
+  copyingSvg.value = true;
+  try {
+    await copyMotionCode(await createAnimatedMotionSvg(htmlCss.value, currentEffect.value.name));
+    ElMessage.success("动态 SVG 源码已复制（浏览器兼容格式）");
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "SVG 复制失败"); }
+  finally { copyingSvg.value = false; }
 }
 
 async function handleSvgUpload(event: Event): Promise<void> {
@@ -1299,9 +1422,9 @@ async function handleSvgUpload(event: Event): Promise<void> {
       void replayPreview();
     } else if (isSubtitleSweep.value) {
       const asset = await readLayeredDecorationSvgFile(file);
-      const next = createDefaultLayeredDecorationConfig("subtitle-sweep");
+      const next = createDefaultLayeredDecorationConfig(subtitlePreset.value);
       applyImportedLayeredDecorationConfig(next, asset);
-      subtitleSweepConfig.value = next;
+      setActiveSubtitleConfig(next);
       importedSvg.value = undefined;
       ElMessage.success(`已读取 ${asset.mode === "layered" ? asset.layers.length : 1} 个素材图层，并自动添加移动光效`);
       void replayPreview();
@@ -1332,8 +1455,10 @@ async function handleSvgUpload(event: Event): Promise<void> {
       svgSource.value = isBackgroundSweep.value
         ? await readSvgBackgroundFile(file)
         : await readSvgFlowFile(file, currentEffect.value.id === "svg-flow-tool-02" ? "double" : "single");
+      if (isSingleSvgFlow.value) params.titleWidth = svgSource.value.width;
       importedSvg.value = undefined;
       ElMessage.success(isBackgroundSweep.value ? "完整 SVG 已作为标题背景读取，水波纹已自动应用" : "SVG 路径已读取");
+      void replayPreview();
     } else if (isPanelBorderFlow.value) {
       const previewAsset = await readSvgPreviewFile(file);
       importedSvg.value = previewAsset;
@@ -1369,7 +1494,7 @@ function updateStarRingConfig(value: StarRingDecorationConfig): void {
 }
 
 function updateLayeredConfig(value: StarRingDecorationConfig): void {
-  if (isSubtitleSweep.value) subtitleSweepConfig.value = value;
+  if (isSubtitleSweep.value) setActiveSubtitleConfig(value);
   else setActiveRingConfig(value);
   void replayPreview();
 }
@@ -1423,7 +1548,7 @@ function removeCenterIcon(): void {
 
 function restoreLayeredPreset(): void {
   if (isSubtitleSweep.value) {
-    subtitleSweepConfig.value = createDefaultLayeredDecorationConfig("subtitle-sweep");
+    setActiveSubtitleConfig(createDefaultLayeredDecorationConfig(subtitlePreset.value));
     ElMessage.success("已恢复系统预设素材");
     void replayPreview();
     return;
@@ -1521,7 +1646,7 @@ async function saveFromToolbar(): Promise<void> {
   if (isSubtitleSweep.value) {
     try {
       const artifact = await createMotionArtifact({ id: currentEffect.value.id, name: currentEffect.value.name, htmlCss: htmlCss.value, previewNode: previewCapture.value });
-      motionStore.saveDecoration(currentEffect.value, { ...params }, artifact, subtitleSweepConfig.value);
+      motionStore.saveDecoration(currentEffect.value, { ...params }, artifact, activeSubtitleConfig.value);
       ElMessage.success("已保存 HTML、预览图和名称");
     } catch {
       ElMessage.error("保存失败，无法生成当前动效预览图");
@@ -1577,16 +1702,30 @@ async function saveSvgFlow(): Promise<void> {
   }
 }
 
-function downloadHtml(): void {
-  const exportSize = isPanelBorderFlow.value
+async function downloadSourceZip(): Promise<void> {
+  if (!supportsSourcePackage.value) return;
+  // Snapshot before awaiting compression, so switching cases cannot mix their files.
+  const name = displayTitle.value, code = htmlCss.value;
+  try {
+    const blob = await lightSourceZip(name, code);
+    const url = URL.createObjectURL(blob), anchor = document.createElement("a");
+    anchor.href = url; anchor.download = `${name}-前端源码.zip`; anchor.click();
+    URL.revokeObjectURL(url); ElMessage.success("前端源码 ZIP 已导出");
+  } catch { ElMessage.error("源码导出失败，请重试"); }
+}
+
+async function downloadHtml(): Promise<void> {
+  const exportSize = isPointReference.value ? pointReferenceSize(currentEffect.value.id) : isReferenceLoading.value ? referenceLoadingSize(currentEffect.value.id) : isLightDecoration.value ? lightDecorationSize(currentEffect.value.id) : isPanelBorderFlow.value
     ? {
         width: Number(params.panelWidth ?? importedSvg.value?.width ?? 460),
         height: Number(params.panelHeight ?? importedSvg.value?.height ?? 240)
       }
     : isSvgFlow.value
-    ? { width: svgSource.value?.width ?? 1920, height: svgSource.value?.height ?? 96 }
-    : isSubtitleSweep.value && subtitleSweepConfig.value.svg
-      ? { width: subtitleSweepConfig.value.svg.width, height: subtitleSweepConfig.value.svg.height }
+    ? isSingleSvgFlow.value && svgSource.value
+      ? svgFlowDisplaySize(svgSource.value, params.titleWidth)
+      : { width: svgSource.value?.width ?? 1920, height: svgSource.value?.height ?? 96 }
+    : isSubtitleSweep.value && activeSubtitleConfig.value.svg
+      ? { width: activeSubtitleConfig.value.svg.width, height: activeSubtitleConfig.value.svg.height }
       : isLayeredRingDecoration.value && activeRingConfig.value.svg
       ? isStackedEnergyBase.value && activeRingConfig.value.sourceMode === "preset"
         ? {
@@ -1596,7 +1735,7 @@ function downloadHtml(): void {
         : { width: activeRingConfig.value.svg.width, height: activeRingConfig.value.svg.height }
       : undefined;
   const bodyStyle = exportSize
-    ? `margin:0;width:${exportSize.width}px;height:${exportSize.height}px;background:#000;overflow:hidden;`
+    ? `margin:0;width:${Number((exportSize.width * overallScaleFactor.value).toFixed(3))}px;height:${Number((exportSize.height * overallScaleFactor.value).toFixed(3))}px;background:#000;overflow:hidden;`
     : "margin:0;padding:24px;background:#000;";
   const documentCode = `<!doctype html>
 <html lang="zh-CN">
@@ -1614,7 +1753,7 @@ ${htmlCss.value}
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${isSubtitleSweep.value || currentEffect.value.section === "loading" || isGeneralDecoration.value || isPanelBorderFlow.value
+  anchor.download = `${isPointReference.value || isSubtitleSweep.value || currentEffect.value.section === "loading" || isGeneralDecoration.value || isPanelBorderFlow.value || isChartOrbitBase.value
     ? currentEffect.value.name
     : isLayeredRingDecoration.value
       ? isStarRing.value ? "star-ring-base" : currentEffect.value.name
@@ -1625,7 +1764,8 @@ ${htmlCss.value}
 }
 
 async function restoreSvgFlow(): Promise<void> {
-  const raw = localStorage.getItem(SVG_FLOW_OPEN_KEY) ?? localStorage.getItem(SVG_FLOW_DRAFT_KEY);
+  const explicitRecord = localStorage.getItem(SVG_FLOW_OPEN_KEY);
+  const raw = explicitRecord ?? localStorage.getItem(SVG_FLOW_DRAFT_KEY);
   if (!raw) return;
   try {
     const saved = JSON.parse(raw) as {
@@ -1635,6 +1775,12 @@ async function restoreSvgFlow(): Promise<void> {
       particleEffect?: DecorationParticleConfig;
     };
     if (!saved.source || !saved.config) return;
+    // A saved SVG-flow record may only restore when it matches the effect selected
+    // by the current navigation (homepage, search, or an explicit edit action).
+    if (props.initialEffectId && saved.effectId !== props.initialEffectId) {
+      if (explicitRecord) localStorage.removeItem(SVG_FLOW_OPEN_KEY);
+      return;
+    }
     activeSection.value = "标题装饰";
     await nextTick();
     activeEffectId.value = decorationEffects.some((effect) => effect.id === saved.effectId)
@@ -1643,6 +1789,8 @@ async function restoreSvgFlow(): Promise<void> {
     await nextTick();
     svgSource.value = saved.source;
     Object.assign(params, createDefaultSvgFlowConfig(), saved.config);
+    if (isSingleSvgFlow.value && !Number(saved.config.titleWidth)) params.titleWidth = saved.source.width;
+    normalizeTitleWidthScale();
     particleEffect.value = normalizeDecorationParticleConfig(saved.particleEffect);
     localStorage.removeItem(SVG_FLOW_OPEN_KEY);
   } catch {
@@ -1811,6 +1959,9 @@ async function restoreSvgFlow(): Promise<void> {
   background-color: var(--dm-motion-canvas-background);
 }
 
+.point-layer-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0;}
+.point-layer-row code{display:block;max-width:200px;overflow-wrap:anywhere;font:11px/1.5 monospace;color:#777;}
+
 .real-effect-thumbnail {
   position: absolute;
   left: 50%;
@@ -1831,11 +1982,31 @@ async function restoreSvgFlow(): Promise<void> {
   transform: translate(-50%, -50%) scale(0.028);
 }
 
+.real-effect-thumbnail.subtitle-thumbnail {
+  top: 50%;
+  width: 443px;
+  height: 50px;
+  transform: translate(-50%, -50%) scale(0.12);
+}
+
 .real-effect-thumbnail.loading-thumbnail {
   top: 50%;
   width: 320px;
   height: 160px;
   transform: translate(-50%, -50%) scale(0.18);
+}
+
+.real-effect-thumbnail.chart-base-thumbnail {
+  top: 50%;
+  width: 320px;
+  height: 154px;
+  transform: translate(-50%, -50%) scale(0.16);
+}
+
+.chart-base-guide p {
+  color: var(--dm-secondary);
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .real-effect-thumbnail.flow-marker-thumbnail {
@@ -1875,10 +2046,6 @@ async function restoreSvgFlow(): Promise<void> {
   color: rgba(255, 255, 255, 0.3);
   font-size: 12px;
   white-space: nowrap;
-}
-
-.real-effect-thumbnail.loading-thumbnail :deep(.decoration-effect-loading-linear-flow) {
-  transform: scale(0.78);
 }
 
 .effect-thumb span {
@@ -2168,6 +2335,7 @@ async function restoreSvgFlow(): Promise<void> {
 
 .decoration-workspace-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -2175,6 +2343,7 @@ async function restoreSvgFlow(): Promise<void> {
 }
 
 .decoration-workspace-actions :deep(.el-button) {
+  margin-left: 0;
   border-radius: 4px;
 }
 
@@ -2211,6 +2380,11 @@ async function restoreSvgFlow(): Promise<void> {
 
 .preview-stage.paused :deep(*) {
   animation-play-state: paused !important;
+}
+
+.preview-stage.webgl-preview-stage:not(.has-preview-background) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .preview-stage.has-preview-background {
@@ -2377,6 +2551,21 @@ async function restoreSvgFlow(): Promise<void> {
   min-width: 0;
 }
 
+.generated-preview.size-fitted-preview :deep(.decoration-effect-chart-orbit-base-01) {
+  width: 100%;
+  height: 100%;
+}
+
+.generated-preview.size-fitted-preview :deep(.dm-light-decoration) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.generated-preview.size-fitted-preview :deep(.dm-reference-loading) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 .effect-meta {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2501,17 +2690,45 @@ async function restoreSvgFlow(): Promise<void> {
 }
 
 .preview-setting-row :deep(.el-select),
-.preview-setting-row :deep(.el-radio-group) {
+.canvas-view-switch {
   min-width: 0;
   flex: 1;
 }
 
-.preview-setting-row :deep(.el-radio-button) {
-  flex: 1;
+.canvas-view-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 4px;
+  background: var(--dm-control);
 }
 
-.preview-setting-row :deep(.el-radio-button__inner) {
-  width: 100%;
+.canvas-view-switch button {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dm-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.canvas-view-switch button:hover {
+  color: var(--dm-primary);
+}
+
+.canvas-view-switch button.active {
+  background: #243344;
+  color: #74b6ff;
+}
+
+.canvas-view-switch button:focus-visible {
+  outline: 2px solid #0070f3;
+  outline-offset: 1px;
 }
 
 .preview-background-subhead {
@@ -2620,6 +2837,21 @@ async function restoreSvgFlow(): Promise<void> {
 
 .param-control.switch-control label {
   flex: 1;
+}
+
+.loading-text-toggle {
+  --el-switch-off-color: #2a2a2a;
+}
+
+.loading-text-control :deep(.el-input.is-disabled) {
+  --el-disabled-bg-color: var(--dm-control);
+  --el-disabled-border-color: var(--dm-hairline-strong);
+  --el-disabled-text-color: #737373;
+}
+
+.loading-text-control :deep(.el-input.is-disabled .el-input__wrapper) {
+  background: var(--dm-control);
+  box-shadow: 0 0 0 1px var(--dm-hairline-strong) inset;
 }
 
 .param-control label {

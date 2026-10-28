@@ -1,7 +1,7 @@
 <template>
   <section class="my-motion panel">
     <header class="my-head">
-      <div><h2>我的动效</h2><p>每条记录包含名称、可交付 HTML 和预览图片</p></div>
+      <div><h2>我的动效</h2><p>仅保存在当前浏览器；重要动效请下载 HTML 备份。</p></div>
       <small>{{ store.savedMotions.length }} 个已保存</small>
     </header>
 
@@ -17,7 +17,7 @@
             <span v-else>旧记录未包含预览图，请重新保存</span>
           </button>
           <div class="card-copy">
-            <div class="card-kicker"><span>{{ motion.category }}</span><small>{{ motion.artifact ? "HTML · PNG" : "旧记录" }}</small></div>
+            <div class="card-kicker"><span>{{ motion.source === "basic-library" ? motion.category : "装饰组件" }}</span><small>{{ motion.artifact ? "HTML · PNG" : "旧记录" }}</small></div>
             <h3>{{ motion.name }}</h3>
             <p>{{ motion.description }}</p>
           </div>
@@ -26,9 +26,10 @@
             <div class="card-actions">
               <el-button size="small" text :disabled="!motion.artifact" @click="openPreview(motion)">预览</el-button>
               <el-button size="small" text :disabled="!motion.artifact" @click="downloadHtml(motion)">HTML</el-button>
+              <el-button size="small" text :disabled="!motion.artifact || copyingSvgId === motion.id || Boolean(motionSvgUnsupportedReason(motion.artifact.html))" :title="motionSvgUnsupportedReason(motion.artifact?.html) || MOTION_SVG_COPY_HINT" @click="copySvg(motion)">复制 SVG</el-button>
               <el-button size="small" text :disabled="!motion.artifact" @click="downloadImage(motion)">图片</el-button>
               <el-button v-if="motion.source === 'svg-flow'" size="small" text @click="editSvgFlow(motion)">再次编辑</el-button>
-              <el-button size="small" text type="danger" @click="store.deleteMotion(motion.id)">删除</el-button>
+              <el-button size="small" text type="danger" @click="confirmDelete(motion)">删除</el-button>
             </div>
           </footer>
         </article>
@@ -64,13 +65,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { useMyMotionStore } from "@/stores/myMotionStore";
 import type { SavedMotion } from "@/types/motion";
 import { SVG_FLOW_OPEN_KEY } from "@/utils/svgFlow";
+import { fitMotionPreviewDocument } from "@/utils/motionArtifact";
+import { initializeLightDocument, releaseLightDocument, type LightRendererElement } from "@/utils/lightWebgl";
+import { createAnimatedMotionSvg, MOTION_SVG_COPY_HINT, motionSvgUnsupportedReason } from "@/utils/motionSvg";
+import { copyMotionCode } from "@/utils/clipboard";
 import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 
 const store = useMyMotionStore();
+const copyingSvgId = ref("");
 const emit = defineEmits<{ editSvgFlow: [] }>();
 const previewVisible = ref(false);
 const previewMotion = ref<SavedMotion>();
@@ -78,12 +85,19 @@ const previewFrame = ref<HTMLIFrameElement>();
 const previewFrameKey = ref(0);
 const previewPlaying = ref(true);
 const previewSpeed = ref(1);
+let frameResizeObserver: ResizeObserver | undefined;
+let currentPreviewDocument: Document | undefined;
+onBeforeUnmount(() => { frameResizeObserver?.disconnect(); releaseLightDocument(currentPreviewDocument); });
+watch(previewVisible, (visible) => {
+  currentPreviewDocument?.querySelectorAll<LightRendererElement>("dm-light-renderer").forEach((item) => item.setPlayback(visible && previewPlaying.value, previewSpeed.value));
+});
 
 onMounted(() => {
   store.loadFromLocal();
 });
 
 function formatTime(value: string): string {
+  if (!Number.isFinite(new Date(value).getTime())) return "时间未知";
   return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
@@ -94,8 +108,18 @@ function formatTime(value: string): string {
 
 function editSvgFlow(motion: SavedMotion): void {
   if (!motion.svgFlow) return;
-  localStorage.setItem(SVG_FLOW_OPEN_KEY, JSON.stringify(motion.svgFlow));
-  emit("editSvgFlow");
+  try {
+    localStorage.setItem(SVG_FLOW_OPEN_KEY, JSON.stringify(motion.svgFlow));
+    emit("editSvgFlow");
+  } catch { ElMessage.error("浏览器存储不可用，无法打开编辑。请先下载 HTML 备份。"); }
+}
+
+async function confirmDelete(motion: SavedMotion): Promise<void> {
+  try {
+    await ElMessageBox.confirm(`删除“${motion.name}”后无法恢复，请确认已下载所需 HTML。`, "删除动效", { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" });
+  } catch { return; }
+  try { store.deleteMotion(motion.id); ElMessage.success("已删除动效"); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : "删除失败，原记录已保留"); }
 }
 
 function openPreview(motion: SavedMotion): void {
@@ -105,6 +129,16 @@ function openPreview(motion: SavedMotion): void {
   previewSpeed.value = 1;
   previewFrameKey.value += 1;
   previewVisible.value = true;
+}
+
+async function copySvg(motion: SavedMotion): Promise<void> {
+  if (!motion.artifact || copyingSvgId.value) return;
+  copyingSvgId.value = motion.id;
+  try {
+    await copyMotionCode(await createAnimatedMotionSvg(motion.artifact.html, motion.name));
+    ElMessage.success("动态 SVG 源码已复制（浏览器兼容格式）");
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "SVG 复制失败"); }
+  finally { copyingSvgId.value = ""; }
 }
 
 function togglePreview(): void {
@@ -125,6 +159,18 @@ function replayPreview(): void {
 function applyFramePlaybackState(): void {
   const document = previewFrame.value?.contentDocument;
   if (!document) return;
+  if (currentPreviewDocument !== document) releaseLightDocument(currentPreviewDocument);
+  currentPreviewDocument = document;
+  const fit = () => {
+    const frame = previewFrame.value;
+    if (frame) fitMotionPreviewDocument(document, frame.clientWidth, frame.clientHeight);
+  };
+  fit();
+  initializeLightDocument(document);
+  document.querySelectorAll<LightRendererElement>("dm-light-renderer").forEach((item) => item.setPlayback(previewVisible.value && previewPlaying.value, previewSpeed.value));
+  frameResizeObserver?.disconnect();
+  frameResizeObserver = new ResizeObserver(fit);
+  if (previewFrame.value) frameResizeObserver.observe(previewFrame.value);
   document.getAnimations().forEach((animation) => {
     animation.playbackRate = previewSpeed.value;
     if (previewPlaying.value) animation.play();

@@ -6,7 +6,7 @@
           <div class="collection-title">
             <span>Motion library</span>
             <h1>动效库</h1>
-            <p>浏览基础动效与装饰组件，搜索并选择案例开始编辑。</p>
+            <p>浏览装饰组件动效，搜索并选择案例开始编辑。</p>
           </div>
 
           <div class="collection-tools">
@@ -14,7 +14,7 @@
               v-model="keyword"
               clearable
               :prefix-icon="Search"
-              placeholder="搜索基础动效和装饰组件"
+              placeholder="搜索装饰组件动效"
               aria-label="搜索动效案例"
             />
             <small>{{ keyword.trim() ? `${filteredMotions.length} 个搜索结果` : `${filteredMotions.length} 个案例` }}</small>
@@ -29,38 +29,13 @@
             tabindex="0"
             role="button"
             :aria-label="`打开${motion.name}编辑器`"
-            @mouseenter="playMotion(motion.id)"
-            @mouseleave="stopMotion(motion.id)"
-            @focus="playMotionOnKeyboardFocus($event, motion.id)"
-            @blur="stopMotion(motion.id)"
             @click="openResult(motion)"
             @keyup.enter="openResult(motion)"
+            @keydown.space.prevent
+            @keyup.space.prevent="openResult(motion)"
           >
             <div class="motion-visual dm-motion-canvas">
-              <MotionPreviewVisual
-                v-if="motion.kind === 'basic'"
-                :key="`${motion.id}-${previewingId === motion.id}`"
-                :motion-id="motion.targetId"
-                :alt="`${motion.name}动效预览`"
-                :playing="previewingId === motion.id"
-                :duration="motion.durationValue"
-                :iteration="motion.iteration"
-                :timing-function="motion.timingFunction"
-                :direction="motion.previewConfig.direction"
-                :color="motion.previewConfig.color ?? '#0070F3'"
-                :min-opacity="motion.previewConfig.minOpacity"
-                :max-opacity="motion.previewConfig.maxOpacity"
-                :min-scale="motion.previewConfig.minScale"
-                :max-scale="motion.previewConfig.maxScale"
-                :offset-y="motion.previewConfig.offsetY"
-                :glow-peak="motion.previewConfig.glowPeak ?? 14"
-                :glow-strength="motion.previewConfig.glowStrength"
-              />
-              <div
-                v-else
-                class="decoration-home-preview"
-                :class="{ 'is-playing': previewingId === motion.id }"
-              >
+              <div class="decoration-home-preview">
                 <div
                   class="decoration-home-preview-content"
                   :style="{ '--home-decoration-scale': motion.previewScale }"
@@ -94,114 +69,69 @@
 </template>
 
 <script setup lang="ts">
+import { lightDecorationSize } from "@/generators/lightDecorationGenerator";
+import { pointReferenceSize } from "@/data/pointReferenceBases";
+import { motionScaleFactor } from "@/utils/motionScale";
+import { referenceLoadingSize } from "@/data/referenceLoadings";
 import { computed, ref } from "vue";
 import { Search } from "@element-plus/icons-vue";
-import { basicMotions } from "@/data/basicMotions";
 import { decorationEffects } from "@/data/decorationEffects";
-import { generateDecorationCss, generateDecorationMarkup } from "@/generators/decorationGenerator";
+import { generateDecorationCss, generateDecorationMarkup, generateDecorationHtmlCss } from "@/generators/decorationGenerator";
 import { generateStarRingCss, generateStarRingMarkup } from "@/generators/starRingGenerator";
-import { createDefaultStarRingConfig, createDefaultStackedEnergyBaseConfig, createDefaultRippleFocusBaseConfig, createDefaultChartTechRingConfig } from "@/utils/starRingDecoration";
+import { generateSubtitleSweepCss, generateSubtitleSweepMarkup, type SubtitleSweepParams } from "@/generators/subtitleSweepGenerator";
+import { createDefaultStarRingConfig, createDefaultStackedEnergyBaseConfig, createDefaultRippleFocusBaseConfig, createDefaultChartTechRingConfig, createDefaultLayeredDecorationConfig } from "@/utils/starRingDecoration";
 import type { DecorationEffectTemplate } from "@/types/decoration";
 import { createSystemSvgFlowSource } from "@/utils/svgFlow";
-import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
-import type { BasicMotionConfig } from "@/types/motion";
 
 interface HomeMotion {
-  kind: "basic" | "decoration";
   id: string;
   targetId: string;
   name: string;
   english: string;
   description: string;
   scene: string;
+  section: string;
   duration: string;
-  durationValue: number;
-  iteration: string;
-  timingFunction: string;
-  previewConfig: Partial<BasicMotionConfig>;
   previewHtml: string;
   previewScale: string;
 }
 
 const emit = defineEmits<{
-  openMotion: [motionId: string];
   openDecoration: [effectId: string];
 }>();
 const keyword = ref("");
-const previewingId = ref("");
 
-const motionMeta = [
-  { id: "home-fade", targetId: "fade-in", name: "淡入", english: "Fade In", description: "从透明到可见，建立安静清晰的内容层级。" },
-  { id: "home-slide-up", targetId: "slide-up", name: "上滑进入", english: "Slide Up", description: "内容从下方进入，适合分组信息依次出现。" },
-  { id: "home-zoom", targetId: "scale-in", name: "缩放淡入", english: "Scale In", description: "用轻微缩放聚焦关键数字或重点模块。" },
-  { id: "home-slide-left", targetId: "slide-left", name: "左滑进入", english: "Slide Left", description: "强调内容来源方向，适合侧栏和信息面板。" },
-  { id: "home-breath", targetId: "breath", name: "呼吸", english: "Breathing", description: "柔和循环变化，让重要状态保持可感知。" },
-  { id: "home-rotate", targetId: "slow-rotate", name: "慢速旋转", english: "Loading", description: "持续旋转的装饰运动，适合加载与状态环。" },
-  { id: "home-pulse", targetId: "highlight-glow", name: "高亮脉冲", english: "Pulse", description: "短促的亮度和尺度变化，用于强调关键状态。" },
-  { id: "home-count", targetId: "scale-tip", name: "放大提示", english: "Scale Tip", description: "用短暂放大回应变化，适合指标和按钮反馈。" },
-  { id: "home-warning", targetId: "alert-blink", name: "告警闪烁", english: "Warning Flash", description: "克制的明暗变化，提醒异常状态或风险信息。" },
-  { id: "home-flow", targetId: "border-flow", name: "边框流光", english: "Light Flow", description: "沿边界持续流动，为重点区域增加方向感。" }
-] as const;
-
-const featuredMotions: HomeMotion[] = motionMeta.map((item) => {
-  const source = basicMotions.find((motion) => motion.id === item.targetId) ?? basicMotions[0];
-  return {
-    ...item,
-    kind: "basic",
-    scene: source.scene,
-    duration: `${source.duration}s`,
-    durationValue: source.duration,
-    iteration: source.iteration,
-    timingFunction: source.timingFunction,
-    previewConfig: source.defaultConfig,
-    previewHtml: "",
-    previewScale: "1"
-  };
-});
-
-const searchableBasicMotions: HomeMotion[] = basicMotions.map((motion) => {
-  const meta = motionMeta.find((item) => item.targetId === motion.id);
-  return {
-    kind: "basic",
-    id: `search-basic-${motion.id}`,
-    targetId: motion.id,
-    name: motion.name,
-    english: meta?.english ?? "基础动效",
-    description: motion.description,
-    scene: motion.scene,
-    duration: `${motion.duration}s`,
-    durationValue: motion.duration,
-    iteration: motion.iteration,
-    timingFunction: motion.timingFunction,
-    previewConfig: motion.defaultConfig,
-    previewHtml: "",
-    previewScale: "1"
-  };
-});
-
-const searchableDecorationMotions: HomeMotion[] = decorationEffects.map((effect) => ({
-  kind: "decoration",
+const decorationMotions: HomeMotion[] = decorationEffects.map((effect) => ({
   id: `search-decoration-${effect.id}`,
   targetId: effect.id,
   name: effect.name,
   english: "装饰组件",
   description: effect.description,
   scene: effect.scene,
+  section: effect.section,
   duration: `${Number(effect.defaultParams.duration ?? 2.4)}s`,
-  durationValue: Number(effect.defaultParams.duration ?? 2.4),
-  iteration: "infinite",
-  timingFunction: "linear",
-  previewConfig: {},
   previewHtml: homeDecorationMarkup(effect),
-  previewScale: effect.id === "svg-flow-tool-02" ? "0.14" : effect.id === "chart-tech-ring-01" ? "0.5" : decorationPreviewScale(effect.previewType)
+  previewScale: effect.generator === "point-reference" || effect.generator === "light-decoration" || effect.generator === "reference-loading" ? fixedPreviewScale(effect) : effect.id === "svg-flow-tool-02" ? "0.14" : effect.id === "chart-tech-ring-01" ? "0.5" : effect.generator === "layered-sweep" ? "0.6" : decorationPreviewScale(effect.previewType)
 }));
 
+function fixedPreviewScale(effect: DecorationEffectTemplate): string {
+  const { width, height } = effect.generator === "point-reference" ? pointReferenceSize(effect.id) : effect.generator === "reference-loading" ? referenceLoadingSize(effect.id) : lightDecorationSize(effect.id);
+  return String(Math.min(190 / width, 116 / height) * motionScaleFactor(effect.defaultParams.overallScale));
+}
+
 function homeDecorationMarkup(effect: DecorationEffectTemplate): string {
+  if (effect.defaultParticleEffect?.enabled) return generateDecorationHtmlCss(effect, effect.defaultParams);
+  if (effect.generator === "layered-sweep") {
+    const variant = effect.id === "subtitle-light-arc-01" ? "light-arc" : "sweep";
+    const config = createDefaultLayeredDecorationConfig(variant === "light-arc" ? "subtitle-light-arc" : "subtitle-sweep");
+    const params = effect.defaultParams as unknown as SubtitleSweepParams;
+    return `<style>${generateSubtitleSweepCss(config, params, variant)}</style>${generateSubtitleSweepMarkup(config, params, variant, `home-${effect.id}`)}`;
+  }
   const config = effect.id === "base-particle-star-ring" ? createDefaultStarRingConfig()
     : effect.id === "icon-base-stacked-energy" ? createDefaultStackedEnergyBaseConfig()
     : effect.id === "icon-base-ripple-focus" ? createDefaultRippleFocusBaseConfig()
     : effect.id === "chart-tech-ring-01" ? createDefaultChartTechRingConfig() : undefined;
-  if (config) return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config)}`;
+  if (config) return `<style>${generateStarRingCss(config)}</style>${generateStarRingMarkup(config, `home-${effect.id}`)}`;
   return `<style>${generateDecorationCss(effect, effect.defaultParams)}</style>${generateDecorationMarkup(
     effect,
     effect.defaultParams,
@@ -211,31 +141,24 @@ function homeDecorationMarkup(effect: DecorationEffectTemplate): string {
   )}`;
 }
 
-// 精选区保留基础案例，并插入一排可直接进入编辑的真实装饰预览。
-const featuredDecorationIds = ["chart-tech-ring-01", "flow-marker-02", "corner-focus-01", "loading-hex-tech-ring"];
-const featuredDecorations = featuredDecorationIds.flatMap((id) => {
-  const motion = searchableDecorationMotions.find((item) => item.targetId === id);
-  return motion ? [motion] : [];
-});
+// 首页按装饰类别展示；截图中的原首排四款按用户指定移到最后。
+const sectionOrder = ["图标/点位", "loading", "标题装饰", "通用装饰", "图表装饰"];
+const lastIds = ["base-particle-star-ring", "icon-base-stacked-energy", "icon-base-ripple-focus", "svg-flow-tool-02"];
+const lastIdSet = new Set(lastIds);
 const homeFeaturedMotions = [
-  ...["base-particle-star-ring", "icon-base-stacked-energy", "icon-base-ripple-focus", "svg-flow-tool-02"].flatMap((id) => {
-    const motion = searchableDecorationMotions.find((item) => item.targetId === id);
-    return motion ? [motion] : [];
-  }),
-  ...featuredDecorations,
-  ...featuredMotions.slice(4)
+  ...sectionOrder.flatMap((section) => decorationMotions.filter((motion) => motion.section === section && !lastIdSet.has(motion.targetId))),
+  ...lastIds.flatMap((id) => decorationMotions.filter((motion) => motion.targetId === id))
 ];
 
 const filteredMotions = computed(() => {
   const query = keyword.value.trim().toLowerCase();
   if (!query) return homeFeaturedMotions;
-  return [...searchableBasicMotions, ...searchableDecorationMotions].filter((motion) =>
+  return homeFeaturedMotions.filter((motion) =>
     `${motion.name} ${motion.english} ${motion.description} ${motion.scene}`.toLowerCase().includes(query)
   );
 });
 
 function decorationPreviewScale(previewType: string): string {
-  if (previewType === "panel-border-flow") return "0.55";
   if (previewType === "comet-flow") return "0.44";
   if (previewType === "linear-flow" || previewType === "svg-flow") return "0.52";
   if (previewType === "particle-base") return "0.72";
@@ -243,26 +166,7 @@ function decorationPreviewScale(previewType: string): string {
 }
 
 function openResult(motion: HomeMotion): void {
-  if (motion.kind === "decoration") emit("openDecoration", motion.targetId);
-  else emit("openMotion", motion.targetId);
-}
-
-function playMotion(id: string): void {
-  previewingId.value = "";
-  requestAnimationFrame(() => {
-    previewingId.value = id;
-  });
-}
-
-function playMotionOnKeyboardFocus(event: FocusEvent, id: string): void {
-  const target = event.currentTarget;
-  if (target instanceof HTMLElement && target.matches(":focus-visible")) {
-    playMotion(id);
-  }
-}
-
-function stopMotion(id: string): void {
-  if (previewingId.value === id) previewingId.value = "";
+  emit("openDecoration", motion.targetId);
 }
 </script>
 
@@ -344,8 +248,8 @@ function stopMotion(id: string): void {
 
 .motion-home-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 36px 24px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 32px 20px;
 }
 
 .home-motion-card {
@@ -393,10 +297,6 @@ function stopMotion(id: string): void {
   place-items: center;
   transform: translate(-50%, -50%) scale(var(--home-decoration-scale, 0.7));
   transform-origin: center;
-}
-
-.decoration-home-preview:not(.is-playing) :deep(*) {
-  animation-play-state: paused !important;
 }
 
 .home-motion-card:hover .motion-visual,
@@ -498,7 +398,11 @@ function stopMotion(id: string): void {
   }
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1180px) {
+  .motion-home-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
   .collection-header {
     grid-template-columns: 1fr;
     gap: 28px;
@@ -512,7 +416,13 @@ function stopMotion(id: string): void {
   .motion-home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+@media (max-width: 600px) {
+  .home-wrap { width: calc(100% - 32px); }
+  .motion-home-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .decoration-home-preview :deep(*) { animation-play-state: paused !important; }
   .motion-visual { transition: none; }
   .home-motion-card:hover .motion-visual,
   .home-motion-card:focus-visible .motion-visual { transform: none; }

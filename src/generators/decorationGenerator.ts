@@ -3,6 +3,13 @@ import type { SvgFlowConfig, SvgFlowSource, SvgPreviewAsset, SvgStyleConfig } fr
 import { generateDecorationParticleCss, generateDecorationParticleMarkup } from "@/generators/decorationParticleGenerator";
 import { generateBackgroundSweepCss, generateBackgroundSweepMarkup } from "@/generators/backgroundSweepGenerator";
 import { BORDER_FLOW_DASH_GAP, BORDER_FLOW_DASH_LENGTH, borderFlowTrailSegments } from "@/utils/borderFlowTrail";
+import { svgFlowDisplaySize } from "@/utils/svgFlow";
+import { generateChartOrbitBaseCss, generateChartOrbitBaseMarkup } from "@/generators/chartOrbitBaseGenerator";
+import { generateLightDecorationCss, generateLightDecorationMarkup } from "@/generators/lightDecorationGenerator";
+import { lightRuntimeScript } from "@/utils/lightWebgl";
+import { generateReferenceLoadingCss, generateReferenceLoadingMarkup } from "@/generators/referenceLoadingGenerator";
+import { generatePointReferenceCss, generatePointReferenceMarkup } from "@/generators/pointReferenceGenerator";
+import { normalizeDecorationParticleConfig } from "@/utils/decorationParticles";
 
 export type DecorationParams = Record<string, string | number>;
 
@@ -193,6 +200,10 @@ function particleRingSegments(className: string, count = 10): string {
 }
 
 export function generateDecorationCss(template: DecorationEffectTemplate, params: DecorationParams): string {
+  if (template.generator === "point-reference") return generatePointReferenceCss(decorationClassName(template), template.id);
+  if (template.generator === "reference-loading") return generateReferenceLoadingCss(decorationClassName(template), template.id);
+  if (template.generator === "light-decoration") return generateLightDecorationCss(decorationClassName(template), template.id);
+  if (template.generator === "chart-orbit-base") return generateChartOrbitBaseCss(decorationClassName(template), params);
   const cls = decorationClassName(template);
   const kf = keyframesName(template);
   const size = param(params, "size", 160);
@@ -511,6 +522,10 @@ export function generateDecorationCss(template: DecorationEffectTemplate, params
   overflow: visible;
   position: relative;
   z-index: 1;
+}
+
+.${cls}__path, .${cls}__track, .${cls}__tail {
+  vector-effect: non-scaling-stroke;
 }
 
 .${cls}__path {
@@ -1000,16 +1015,25 @@ function composeDecoration(markup: string, asset?: SvgPreviewAsset): string {
 }
 
 export function generateDecorationHtmlCss(template: DecorationEffectTemplate, params: DecorationParams, source?: SvgFlowSource, asset?: SvgPreviewAsset, svgStyle?: SvgStyleConfig, particleEffect?: DecorationParticleConfig): string {
+  particleEffect ??= template.defaultParticleEffect ? normalizeDecorationParticleConfig(template.defaultParticleEffect) : undefined;
   return `${generateDecorationMarkup(template, params, source, asset, "main", particleEffect)}
 
 <style>
 ${generateDecorationCss(template, params)}
 ${generateDecorationCompositionCss(asset, svgStyle)}
 ${particleEffect?.enabled ? generateDecorationParticleCss() : ""}
-</style>`;
+</style>${lightRuntimeScript(template.id)}`;
 }
 
 export function generateDecorationMarkup(template: DecorationEffectTemplate, params: DecorationParams = {}, source?: SvgFlowSource, asset?: SvgPreviewAsset, instanceId = "main", particleEffect?: DecorationParticleConfig): string {
+  particleEffect ??= template.defaultParticleEffect ? normalizeDecorationParticleConfig(template.defaultParticleEffect) : undefined;
+  if (template.generator === "point-reference") return generatePointReferenceMarkup(decorationClassName(template), template.id, params, instanceId, generateDecorationParticleMarkup(particleEffect, String(params.color ?? DECORATION_BLUE)));
+  if (template.generator === "reference-loading") return generateReferenceLoadingMarkup(template.id, decorationClassName(template), params);
+  if (template.generator === "light-decoration") return generateLightDecorationMarkup(template.id, decorationClassName(template), params, instanceId, generateDecorationParticleMarkup(particleEffect, String(params.color ?? DECORATION_BLUE)));
+  if (template.generator === "chart-orbit-base") {
+    const cls = decorationClassName(template);
+    return generateChartOrbitBaseMarkup(cls, params, generateDecorationParticleMarkup(particleEffect, String(param(params, "color", DECORATION_BLUE))));
+  }
   if (template.generator === "panel-border-flow") {
     const cls = decorationClassName(template);
     const panelWidth = Math.max(160, Number(param(params, "panelWidth", 460)));
@@ -1161,13 +1185,15 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
 
   if (template.generator === "loading-tech-ring") {
     const centerText = escapeHtml(String(param(params, "centerText", "Loading")));
-    return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中"><span class="${decorationClassName(template)}__orbit"><span class="${decorationClassName(template)}__inner"></span></span><span class="${decorationClassName(template)}__label">${centerText}</span></div>`;
+    const label = params.showText === "off" ? "" : `<span class="${decorationClassName(template)}__label">${centerText}</span>`;
+    return `<div class="${decorationClassName(template)}" role="status" aria-label="加载中"><span class="${decorationClassName(template)}__orbit"><span class="${decorationClassName(template)}__inner"></span></span>${label}</div>`;
   }
 
   if (template.generator === "loading-irregular-ring") {
     const cls = decorationClassName(template);
     const centerText = escapeHtml(String(param(params, "centerText", "LOADING...")));
-    return `<div class="${cls}" role="status" aria-label="加载中"><span class="${cls}__ring-frame" aria-hidden="true"><i class="${cls}__ring ${cls}__ring--one"></i><i class="${cls}__ring ${cls}__ring--two"></i><i class="${cls}__ring ${cls}__ring--three"></i></span><span class="${cls}__disc-frame" aria-hidden="true"><i class="${cls}__disc ${cls}__disc--one"></i><i class="${cls}__disc ${cls}__disc--two"></i><i class="${cls}__disc ${cls}__disc--three"></i></span><span class="${cls}__label">${centerText}</span></div>`;
+    const label = params.showText === "off" ? "" : `<span class="${cls}__label">${centerText}</span>`;
+    return `<div class="${cls}" role="status" aria-label="加载中"><span class="${cls}__ring-frame" aria-hidden="true"><i class="${cls}__ring ${cls}__ring--one"></i><i class="${cls}__ring ${cls}__ring--two"></i><i class="${cls}__ring ${cls}__ring--three"></i></span><span class="${cls}__disc-frame" aria-hidden="true"><i class="${cls}__disc ${cls}__disc--one"></i><i class="${cls}__disc ${cls}__disc--two"></i><i class="${cls}__disc ${cls}__disc--three"></i></span>${label}</div>`;
   }
 
   if (template.generator === "loading-hex-tech-ring") {
@@ -1219,6 +1245,9 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
     const [, , viewBoxWidth = 1000, viewBoxHeight = 180] = currentSource.viewBox.split(/[\s,]+/).map(Number);
     const sourceWidth = Number(currentSource.width || viewBoxWidth || 1000);
     const sourceHeight = Number(currentSource.height || viewBoxHeight || 180);
+    const displayWidth = template.id === "svg-flow-tool"
+      ? svgFlowDisplaySize(currentSource, param(params, "titleWidth", sourceWidth)).width
+      : sourceWidth;
     const legacyPathId = `${cls}-${instanceId}-legacy-path`;
     const showSource = String(param(params, "sourceVisibility", "show")) !== "flow-only";
     const rawTargets = currentSource.targets?.length
@@ -1281,7 +1310,7 @@ export function generateDecorationMarkup(template: DecorationEffectTemplate, par
       };
     });
 
-    return `<div class="${cls}" style="width:${sourceWidth}px;aspect-ratio:${sourceWidth}/${sourceHeight}" aria-label="${currentSource.fileName}">
+    return `<div class="${cls}" style="width:${displayWidth}px;aspect-ratio:${sourceWidth}/${sourceHeight}" aria-label="${currentSource.fileName}">
   <svg class="${cls}__svg" viewBox="${currentSource.viewBox}" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       ${sourceParts.definitions}

@@ -43,6 +43,8 @@ export interface SvgStyleConfig {
 }
 
 export interface SvgFlowConfig {
+  overallScale?: number;
+  titleWidth?: number;
   direction: SvgFlowDirection;
   easing: SvgFlowEasing;
   duration: number;

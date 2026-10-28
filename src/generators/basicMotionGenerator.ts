@@ -1,6 +1,7 @@
 import type { BasicMotionConfig, BasicMotionTemplate } from "@/types/motion";
 import type { SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
 import { borderFlowTrailSegments } from "@/utils/borderFlowTrail";
+import { withMotionScale } from "@/utils/motionScale";
 
 export type { BasicMotionConfig } from "@/types/motion";
 
@@ -76,14 +77,14 @@ export function generateBasicMotionMarkup(
   const { cls } = names(template);
   const content = template.id === "pulse-spread"
       ? `<span class="${cls}__pulse-core"></span>`
-      : `<p>数据态势</p><strong>87.62</strong><small>${template.category}</small>`;
+      : "";
   const material = asset
     ? `<div class="${cls}__material ${cls}__material--svg"><div class="${cls}__svg">${asset.markup}</div></div>`
     : `<div class="${cls}__material">${content}</div>`;
   const ripple = template.id === "pulse-spread" ? rippleMarkup(cls, config) : "";
   const scan = template.id === "scan-line" ? `<span class="${cls}__scan"></span>` : "";
   const borderOrbit = template.id === "border-flow" ? borderOrbitMarkup(cls, config) : "";
-  return `<div class="${cls}${asset ? ` ${cls}--svg-only` : ""}">${material}${ripple}${scan}${borderOrbit}</div>`;
+  return withMotionScale(`<div class="${cls}${asset ? ` ${cls}--svg-only` : ""}">${material}${ripple}${scan}${borderOrbit}</div>`, config?.overallScale);
 }
 
 function generateSvgStyleCss(cls: string, style?: SvgStyleConfig): string {
@@ -129,7 +130,7 @@ function scanGeometry(config: BasicMotionConfig): {
 export function generateBasicMotionCss(template: BasicMotionTemplate, config: BasicMotionConfig, svgStyle?: SvgStyleConfig, asset?: SvgPreviewAsset): string {
   const { cls, keyframes } = names(template);
   const speed = template.id === "alert-blink" ? 1 / Math.max(config.blinkFrequency, 0.1) : config.duration;
-  const isConfiguredLoop = ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate"].includes(template.id);
+  const isConfiguredLoop = ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate", "alert-blink", "pulse-spread"].includes(template.id);
   const iteration = isConfiguredLoop ? "infinite" : config.iteration;
   const timingFunction = template.id === "slow-rotate" ? "linear" : config.timingFunction;
   const animationDirection = template.id === "slow-rotate" ? "normal" : config.direction;
@@ -142,16 +143,21 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
   const scan = scanGeometry(config);
   const border = pulseSpread ? "0" : borderFlow
     ? `1px solid color-mix(in srgb, ${config.color} 16%, rgba(255,255,255,.08))`
-    : `${template.id === "border-highlight" ? config.borderWidth : 1}px solid ${config.color}`;
+    : `${config.borderWidth}px solid color-mix(in srgb,${config.color} 72%,transparent)`;
   const rootBorder = template.id === "border-highlight" ? `${config.borderWidth}px solid transparent` : "0";
   const materialBorder = template.id === "border-highlight" ? "0" : border;
-  const background = pulseSpread ? "transparent" : template.id === "highlight-glow" ? `${config.color}D9` : "#101214";
+  const background = pulseSpread ? "transparent"
+    : ["border-flow", "border-highlight"].includes(template.id) ? "#111317"
+    : ["slow-rotate", "scan-line"].includes(template.id) ? "#171717"
+    : template.id === "highlight-glow" ? `color-mix(in srgb,${config.color} 82%,#10151c 18%)`
+    : `color-mix(in srgb,${config.color} 86%,#777772 14%)`;
   const shadow = template.id === "highlight-glow"
     ? `0 0 ${config.glowBase}px ${config.color}88`
-    : borderFlow ? "inset 0 1px 0 rgba(255,255,255,.04)" : "0 14px 32px rgba(0,0,0,.42)";
+    : borderFlow ? `inset 0 1px 0 rgba(255,255,255,.035),0 0 ${config.glowPeak * .32}px color-mix(in srgb,${config.color} 10%,transparent)`
+    : `inset 0 1px 0 rgba(255,255,255,.32),0 0 ${config.glowPeak}px color-mix(in srgb,${config.color} 48%,transparent)`;
   const startRippleScale = Math.min(1, config.rippleStartRadius / Math.max(config.rippleEndRadius, 1));
-  const materialWidth = asset ? Math.max(1, asset.width) : 240;
-  const materialHeight = asset ? Math.max(1, asset.height) : 150;
+  const materialWidth = asset ? Math.max(1, asset.width) : pulseSpread ? 180 : 176;
+  const materialHeight = asset ? Math.max(1, asset.height) : pulseSpread ? 180 : 110;
   const svgBoxSize = asset ? "width:100%; height:100%;" : "width:min(78%,180px); height:min(78%,110px);";
 
   return `.${cls} {
@@ -180,8 +186,6 @@ export function generateBasicMotionCss(template: BasicMotionTemplate, config: Ba
   background:${background};
   box-shadow:${shadow};
 }
-.${cls} p,.${cls} small { margin:0; color:#8F8F8F; }
-.${cls} strong { font-size:38px; }
 .${cls}__material--svg { overflow:visible; border:0; border-radius:0; background:transparent; box-shadow:none; }
 .${cls}__svg { ${svgBoxSize} transform:translate(${config.assetOffsetX}px,${config.assetOffsetY}px) scale(${config.assetScale}); transform-origin:center; }
 .${cls}__svg svg { width:100%; height:100%; display:block; overflow:visible; }

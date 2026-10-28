@@ -1,5 +1,6 @@
 import type { SavedMotionArtifact } from "@/types/motion";
 import { toPng } from "html-to-image";
+import { initializeLightDocument, releaseLightDocument, type LightRendererElement } from "@/utils/lightWebgl";
 
 interface MotionArtifactOptions {
   id: string;
@@ -33,15 +34,7 @@ export async function createMotionArtifact(options: MotionArtifactOptions): Prom
   const height = options.height ?? 270;
   const safeName = sanitizeFileName(options.name) || options.id;
   const html = createStandaloneMotionHtml(options.name, options.htmlCss);
-  const previewImage = options.previewNode
-    ? await toPng(options.previewNode, {
-        backgroundColor: "#000000",
-        canvasWidth: width,
-        canvasHeight: height,
-        pixelRatio: 1,
-        skipFonts: true
-      })
-    : await renderPreviewImage(options.htmlCss, width, height);
+  const previewImage = await renderPreviewImage(html, width, height);
 
   return {
     html,
@@ -53,34 +46,71 @@ export async function createMotionArtifact(options: MotionArtifactOptions): Prom
   };
 }
 
-async function renderPreviewImage(htmlCss: string, width: number, height: number): Promise<string> {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <foreignObject width="100%" height="100%">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#000;color:#ededed;font-family:Arial,'Microsoft YaHei',sans-serif;">
-      ${htmlCss}
-    </div>
-  </foreignObject>
-</svg>`;
-  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
+async function renderPreviewImage(html: string, width: number, height: number): Promise<string> {
+  // Capture the deliverable, not the editor canvas (which may be hidden by the code tab).
+  const frame = document.createElement("iframe");
+  frame.setAttribute("sandbox", "allow-same-origin");
+  frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${width}px;height:${height}px;border:0;pointer-events:none`;
   try {
-    const image = new Image();
-    image.decoding = "sync";
-    image.src = url;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("无法生成动效预览图");
-    context.fillStyle = "#000000";
-    context.fillRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
-    return canvas.toDataURL("image/png");
-  } finally {
-    URL.revokeObjectURL(url);
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("生成预览图超时，请重试")), 8000);
+      frame.onload = () => { clearTimeout(timeout); resolve(); };
+      frame.onerror = () => { clearTimeout(timeout); reject(new Error("无法生成动效预览图")); };
+      frame.srcdoc = html;
+      document.body.append(frame);
+    });
+    const doc = frame.contentDocument;
+    if (!doc) throw new Error("无法读取动效预览");
+    await doc.fonts.ready;
+    fitMotionPreviewDocument(doc, width, height);
+    // Only install our trusted renderer from the application; iframe scripts stay sandboxed.
+    initializeLightDocument(doc);
+    const lights = doc.querySelectorAll<LightRendererElement>("dm-light-renderer");
+    lights.forEach((item) => {
+      item.setPlayback(false);
+      item.seek(item.dataset.motion === "off" ? 0 : Number(item.dataset.duration) * 0.2);
+      if (item.dataset.ready !== "true") throw new Error("WebGL 不可用，无法生成光效预览图");
+    });
+    const animations = doc.getAnimations();
+    animations.forEach((animation) => {
+      const timing = animation.effect?.getComputedTiming();
+      animation.pause();
+      animation.currentTime = Number(timing?.delay ?? 0) + Number(timing?.duration ?? 1000) * (timing?.iterations === Infinity ? 0.45 : 1);
+    });
+    // Rasterization clones the DOM; CSS animations would otherwise restart at opacity 0.
+    const snapshots = animations.flatMap((animation) => {
+      const effect = animation.effect as KeyframeEffect | null;
+      const target = effect?.target as HTMLElement | SVGElement | null;
+      if (!target || !effect) return [];
+      const computed = getComputedStyle(target);
+      const properties = new Set(effect.getKeyframes().flatMap((frame) => Object.keys(frame)).filter((key) => !["offset", "computedOffset", "easing", "composite"].includes(key)));
+      return [{ target, values: [...properties].map((key) => {
+        const property = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+        return [property, computed.getPropertyValue(property)] as const;
+      }) }];
+    });
+    snapshots.forEach(({ target, values }) => {
+      values.forEach(([property, value]) => target.style.setProperty(property, value, "important"));
+      target.style.setProperty("animation", "none", "important");
+    });
+    return await toPng(doc.body, { width, height, canvasWidth: width, canvasHeight: height, pixelRatio: 1, skipFonts: true, backgroundColor: "#000000" });
+  } finally { releaseLightDocument(frame.contentDocument); frame.remove(); }
+}
+
+// Preview-only containment; never modifies the stored/exported HTML string.
+export function fitMotionPreviewDocument(doc: Document, width: number, height: number): void {
+  let wrapper = doc.querySelector<HTMLElement>("[data-dm-saved-preview]");
+  if (!wrapper) {
+    wrapper = doc.createElement("div");
+    wrapper.dataset.dmSavedPreview = "true";
+    wrapper.style.cssText = "position:absolute;left:50%;top:50%;width:max-content;height:max-content;display:grid;place-items:center;transform-origin:center;";
+    [...doc.body.children].filter((node) => !["STYLE", "SCRIPT"].includes(node.tagName)).forEach((node) => wrapper!.append(node));
+    doc.body.append(wrapper);
   }
+  doc.documentElement.style.cssText = "width:100%;height:100%;margin:0;overflow:hidden";
+  doc.body.style.cssText = "margin:0;padding:0;width:100%;height:100vh;min-height:0;overflow:hidden;display:block;background:#000;";
+  const scale = Math.min(1, (width - 32) / Math.max(1, wrapper.offsetWidth), (height - 32) / Math.max(1, wrapper.offsetHeight));
+  wrapper.style.transform = `translate(-50%,-50%) scale(${Math.max(0.01, scale)})`;
 }
 
 function sanitizeFileName(name: string): string {

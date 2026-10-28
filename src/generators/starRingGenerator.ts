@@ -10,6 +10,7 @@ import { generateBasicMotionFrames } from "@/generators/basicMotionGenerator";
 import type { BasicMotionConfig } from "@/types/motion";
 import { generateDecorationParticleCss, generateDecorationParticleMarkup } from "@/generators/decorationParticleGenerator";
 import { normalizeDecorationParticleConfig } from "@/utils/decorationParticles";
+import { isolateSvgIds, instanceSvgMarkup } from "@/utils/svgInstance";
 
 const CLASS_NAME = "dm-star-ring";
 
@@ -50,6 +51,32 @@ function normalizeStackedEnergy(value?: StackedEnergyMotionConfig): StackedEnerg
   };
 }
 
+function stackedFrontTransforms(config: StackedEnergyMotionConfig): { rest: string; peak: string } {
+  return {
+    rest: `translateY(-${config.layerGap}px) scale(.985)`,
+    peak: `translateY(-${Number((config.layerGap + config.pushDistance * .22).toFixed(2))}px) scale(1.02)`
+  };
+}
+
+function followsStackedFront(config: StarRingDecorationConfig): boolean {
+  if (config.kind !== "stacked-energy-base" || config.sourceMode !== "imported" || config.centerIconSvg) return false;
+  const frontKey = config.layerMapping["base-front"][0];
+  const centerKey = config.layerMapping.center[0];
+  const front = config.layerConfigs[frontKey];
+  const center = config.layerConfigs[centerKey];
+  return Boolean(front?.visible && front.motion === "stacked-energy" && center?.visible);
+}
+
+function stackedCenterFollowCss(config: StarRingDecorationConfig, className: string): string {
+  if (!followsStackedFront(config)) return "";
+  const motion = normalizeStackedEnergy(config.stackedEnergy);
+  const front = stackedFrontTransforms(motion);
+  const name = `${className}-center-follow`;
+  const delay = Number((motion.layerDelay * 2).toFixed(3));
+  return `.${className} [data-dm-center-follow]{transform-box:fill-box;transform-origin:center;animation:${name} ${motion.duration}s ease-in-out ${delay}s infinite both;}
+@keyframes ${name}{0%,100%{transform:${front.rest}}44%,58%{transform:${front.peak}}}`;
+}
+
 function stackedEnergyFrames(role: StarRingLayerRole | undefined, config: StackedEnergyMotionConfig): string {
   const glowRatio = config.glowStrength / 100;
   const glow = Number((2 + glowRatio * 12).toFixed(2));
@@ -61,7 +88,8 @@ function stackedEnergyFrames(role: StarRingLayerRole | undefined, config: Stacke
   if (role === "base-middle") {
     return `0%,100%{transform:translateY(${Number((config.pushDistance * .45).toFixed(2))}px) scale(.97);opacity:.28;filter:brightness(.82) drop-shadow(0 0 0 transparent)}50%{transform:translateY(-${Number((config.pushDistance * .28).toFixed(2))}px) scale(1.025);opacity:.86;filter:brightness(${Number((1.08 + glowRatio * .54).toFixed(2))}) drop-shadow(0 0 ${Number((glow * .82).toFixed(2))}px color-mix(in srgb,var(--star-ring-color) ${Math.round(45 + glowRatio * 38)}%,transparent))}`;
   }
-  return `0%,100%{transform:translateY(-${config.layerGap}px) scale(.985);opacity:.46;filter:brightness(.9) drop-shadow(0 0 ${Number((glow * .2).toFixed(2))}px color-mix(in srgb,var(--star-ring-color) 26%,transparent))}44%,58%{transform:translateY(-${Number((config.layerGap + config.pushDistance * .22).toFixed(2))}px) scale(1.02);opacity:1;filter:brightness(${bright}) drop-shadow(0 0 ${glow}px color-mix(in srgb,var(--star-ring-color) ${Math.round(58 + glowRatio * 34)}%,transparent))}`;
+  const front = stackedFrontTransforms(config);
+  return `0%,100%{transform:${front.rest};opacity:.46;filter:brightness(.9) drop-shadow(0 0 ${Number((glow * .2).toFixed(2))}px color-mix(in srgb,var(--star-ring-color) 26%,transparent))}44%,58%{transform:${front.peak};opacity:1;filter:brightness(${bright}) drop-shadow(0 0 ${glow}px color-mix(in srgb,var(--star-ring-color) ${Math.round(58 + glowRatio * 34)}%,transparent))}`;
 }
 
 function animationCss(layerKey: string, layer: StarRingLayerConfig, className = CLASS_NAME, role?: StarRingLayerRole, stackedEnergy?: StackedEnergyMotionConfig): { declaration: string; keyframes: string } {
@@ -230,7 +258,7 @@ function appendRingSweepOverlay(
   node.parentNode?.insertBefore(overlay, node.nextSibling);
 }
 
-function importedMarkup(config: StarRingDecorationConfig): string {
+function importedMarkup(config: StarRingDecorationConfig, instanceId: string): string {
   if (!config.svg) return "";
   const svg = new DOMParser().parseFromString(config.svg.markup, "image/svg+xml").querySelector("svg");
   if (!svg) return config.svg.markup;
@@ -264,16 +292,29 @@ function importedMarkup(config: StarRingDecorationConfig): string {
     node.parentNode?.insertBefore(wrapper, node);
     wrapper.appendChild(node);
   });
+  if (followsStackedFront(config)) {
+    const centerKey = config.layerMapping.center[0];
+    const centerNode = svg.querySelector('[data-dm-motion-target="' + centerKey + '"]')
+      ?? svg.querySelector('[data-dm-node-key="' + centerKey + '"]');
+    if (centerNode && centerNode !== svg) {
+      const followWrapper = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
+      followWrapper.setAttribute("data-dm-center-follow", "true");
+      centerNode.parentNode?.insertBefore(followWrapper, centerNode);
+      followWrapper.appendChild(centerNode);
+    }
+  }
+  isolateSvgIds(svg, instanceId);
   return new XMLSerializer().serializeToString(svg);
 }
 
-export function generateStarRingMarkup(config: StarRingDecorationConfig): string {
+export function generateStarRingMarkup(config: StarRingDecorationConfig, instanceId = "main"): string {
   const className = classNameFor(config);
+  const scope = `${className}-${instanceId}`;
   const particleEffect = resolvedParticleEffect(config);
-  const chartContentMarkup = config.kind === "chart-tech-ring" ? config.chartContentSvg?.markup ?? "" : "";
-  const centerIconMarkup = config.centerIconSvg?.markup ?? "";
+  const chartContentMarkup = config.kind === "chart-tech-ring" ? instanceSvgMarkup(config.chartContentSvg?.markup ?? "", `${scope}-chart`) : "";
+  const centerIconMarkup = instanceSvgMarkup(config.centerIconSvg?.markup ?? "", `${scope}-marker`);
   const content = config.svg
-    ? `<div class="${className}__import">${importedMarkup(config)}</div>
+    ? `<div class="${className}__import">${importedMarkup(config, `${scope}-source`)}</div>
   ${config.kind === "chart-tech-ring" ? `<div class="${className}__content" data-chart-content>${chartContentMarkup}</div>` : ""}
   ${centerIconMarkup ? `<div class="${className}__center-icon" data-center-icon>${centerIconMarkup}</div>` : ""}
   ${generateDecorationParticleMarkup(particleEffect, config.overall.color)}`
@@ -320,9 +361,10 @@ ${config.kind === "chart-tech-ring" ? `.${className}__content{position:absolute;
 .${className}[data-source] :is([data-dm-motion-target],[data-dm-node-key]){${config.kind === "chart-tech-ring" ? "transform-box:view-box;transform-origin:50% 50%;" : ""}}
 ${config.kind === "chart-tech-ring" ? `.${className} [data-dm-ring-sweep-source]{opacity:0!important;}` : ""}
 .${className}__layer{position:absolute;inset:0;transform-origin:center;}
-@media (prefers-reduced-motion:reduce){.${className} [data-dm-node-key],.${className} [data-dm-motion-target],.${className} [data-dm-ring-segment]{animation:none!important;filter:none!important;}}
+@media (prefers-reduced-motion:reduce){.${className} [data-dm-node-key],.${className} [data-dm-motion-target],.${className} [data-dm-ring-segment],.${className} [data-dm-center-follow]{animation:none!important;filter:none!important;}}
 ${particleEffect.enabled ? generateDecorationParticleCss() : ""}
 ${centerSourceCss}
+${stackedCenterFollowCss(config, className)}
 ${roleCss}`;
 }
 

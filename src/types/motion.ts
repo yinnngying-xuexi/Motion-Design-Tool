@@ -3,6 +3,7 @@ export type MotionCategory = "入场动效" | "循环动效" | "强调动效" | 
 export type MotionPreviewType = "fade" | "slide" | "scale" | "pulse" | "float" | "blink" | "rotate" | "glow" | "ripple" | "scan";
 
 export interface BasicMotionConfig {
+  overallScale?: number;
   duration: number;
   delay: number;
   iteration: "1" | "2" | "3" | "infinite";

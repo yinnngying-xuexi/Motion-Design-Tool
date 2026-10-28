@@ -1,3 +1,4 @@
+import { parseSafeSvg } from "@/utils/svgSanitize";
 import systemPathFlowMarkup from "@/assets/title-path-flow-01.svg?raw";
 import systemPathFlow02Markup from "@/assets/title-path-flow-02.svg?raw";
 import systemDoubleGuideFlowMarkup from "@/assets/title-double-guide-flow.svg?raw";
@@ -33,26 +34,6 @@ export function createDefaultSvgFlowConfig(): SvgFlowConfig {
   };
 }
 
-function parseSafeSvg(text: string): SVGSVGElement {
-  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
-  const svg = doc.querySelector("svg");
-  if (!svg || doc.querySelector("parsererror")) throw new Error("无法读取这个 SVG 文件");
-
-  svg.querySelectorAll("script,style,link,foreignObject,iframe,object,embed").forEach((node) => node.remove());
-  [svg, ...svg.querySelectorAll("*")].forEach((element) => {
-    [...element.attributes].forEach((attribute) => {
-      const name = attribute.name.toLowerCase();
-      const value = attribute.value.trim().toLowerCase();
-      const isExternalReference = (name === "href" || name === "xlink:href") && value && !value.startsWith("#");
-      const hasUnsafeUrl = /url\s*\(\s*(?!['"]?#)/i.test(attribute.value) || /javascript:|expression\s*\(/i.test(attribute.value);
-      if (name.startsWith("on") || isExternalReference || hasUnsafeUrl || value.startsWith("javascript:")) {
-        element.removeAttribute(attribute.name);
-      }
-    });
-  });
-  svg.setAttribute("aria-hidden", "true");
-  return svg;
-}
 
 function svgDimensions(svg: SVGSVGElement): { width: number; height: number } {
   const viewBox = svg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
@@ -98,9 +79,36 @@ function fallbackFlowShapes(shapes: SVGGraphicsElement[], mode: SvgFlowImportMod
     const style = shape.getAttribute("style") ?? "";
     return shape.getAttribute("stroke") !== "none" && !/(?:^|;)\s*stroke\s*:\s*none(?:;|$)/i.test(style);
   });
-  if (mode === "single") return lineShapes.slice(0, 1);
+  // A title SVG often contains decorative paths inside its background layer.
+  // Prefer an explicitly stroked foreground path over the first path in the file.
+  const strokedShapes = lineShapes.filter((shape) => {
+    const style = shape.getAttribute("style") ?? "";
+    return Boolean(shape.getAttribute("stroke") ?? style.match(/(?:^|;)\s*stroke\s*:\s*([^;]+)/i)?.[1]);
+  });
+  const candidates = strokedShapes.length ? strokedShapes : lineShapes;
+  const foregroundShapes = candidates.filter((shape) => {
+    for (let parent = shape.parentElement; parent && parent.tagName.toLowerCase() !== "svg"; parent = parent.parentElement) {
+      const name = (parent.getAttribute("id") ?? parent.getAttribute("data-name") ?? "").trim();
+      if (/^(?:background|bg|标题背景)$/i.test(name)) return false;
+    }
+    return true;
+  });
+  const preferredShapes = foregroundShapes.length ? foregroundShapes : candidates;
+  if (mode === "single") {
+    // With unnamed layers, the flow path is usually the open, topmost stroke.
+    // Keep a single-path SVG valid without imposing any layer naming rules.
+    const ranked = preferredShapes.map((shape, index) => {
+      const path = shape.tagName.toLowerCase() === "path" ? shape.getAttribute("d") ?? "" : "";
+      const openPath = !path || !/[zZ]\s*$/.test(path);
+      let depth = 0;
+      for (let parent = shape.parentElement; parent && parent.tagName.toLowerCase() !== "svg"; parent = parent.parentElement) depth++;
+      return { shape, score: (openPath ? 4 : 0) - depth + index / Math.max(1, preferredShapes.length) };
+    });
+    ranked.sort((left, right) => right.score - left.score);
+    return ranked.length ? [ranked[0].shape] : [];
+  }
 
-  const uniqueShapes = lineShapes.filter((shape, index, candidates) => {
+  const uniqueShapes = preferredShapes.filter((shape, index, candidates) => {
     const geometry = shape.getAttribute("d")
       ?? shape.getAttribute("points")
       ?? [shape.getAttribute("x1"), shape.getAttribute("y1"), shape.getAttribute("x2"), shape.getAttribute("y2")].join(",");
@@ -263,6 +271,15 @@ export function createSystemSvgFlowSource(effectId = "svg-flow-tool"): SvgFlowSo
   return effectId === "svg-flow-double-guide"
     ? parseSvgBackgroundSource(preset.markup, preset.fileName)
     : parseSvgFlowSource(preset.markup, preset.fileName);
+}
+
+export function svgFlowDisplaySize(source: SvgFlowSource, requestedWidth?: string | number): { width: number; height: number } {
+  const width = Number(requestedWidth);
+  const displayWidth = Number.isFinite(width) && width > 0 ? width : source.width;
+  return {
+    width: displayWidth,
+    height: displayWidth * source.height / Math.max(1, source.width)
+  };
 }
 
 function detectPrimarySvgColor(svg: SVGSVGElement): string {

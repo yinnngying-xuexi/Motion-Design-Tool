@@ -61,6 +61,7 @@ const isHome = computed(() => activeModule.value === "home");
 
 const navItems = [
   { key: "home", label: "动效库" },
+  { key: "motion", label: "基础动效" },
   { key: "decoration", label: "装饰组件" },
   { key: "my-motion", label: "我的动效" },
 ] as const;
@@ -72,7 +73,7 @@ function selectModule(module: ModuleKey): void {
 }
 
 function isNavActive(module: ModuleKey): boolean {
-  return module === "home" ? activeModule.value === "home" || activeModule.value === "motion" : activeModule.value === module;
+  return activeModule.value === module;
 }
 
 function openMotionEditor(motionId: string): void {

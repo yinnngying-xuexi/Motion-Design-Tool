@@ -95,6 +95,7 @@
             导入 SVG
           </el-button>
           <el-button size="small" @click="downloadHtml">导出 HTML</el-button>
+          <el-button size="small" :loading="copyingSvg" :title="MOTION_SVG_COPY_HINT" @click="copySvg">复制 SVG</el-button>
           <el-button class="dm-blue-action" type="primary" size="small" @click="copyCode">复制代码</el-button>
         </div>
       </div>
@@ -158,6 +159,7 @@
               :svg-stroke-color="svgStyle.strokeColor"
               :svg-stroke-width="svgStyle.strokeWidth"
               :svg-opacity="svgStyle.opacity"
+              :overall-scale="motionConfig.overallScale ?? 100"
             />
           </section>
           <PreviewPlaybackControls
@@ -181,6 +183,13 @@
       </header>
 
       <el-scrollbar class="param-scroll">
+        <MotionScaleControl
+          :model-value="motionConfig.overallScale ?? 100"
+          :width="svgAsset?.width ?? (selectedMotion.id === 'pulse-spread' ? 180 : 176)"
+          :height="svgAsset?.height ?? (selectedMotion.id === 'pulse-spread' ? 180 : 110)"
+          @update:model-value="setMotionParam('overallScale', $event)"
+          @commit="scheduleParameterReplay"
+        />
         <div v-for="group in selectedMotion.paramGroups" :key="group.id" class="param-section">
           <h3>{{ group.title }}</h3>
           <template v-for="param in group.params" :key="param.key">
@@ -253,9 +262,13 @@ import type {
 import type { SvgPreviewAsset, SvgStyleConfig } from "@/types/svgFlow";
 import { createDefaultSvgStyleConfig, readSvgPreviewFile } from "@/utils/svgFlow";
 import { createMotionArtifact } from "@/utils/motionArtifact";
+import { copyMotionCode } from "@/utils/clipboard";
+import { createAnimatedMotionSvg, MOTION_SVG_COPY_HINT } from "@/utils/motionSvg";
 import CodeMirrorViewer from "@/modules/icon-base-library/CodeMirrorViewer.vue";
 import PreviewPlaybackControls from "@/modules/icon-base-library/PreviewPlaybackControls.vue";
 import MotionPreviewVisual from "@/modules/motion-library/MotionPreviewVisual.vue";
+import MotionScaleControl from "@/modules/motion-library/MotionScaleControl.vue";
+import { motionScaleFactor } from "@/utils/motionScale";
 import SvgStylePanel from "@/modules/motion-library/SvgStylePanel.vue";
 
 type MotionEditorConfig = BasicMotionConfig;
@@ -266,10 +279,12 @@ const keyword = ref("");
 const expandedCategory = ref<MotionCategory | null>(basicMotions.find((motion) => motion.id === props.initialMotionId)?.category ?? basicMotions[0].category);
 const selectedMotionId = ref(basicMotions.some((motion) => motion.id === props.initialMotionId) ? props.initialMotionId! : basicMotions[0].id);
 const previewKey = ref(0);
+const copyingSvg = ref(false);
 type PreviewState = "idle" | "playing" | "paused" | "ended";
 const previewState = ref<PreviewState>("idle");
 const previewCurrentTime = ref(0);
-const previewLooping = ref(false);
+// The canvas automatically replays one-shot examples while their export keeps its configured iteration.
+const previewLooping = ref(true);
 const previewCapture = ref<HTMLElement>();
 const svgAsset = ref<SvgPreviewAsset>();
 const svgStyle = reactive<SvgStyleConfig>(createDefaultSvgStyleConfig());
@@ -314,7 +329,7 @@ const previewMotionDuration = computed(() => {
 });
 const previewTotalTime = computed(() => Math.max(0.01, motionConfig.delay + previewMotionDuration.value));
 const isConfiguredLoop = computed(() =>
-  ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate"].includes(selectedMotion.value.id)
+  ["breath", "float", "soft-blink", "glow-pulse", "slow-rotate", "alert-blink", "pulse-spread"].includes(selectedMotion.value.id)
 );
 const previewIteration = computed(() => isConfiguredLoop.value ? "infinite" : "1");
 const usesCommittedParameterReplay = computed(() =>
@@ -340,6 +355,7 @@ onBeforeUnmount(() => {
 });
 
 watch(selectedMotionId, async (nextId, previousId) => {
+  window.clearTimeout(parameterReplayTimer);
   if (previousId) motionConfigMemory.set(previousId, { ...motionConfig });
   const nextTemplate = basicMotions.find((motion) => motion.id === nextId) ?? basicMotions[0];
   if (!keyword.value.trim()) expandedCategory.value = nextTemplate.category;
@@ -360,6 +376,7 @@ watch(motionConfig, () => {
 
 function createDefaultConfig(template: BasicMotionTemplate = selectedMotion.value): MotionEditorConfig {
   const defaults: MotionEditorConfig = {
+    overallScale: 100,
     duration: template?.duration ?? 1.2,
     delay: 0,
     iteration: template?.iteration === "3" ? "3" : template?.iteration === "1" ? "1" : "infinite",
@@ -411,6 +428,7 @@ function createDefaultConfig(template: BasicMotionTemplate = selectedMotion.valu
 
 function resetConfig(): void {
   Object.assign(motionConfig, createDefaultConfig());
+  Object.assign(svgStyle, createDefaultSvgStyleConfig(svgAsset.value?.primaryColor));
   motionConfigMemory.set(selectedMotionId.value, { ...motionConfig });
   scheduleParameterReplay();
 }
@@ -548,7 +566,11 @@ function handleGlobalSearch(event: Event): void {
   keyword.value = (event as CustomEvent<string>).detail ?? "";
 }
 
+let savingMotion = false;
 async function saveSelected(): Promise<void> {
+  if (savingMotion) return;
+  savingMotion = true;
+  const template = { ...selectedMotion.value, duration: previewMotionDuration.value, timingFunction: motionConfig.timingFunction };
   try {
     const existed = store.savedMotions.some((motion) => motion.id === selectedMotion.value.id);
     const artifact = await createMotionArtifact({
@@ -557,11 +579,11 @@ async function saveSelected(): Promise<void> {
       htmlCss: htmlCssCode.value,
       previewNode: previewCapture.value
     });
-    store.saveMotion(selectedMotion.value, artifact);
+    store.saveMotion(template, artifact);
     ElMessage.success(existed ? "已更新我的动效（HTML、预览图和名称）" : "已保存 HTML、预览图和名称");
-  } catch {
-    ElMessage.error("保存失败，无法生成当前动效预览图");
-  }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "保存失败，无法生成当前动效预览图");
+  } finally { savingMotion = false; }
 }
 
 function triggerSvgImport(): void {
@@ -593,13 +615,23 @@ function updateSvgStyle(value: SvgStyleConfig): void {
 }
 
 async function copyCode(): Promise<void> {
-  await navigator.clipboard.writeText(htmlCssCode.value);
-  ElMessage.success("代码已复制");
+  try { await copyMotionCode(htmlCssCode.value); ElMessage.success("代码已复制"); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : "代码复制失败"); }
+}
+
+async function copySvg(): Promise<void> {
+  if (copyingSvg.value) return;
+  copyingSvg.value = true;
+  try {
+    await copyMotionCode(await createAnimatedMotionSvg(htmlCssCode.value, selectedMotion.value.name));
+    ElMessage.success("动态 SVG 源码已复制（浏览器兼容格式）");
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "SVG 复制失败"); }
+  finally { copyingSvg.value = false; }
 }
 
 function downloadHtml(): void {
   const pageStyle = svgAsset.value
-    ? `html,body{margin:0;width:${svgAsset.value.width}px;height:${svgAsset.value.height}px;display:grid;place-items:center;overflow:hidden;background:#000}`
+    ? `html,body{margin:0;width:${svgAsset.value.width * motionScaleFactor(motionConfig.overallScale)}px;height:${svgAsset.value.height * motionScaleFactor(motionConfig.overallScale)}px;display:grid;place-items:center;overflow:hidden;background:#000}`
     : "body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000}";
   const code = `<!doctype html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${selectedMotion.value.name}</title>\n<style>${pageStyle}</style>\n</head>\n<body>\n${htmlCssCode.value}\n</body>\n</html>`;
   const url = URL.createObjectURL(new Blob([code], { type: "text/html;charset=utf-8" }));
@@ -931,6 +963,7 @@ const NumberControl = defineComponent({
 
 .workspace-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -938,6 +971,7 @@ const NumberControl = defineComponent({
 }
 
 .workspace-actions :deep(.el-button) {
+  margin-left: 0;
   border-radius: 4px;
 }
 

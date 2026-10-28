@@ -9,6 +9,7 @@ import type {
 
 export function createBasicMotionConfig(template: BasicMotionTemplate, primaryColor = "#0070F3"): BasicMotionConfig {
   return {
+    overallScale: 100,
     duration: template.duration,
     delay: 0,
     iteration: template.iteration === "3" ? "3" : template.iteration === "1" ? "1" : "infinite",

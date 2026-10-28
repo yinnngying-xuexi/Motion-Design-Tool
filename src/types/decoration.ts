@@ -1,9 +1,9 @@
 import type { BasicMotionConfig } from "@/types/motion";
 
-export type DecorationSection = "标题装饰" | "图表装饰" | "图标/点位" | "面板装饰" | "通用装饰" | "loading";
-export type DecorationSubsection = "顶部标题" | "小标题" | "饼图外环" | "图标底座" | "面板边框" | "动态标记" | "通用 Loading";
+export type DecorationSection = "标题装饰" | "图表装饰" | "图标/点位" | "通用装饰" | "loading";
+export type DecorationSubsection = "顶部标题" | "小标题" | "饼图外环" | "图表底座" | "图标底座" | "动态标记" | "线性光效" | "环形光效" | "氛围光效" | "通用 Loading";
 
-export type DecorationPreviewType = "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "layered-sweep" | "scan" | "border-glow" | "panel-border-flow" | "loading";
+export type DecorationPreviewType = "base-ring" | "particle-base" | "chart-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "layered-sweep" | "scan" | "border-glow" | "panel-border-flow" | "loading" | "light";
 
 export interface DecorationParam {
   key: string;
@@ -25,8 +25,9 @@ export interface DecorationEffectTemplate {
   scene: string;
   defaultParams: Record<string, string | number>;
   editableParams: DecorationParam[];
+  defaultParticleEffect?: Partial<DecorationParticleConfig>;
   previewType: DecorationPreviewType;
-  generator: "base-ring" | "particle-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "flow-marker-sequence" | "corner-focus" | "connection-flow" | "panel-border-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring" | "loading-hex-tech-ring";
+  generator: "base-ring" | "particle-base" | "chart-orbit-base" | "linear-flow" | "comet-flow" | "svg-flow" | "flow-marker" | "flow-marker-sequence" | "corner-focus" | "connection-flow" | "panel-border-flow" | "layered-sweep" | "scan" | "border-glow" | "loading-ring" | "loading-dots" | "loading-line" | "loading-icon-pulse" | "loading-tech-ring" | "loading-irregular-ring" | "loading-hex-tech-ring" | "light-decoration" | "reference-loading" | "point-reference";
 }
 
 export type DecorationParticleStyle = "float" | "twinkle" | "spread";

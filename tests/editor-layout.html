@@ -1,0 +1,30 @@
+<!doctype html><html lang="zh-CN" class="dark"><head><meta charset="utf-8"><title>编辑器操作栏回归</title></head><body><div id="app"></div><script type="module">
+import 'element-plus/dist/index.css';
+import 'element-plus/theme-chalk/dark/css-vars.css';
+import '/src/styles/main.css';
+import {createApp,nextTick} from 'vue';
+import {createPinia} from 'pinia';
+import ElementPlus from 'element-plus';
+import App from '/src/App.vue';
+const vm=createApp(App).use(createPinia()).use(ElementPlus).mount('#app');
+const basic=new URLSearchParams(location.search).get('mode')==='basic';
+if(basic)vm.$.setupState.openMotionEditor('fade-in');else vm.$.setupState.openDecorationEditor(new URLSearchParams(location.search).get('effect')||'svg-flow-tool-02');
+await nextTick();await new Promise(r=>setTimeout(r,300));
+const color=new URLSearchParams(location.search).get('color');
+if(color){const state=document.querySelector('.decoration-library').__vueParentComponent.setupState;state.params.color=color;await nextTick();const image=document.querySelector('.generated-preview img');if(image)await image.decode()}
+const phase=new URLSearchParams(location.search).get('phase');
+for(const key of ['showText','glowSpread']){const value=new URLSearchParams(location.search).get(key);if(value!==null){const state=document.querySelector('.decoration-library').__vueParentComponent.setupState;state.params[key]=key==='glowSpread'?Number(value):value;await nextTick()}}
+if(phase!==null){const renderer=document.querySelector('.generated-preview dm-light-renderer');renderer?.setPlayback(false);renderer?.seek(Number(renderer.dataset.duration)*Number(phase))}
+const controls=[...document.querySelectorAll(basic?'.workspace-actions button':'.decoration-workspace-actions button')];
+const bounds=controls.map(n=>n.getBoundingClientRect());
+// Split-button groups intentionally share a one-pixel border; this is not control overlap.
+const overlap=bounds.some((a,i)=>bounds.slice(i+1).some(b=>a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1));
+const outside=bounds.some(a=>a.left<0||a.right>innerWidth);
+document.title=controls.some(n=>n.textContent.includes('复制 SVG'))&&!overlap&&!outside?'PASS 操作栏':'FAIL 操作栏';
+if(new URLSearchParams(location.search).get('effect')==='light-silk-wave'){
+ const selectors=['.preview-stage','.generated-preview','.generated-preview .dm-light-decoration','.generated-preview dm-light-renderer','.generated-preview canvas'];
+ const rectangles=selectors.map(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {selector,x:r.x,y:r.y,w:r.width,h:r.height}});
+ const center=r=>r.y+r.h/2;const offset=center(rectangles[4])-center(rectangles[0]);
+ document.title=Math.abs(offset)<2?'PASS 波带容器居中':'FAIL 波带偏移 '+offset.toFixed(2)+' '+JSON.stringify(rectangles);
+}
+</script></body></html>
