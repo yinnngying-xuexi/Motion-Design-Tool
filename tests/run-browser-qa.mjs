@@ -32,6 +32,10 @@ for(const path of urls){
       const evaluated=await send('Runtime.evaluate',{awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const wait=ms=>new Promise(r=>setTimeout(r,ms));
         const check=(x,m)=>{if(!x)throw Error(m)};
+        const waitFor=async(predicate,message)=>{
+          for(let i=0;i<50;i++){if(predicate())return;await wait(200)}
+          throw Error(message);
+        };
         const checkAlpha=(item,name,minFaint=20)=>{
           const gl=item.gl;check(gl?.getContextAttributes()?.premultipliedAlpha===true,name+' 画布不是预乘透明度');
           item.setPlayback(false);item.seek(.2);
@@ -43,17 +47,19 @@ for(const path of urls){
         };
         Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>window.__motionCopied=value}});
         const names=['等离子光环','柔光波带','电弧光束','粒子光带','粒子摆动','流体线框环','粒子辉光环','星芒光点'];
+        await waitFor(()=>document.querySelectorAll('.home-motion-card').length>=30,'首页卡片加载超时');
         for(const name of names){
           const card=[...document.querySelectorAll('.home-motion-card')].find(n=>n.textContent.includes(name));
           const thumbnail=card?.querySelector('dm-light-renderer');
-          check(thumbnail?.dataset.ready==='true',name+' 首页缩略图渲染失败');checkAlpha(thumbnail,name+' 首页缩略图',3);
+          await waitFor(()=>thumbnail?.dataset.ready==='true',name+' 首页缩略图渲染失败');checkAlpha(thumbnail,name+' 首页缩略图',3);
         }
-        [...document.querySelectorAll('.top-navigation button')].find(n=>n.textContent==='装饰组件').click();await wait(300);
+        [...document.querySelectorAll('.top-navigation button')].find(n=>n.textContent==='装饰组件').click();
+        await waitFor(()=>document.querySelectorAll('.effect-card').length>=30,'编辑器目录加载超时');
         const snippets=[];
         for(const name of names){
           [...document.querySelectorAll('.effect-card')].find(n=>n.textContent.includes(name)).click();await wait(300);
           const preview=document.querySelector('.generated-preview dm-light-renderer');
-          check(preview?.dataset.ready==='true',name+' 构建预览失败');checkAlpha(preview,name+' 主预览');
+          await waitFor(()=>preview?.dataset.ready==='true',name+' 构建预览失败');checkAlpha(preview,name+' 主预览');
           [...document.querySelectorAll('.decoration-workspace-actions button')].find(n=>n.textContent==='复制代码').click();await wait(50);
           check(window.__motionCopied?.includes('<script>')&&!window.__motionCopied?.includes('base64'),'构建交付不是纯代码');snippets.push(window.__motionCopied);
         }
