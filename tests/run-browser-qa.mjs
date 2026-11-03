@@ -12,7 +12,10 @@ const viewport=sizeIndex>=0?args.splice(sizeIndex,2)[1]:'1480,960';
 const urls=args.length?args:['/tests/webgl-lights.html','/tests/svg-copy-reset.html','/tests/motion-scale.html','/tests/light-decorations.html','/tests/procedural-lights.html'];
 for(const path of urls){
   const profile=await mkdtemp(join(tmpdir(),'dm-browser-qa-'));
-  const child=spawn('C:/Program Files/Google/Chrome/Application/chrome.exe',['--headless=new','--no-first-run','--no-default-browser-check','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--remote-debugging-port=0',`--window-size=${viewport}`,`--user-data-dir=${profile}`],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+  const browser=process.env.DM_QA_BROWSER||'C:/Program Files/Google/Chrome/Application/chrome.exe';
+  const software=process.env.DM_QA_SOFTWARE!=='0';
+  const graphics=software?['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']:[];
+  const child=spawn(browser,['--headless=new','--no-first-run','--no-default-browser-check',...graphics,'--remote-debugging-port=0',`--window-size=${viewport}`,`--user-data-dir=${profile}`],{windowsHide:true,stdio:['ignore','ignore','pipe']});
   let ws;
   try{
     const endpoint=await Promise.race([new Promise((resolve,reject)=>{child.stderr.on('data',d=>{const m=d.toString().match(/DevTools listening on (ws:\/\/\S+)/);if(m)resolve(m[1])});child.on('error',reject)}),sleep(10000).then(()=>{throw Error('浏览器启动超时')})]);
@@ -29,13 +32,28 @@ for(const path of urls){
       const evaluated=await send('Runtime.evaluate',{awaitPromise:true,returnByValue:true,expression:`(async()=>{
         const wait=ms=>new Promise(r=>setTimeout(r,ms));
         const check=(x,m)=>{if(!x)throw Error(m)};
+        const checkAlpha=(item,name,minFaint=20)=>{
+          const gl=item.gl;check(gl?.getContextAttributes()?.premultipliedAlpha===true,name+' 画布不是预乘透明度');
+          item.setPlayback(false);item.seek(.2);
+          const data=new Uint8Array(item.canvas.width*item.canvas.height*4);
+          gl.readPixels(0,0,item.canvas.width,item.canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,data);
+          let faint=0;
+          for(let i=0;i<data.length;i+=4){const alpha=data[i+3];if(alpha<3||alpha>80)continue;faint++;check(Math.max(data[i],data[i+1],data[i+2])<=alpha+2,name+' 半透明像素颜色未预乘')}
+          check(faint>minFaint,name+' 缺少半透明光晕');
+        };
         Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>window.__motionCopied=value}});
-        [...document.querySelectorAll('.top-navigation button')].find(n=>n.textContent==='装饰组件').click();await wait(300);
-        const snippets=[];
         const names=['等离子光环','柔光波带','电弧光束','粒子光带','粒子摆动','流体线框环','粒子辉光环','星芒光点'];
         for(const name of names){
+          const card=[...document.querySelectorAll('.home-motion-card')].find(n=>n.textContent.includes(name));
+          const thumbnail=card?.querySelector('dm-light-renderer');
+          check(thumbnail?.dataset.ready==='true',name+' 首页缩略图渲染失败');checkAlpha(thumbnail,name+' 首页缩略图',3);
+        }
+        [...document.querySelectorAll('.top-navigation button')].find(n=>n.textContent==='装饰组件').click();await wait(300);
+        const snippets=[];
+        for(const name of names){
           [...document.querySelectorAll('.effect-card')].find(n=>n.textContent.includes(name)).click();await wait(300);
-          check(document.querySelector('.generated-preview dm-light-renderer')?.dataset.ready==='true',name+' 构建预览失败');
+          const preview=document.querySelector('.generated-preview dm-light-renderer');
+          check(preview?.dataset.ready==='true',name+' 构建预览失败');checkAlpha(preview,name+' 主预览');
           [...document.querySelectorAll('.decoration-workspace-actions button')].find(n=>n.textContent==='复制代码').click();await wait(50);
           check(window.__motionCopied?.includes('<script>')&&!window.__motionCopied?.includes('base64'),'构建交付不是纯代码');snippets.push(window.__motionCopied);
         }
@@ -43,7 +61,7 @@ for(const path of urls){
         frame.srcdoc='<html><head><style>body{background:#000}</style></head><body>'+snippets.join('')+'</body></html>';document.body.append(frame);await loaded;
         const items=[...frame.contentDocument.querySelectorAll('dm-light-renderer')];
         check(items.length===names.length&&items.every(n=>n.dataset.ready==='true'),items.map(n=>n.dataset.error).join(';'));
-        items.forEach(n=>check(n.canvas.width>0,'构建导出空画面'));
+        items.forEach((n,i)=>{check(n.canvas.width>0,'构建导出空画面');checkAlpha(n,names[i]+' 独立代码')});
         check(!frame.contentDocument.querySelector('img,image'),'构建还在使用图片素材');
         frame.remove();document.title='PASS 生产构建八款程序光效/独立交付';return document.title;
       })().catch(e=>{document.title='FAIL '+e.message;return document.title})`},sessionId);

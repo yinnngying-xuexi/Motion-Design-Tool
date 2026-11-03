@@ -18,6 +18,12 @@ Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:
 const renderer=()=>document.querySelector('.generated-preview dm-light-renderer');
 function pixels(item,time=0){assert(item?.dataset.ready==='true',item?.dataset.error||'渲染器未就绪');item.setPlayback(false);item.seek(time);const gl=item.gl,data=new Uint8Array(item.canvas.width*item.canvas.height*4);gl.readPixels(0,0,item.canvas.width,item.canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,data);return data}
 function diff(a,b){assert(a.length===b.length);return a.reduce((sum,x,i)=>sum+Math.abs(x-b[i]),0)/a.length}
+function assertPremultiplied(item,data){
+ assert(item.gl.getContextAttributes()?.premultipliedAlpha===true,'WebGL 画布未开启预乘透明度');
+ let faint=0;
+ for(let i=0;i<data.length;i+=4){const alpha=data[i+3];if(alpha<3||alpha>80)continue;faint++;assert(Math.max(data[i],data[i+1],data[i+2])<=alpha+2,'低透明光晕含高亮 RGB，可能在其他浏览器显示成实心色块')}
+ assert(faint>20,'缺少可检查的半透明光效像素');
+}
 async function frame(html){const f=document.createElement('iframe');f.width=800;f.height=500;const loaded=new Promise(r=>f.onload=r);f.srcdoc=html;document.querySelector('#frames').append(f);await loaded;return f}
 const ids=['loading-reference-dot-wave','loading-reference-wire-orb','loading-reference-particle-ring','loading-reference-flare-line','light-electric-beam','light-particle-band'];
 const removedLoadings=[['loading-rotating-ring','旋转圆环'],['loading-sequence-dots','点序呼吸'],['loading-linear-flow','横向进度条'],['loading-irregular-ring','不规则旋转环']];
@@ -32,6 +38,11 @@ await test(effect.name+'：四款 loading 使用单个 HTML 导出按钮，其�
  assert(state.supportsSourcePackage===!Boolean(spec));
 });
 await test(effect.name+'：纯代码生成，主画布与目录真实渲染，无任何图片或外链',()=>{assert(renderer()?.dataset.ready==='true',renderer()?.dataset.error);assert(document.querySelector('.effect-card.active dm-light-renderer')?.dataset.ready==='true');assert(!document.querySelector('.generated-preview img,.generated-preview image'));assert(!/base64|\.webp|<img|<image|<script src=/.test(state.htmlCss));assert(state.htmlCss.length<40000,'交付包含大量无关代码');assert(state.params.overallScale===(effect.defaultParams.overallScale??100));assert(pixels(renderer(),.2).some(v=>v>180));assert(!state.htmlCss.includes('light-silk-wave')&&!state.htmlCss.includes('light-plasma-ring'),'打包了其他效果')});
+await test(effect.name+'：主画布与独立 HTML 的半透明光晕均使用预乘颜色',async()=>{
+ const item=renderer();assertPremultiplied(item,pixels(item,.2));
+ const exported=await frame(createStandaloneMotionHtml(effect.name,generateDecorationHtmlCss(effect,effect.defaultParams)));
+ try{const standalone=exported.contentDocument.querySelector('dm-light-renderer');assert(standalone?.dataset.ready==='true',standalone?.dataset.error);assertPremultiplied(standalone,pixels(standalone,.2))}finally{releaseLightDocument(exported.contentDocument);exported.remove()}
+});
 await test(effect.name+'：透明边缘及连续柔光，多个时相变化，循环首尾一致',()=>{const item=renderer(),a=pixels(item,0),b=pixels(item,Number(effect.defaultParams.duration)*.33),loop=pixels(item,Number(effect.defaultParams.duration));assert(a[3]===0&&a[a.length-1]===0,'边角不透明');const levels=new Set();for(let i=3;i<b.length;i+=4)levels.add(b[i]);assert(levels.size>50,'柔光层次不足 '+levels.size);assert(diff(a,b)>.02,'动画未变化');assert(diff(a,loop)<.02,'循环不连续');if(id.endsWith('wire-orb')||id.endsWith('particle-ring')){const at=(Math.floor(item.canvas.height/2)*item.canvas.width+Math.floor(item.canvas.width/2))*4;assert(b[at+3]<15,'中心过亮')}});
 if(id==='loading-reference-particle-ring')await test('粒子辉光环：外侧不再有放射线，保留绕行粒子和亮弧',()=>{
  const shader=createProceduralLightShaders('')[id];

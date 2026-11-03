@@ -104,7 +104,7 @@ export function installLightRenderer(shaders: Record<string, string>, scope: Win
     initialize(): void {
       if (!shaders[this.dataset.effect ?? ""]) { this.dataset.ready = "pending"; return; }
       try {
-        const gl = this.canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: true, depth: false, stencil: false });
+        const gl = this.canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true, depth: false, stencil: false });
         if (!gl) throw new Error("webgl-unavailable");
         this.gl = gl;
         gl.getExtension("OES_standard_derivatives");

@@ -22,6 +22,12 @@ Object.defineProperty(navigator,'clipboard',{configurable:true,value:{async writ
 function renderer(){return document.querySelector('.generated-preview dm-light-renderer')}
 function pixels(item,time=0){item.setPlayback(false);item.seek(time);const gl=item.canvas.getContext('webgl');const data=new Uint8Array(item.canvas.width*item.canvas.height*4);gl.readPixels(0,0,item.canvas.width,item.canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,data);return data}
 function difference(a,b){assert(a.length===b.length,'尺寸变化');return a.reduce((sum,value,i)=>sum+Math.abs(value-b[i]),0)/a.length}
+function assertPremultiplied(item,data){
+  assert(item.gl.getContextAttributes()?.premultipliedAlpha===true,'WebGL 画布未开启预乘透明度');
+  let faint=0;
+  for(let i=0;i<data.length;i+=4){const alpha=data[i+3];if(alpha<3||alpha>80)continue;faint++;assert(Math.max(data[i],data[i+1],data[i+2])<=alpha+2,'低透明光晕含高亮 RGB，可能在其他浏览器显示成实心色块')}
+  assert(faint>20,'缺少可检查的半透明光效像素');
+}
 function bendSpan(item,time){const data=pixels(item,time),w=item.canvas.width,h=item.canvas.height;const centers=[.2,.4,.6,.8].map(f=>{const x=Math.floor(w*f);let sum=0,weight=0;for(let y=0;y<h;y++){const a=data[(y*w+x)*4+3]**2;sum+=y*a;weight+=a}return sum/Math.max(1,weight)});return Math.max(...centers)-Math.min(...centers)}
 function columnCenter(item,data,fraction){const w=item.canvas.width,h=item.canvas.height,x=Math.floor(w*fraction);let sum=0,weight=0;for(let y=0;y<h;y++){const a=data[(y*w+x)*4+3]**2;sum+=y*a;weight+=a}assert(weight>10,'波带未覆盖目标横向位置');return sum/weight}
 async function frame(html,sandbox='allow-scripts allow-same-origin'){const item=document.createElement('iframe');item.setAttribute('sandbox',sandbox);const loaded=new Promise(resolve=>item.onload=resolve);item.srcdoc=html;document.querySelector('#frames').append(item);await loaded;const remove=item.remove.bind(item);item.remove=()=>{releaseLightDocument(item.contentDocument);remove()};return item}
@@ -31,6 +37,11 @@ try{
     const effect=lightDecorations.find(e=>e.id===id);
     await mount(Decoration,{initialEffectId:id});
     await test(effect.name+'：主画布与真实缩略图实际编译并渲染',()=>{const item=renderer();assert(item?.dataset.ready==='true',item?.dataset.error);assert(item.querySelectorAll('canvas').length===1);const thumb=document.querySelector('.effect-card.active dm-light-renderer');assert(thumb?.dataset.ready==='true',thumb?.dataset.error);assert(pixels(item).some(v=>v>150),'画面为空');assert(!document.querySelector('.generated-preview svg'),'旧路径版本未移除')});
+    await test(effect.name+'：主画布与独立 HTML 的半透明光晕均使用预乘颜色',async()=>{
+      const item=renderer();assertPremultiplied(item,pixels(item,.2));
+      const exported=await frame(createStandaloneMotionHtml(effect.name,generateDecorationHtmlCss(effect,effect.defaultParams)));
+      try{const standalone=exported.contentDocument.querySelector('dm-light-renderer');assert(standalone?.dataset.ready==='true',standalone?.dataset.error);assertPremultiplied(standalone,pixels(standalone,.2))}finally{exported.remove()}
+    });
     await test(effect.name+'：透明背景、柔和半透明层次、无黑底贴图',()=>{const item=renderer(),data=pixels(item,.3);assert(data[3]===0,'画布左下角不透明');const alphas=new Set();for(let i=3;i<data.length;i+=4)alphas.add(data[i]);assert(alphas.size>80,'光晕没有连续透明层次');assert(!state.htmlCss.includes('<img')&&!state.htmlCss.includes('ESENSOFT'));if(id==='light-plasma-ring'){const at=(Math.floor(item.canvas.height/2)*item.canvas.width+Math.floor(item.canvas.width/2))*4;assert(data[at+3]<3,'中心没有留空')}});
     await test(effect.name+'：实际纹理变化且首尾无跳变',()=>{const item=renderer();const first=pixels(item,0),later=pixels(item,Number(effect.defaultParams.duration)*.25),loop=pixels(item,Number(effect.defaultParams.duration));assert(difference(first,later)>.3,'光效未运动');assert(difference(first,loop)<.05,'循环接缝不连续')});
     if(id==='light-silk-wave'){
