@@ -165,7 +165,8 @@ const NumberControl = defineComponent({
 .section-head h2 {
   margin: 0;
   color: var(--dm-primary);
-  font-size: 20px;
+  font-size: 18px;
+  line-height: 1.3;
 }
 
 .param-scroll {
@@ -213,7 +214,7 @@ const NumberControl = defineComponent({
 
 :deep(.control-row) {
   display: grid;
-  grid-template-columns: 1fr 76px;
+  grid-template-columns: 1fr var(--dm-param-value-width);
   gap: 10px;
   align-items: center;
 }

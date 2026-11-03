@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>光效组件预览</title><style>html,body{margin:0;background:#111;color:#ddd;font-family:Arial,'Microsoft YaHei',sans-serif}.gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:#303030}.case{min-width:0;background:#111;padding:18px 24px}.case h2{font-size:16px;margin:0 0 5px}.case p{font-size:12px;color:#7c858f;margin:0}.visual{height:270px;display:grid;place-items:center;overflow:hidden}.visual>div{display:grid;place-items:center;transform:scale(.9)}.case[data-id="light-silk-wave"] .visual>div{transform:scale(.74)}.case[data-id="light-electric-beam"] .visual>div{transform:scale(.85)}</style></head><body><div class="gallery"></div><script type="module">
+import {lightDecorations} from '/src/data/lightDecorations.ts';
+import {generateDecorationHtmlCss} from '/src/generators/decorationGenerator.ts';
+const gallery=document.querySelector('.gallery');
+for(const effect of lightDecorations){const item=document.createElement('section');item.className='case';item.dataset.id=effect.id;item.innerHTML=`<h2>${effect.name}</h2><p>${effect.section} / ${effect.subsection}</p><div class="visual"><div>${generateDecorationHtmlCss(effect,effect.defaultParams)}</div></div>`;gallery.append(item)}
+const time=new URLSearchParams(location.search).get('time');
+if(time!==null){gallery.getBoundingClientRect();document.getAnimations().forEach(a=>{a.pause();a.currentTime=Number(time)*1000});document.querySelectorAll('svg').forEach(svg=>{svg.pauseAnimations();svg.setCurrentTime(Number(time))});document.querySelectorAll('dm-light-renderer').forEach(item=>{item.setPlayback(false);item.seek(Number(time))})}
+</script></body></html>

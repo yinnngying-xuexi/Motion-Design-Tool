@@ -1,0 +1,28 @@
+import 'element-plus/dist/index.css';
+import 'element-plus/theme-chalk/dark/css-vars.css';
+import '/src/styles/main.css';
+import {createApp,nextTick} from 'vue';
+import {createPinia} from 'pinia';
+import ElementPlus from 'element-plus';
+import Decoration from '/src/modules/decoration-library/DecorationMotionLibrary.vue';
+const query=new URLSearchParams(location.search);
+const vm=createApp(Decoration,{initialEffectId:query.get('effect')||'base-particle-star-ring'}).use(createPinia()).use(ElementPlus).mount('#app');
+const state=vm.$.setupState;await nextTick();await new Promise(r=>setTimeout(r,80));
+const freeze=()=>{document.getAnimations().forEach(a=>{a.pause();a.currentTime=600});document.querySelectorAll('svg').forEach(svg=>{svg.pauseAnimations();svg.setCurrentTime(.6)})};freeze();
+const root=document.querySelector('.generated-preview');
+const referenceErrors=()=>[...root.querySelectorAll('*')].flatMap(node=>[...node.attributes].flatMap(a=>[...a.value.matchAll(/url\(["']?#([^)'"\s]+)/g)].map(m=>({id:m[1],target:document.getElementById(m[1])})))).filter(ref=>!ref.target||!root.contains(ref.target));
+const before=state.currentEffect.id,params=JSON.stringify(state.params),key=state.previewKey;
+const errors=[];
+const original=root.innerHTML;
+const source=state.activeRingConfig?.svg?.markup;
+const inspect=label=>{const refs=referenceErrors();if(refs.length)errors.push(label+' 主预览引用了外部或缺失的 SVG 定义：'+[...new Set(refs.map(r=>r.id))].join(','));if(root.innerHTML!==original)errors.push(label+' 修改了主画布结构')};
+inspect('初始展开');
+for(let i=0;i<4;i++){state.toggleSection(state.currentEffect.section);await nextTick();freeze();inspect('反复折叠 '+i)}
+state.toggleSection(state.currentEffect.section==='标题装饰'?'通用装饰':'标题装饰');await nextTick();freeze();inspect('打开其他分类');
+state.keyword='不存在的案例';await nextTick();freeze();inspect('搜索隐藏全部缩略图');
+state.keyword='';await nextTick();
+state.expandedSection=query.get('closed')==='1'?null:state.currentEffect.section;await nextTick();freeze();inspect('最终状态');
+if(state.currentEffect.id!==before||JSON.stringify(state.params)!==params||state.previewKey!==key)errors.push('收起分类改变了当前案例、参数或播放节点');
+if(state.activeRingConfig?.svg?.markup!==source)errors.push('修改了原始 SVG 素材或图层命名');
+document.querySelector('#results').innerHTML=errors.map(e=>'<li>FAIL '+e+'</li>').join('');
+document.title=errors.length?'FAIL 分类折叠 '+errors.length:'PASS 分类折叠：主预览引用自包含，案例与参数不变';

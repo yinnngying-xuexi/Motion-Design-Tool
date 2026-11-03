@@ -1,0 +1,31 @@
+<svg width="154" height="114" viewBox="0 0 154 114" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g id="ripple-focus-base">
+    <g id="background">
+      <ellipse cx="77" cy="73.5" rx="76" ry="25" fill="url(#ripple-base-fill)" stroke="url(#ripple-base-stroke)" stroke-width="1.86"/>
+      <ellipse cx="77" cy="71.4" rx="42.3" ry="14.2" fill="url(#ripple-core-fill)"/>
+    </g>
+    <g id="ripple-outer">
+      <ellipse cx="77" cy="88.4" rx="76" ry="24.7" stroke="url(#ripple-outer-stroke)" stroke-width="1.86" opacity=".25"/>
+    </g>
+    <g id="ripple-middle">
+      <ellipse cx="77" cy="80.7" rx="76" ry="24.7" stroke="url(#ripple-middle-stroke)" stroke-width="1.86"/>
+      <ellipse cx="77" cy="54" rx="47.6" ry="13.6" stroke="url(#ripple-middle-accent)" stroke-width="2.79"/>
+    </g>
+    <g id="ripple-inner">
+      <ellipse cx="76.5" cy="35.5" rx="57.1" ry="20.1" stroke="url(#ripple-inner-stroke)" stroke-width="2.79"/>
+    </g>
+    <g id="center">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M59 17.5C59 30.625 77 50 77 50C77 50 95 30.625 95 17.5C94.9999 7.8375 86.9385 0 77 0C67.0615 0 59 7.8375 59 17.5ZM70.5714 17.5C70.5714 14.05 73.4514 11.25 77 11.25C80.5485 11.25 83.4285 14.05 83.4285 17.5C83.4285 20.9501 80.5485 23.75 77 23.75C73.4514 23.75 70.5714 20.9501 70.5714 17.5Z" fill="url(#ripple-pin-fill)"/>
+    </g>
+  </g>
+  <defs>
+    <linearGradient id="ripple-base-fill" x1="77" y1="48" x2="77" y2="99" gradientUnits="userSpaceOnUse"><stop stop-color="#00CAF5" stop-opacity=".02"/><stop offset="1" stop-color="#009AE7" stop-opacity=".58"/></linearGradient>
+    <linearGradient id="ripple-base-stroke" x1="77" y1="48" x2="77" y2="99" gradientUnits="userSpaceOnUse"><stop stop-color="#009AE7" stop-opacity=".05"/><stop offset="1" stop-color="#2CF0FF"/></linearGradient>
+    <linearGradient id="ripple-core-fill" x1="77" y1="57" x2="77" y2="86" gradientUnits="userSpaceOnUse"><stop stop-color="#005DE7" stop-opacity=".03"/><stop offset="1" stop-color="#00CEE7" stop-opacity=".52"/></linearGradient>
+    <linearGradient id="ripple-outer-stroke" x1="77" y1="64" x2="77" y2="113" gradientUnits="userSpaceOnUse"><stop stop-color="#009AE7" stop-opacity=".02"/><stop offset="1" stop-color="#48FFF8"/></linearGradient>
+    <linearGradient id="ripple-middle-stroke" x1="77" y1="56" x2="77" y2="106" gradientUnits="userSpaceOnUse"><stop stop-color="#009AE7" stop-opacity=".02"/><stop offset="1" stop-color="#2CF0FF"/></linearGradient>
+    <linearGradient id="ripple-middle-accent" x1="77" y1="40" x2="77" y2="68" gradientUnits="userSpaceOnUse"><stop stop-color="#48BDFF" stop-opacity=".02"/><stop offset=".5" stop-color="#48BDFF"/><stop offset="1" stop-color="#48BDFF" stop-opacity=".9"/></linearGradient>
+    <linearGradient id="ripple-inner-stroke" x1="76.5" y1="15" x2="76.5" y2="56" gradientUnits="userSpaceOnUse"><stop stop-color="#48BDFF" stop-opacity=".02"/><stop offset="1" stop-color="#48BDFF"/></linearGradient>
+    <linearGradient id="ripple-pin-fill" x1="77" y1="0" x2="77" y2="50" gradientUnits="userSpaceOnUse"><stop stop-color="#209EFF" stop-opacity=".15"/><stop offset="1" stop-color="#34C1CA"/></linearGradient>
+  </defs>
+</svg>
